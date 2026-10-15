@@ -205,7 +205,51 @@ const noise = (x: number, y: number) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
 }
 
+/** The surface every card and chart sits on: a soft top-lit gradient and a hairline edge. */
+export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow: '#ffffff' }
 
+/**
+ * A panel's background: gradient fill, hairline edge, a one-pixel highlight along the top.
+ * `id` keeps the gradient's name unique where several panels share one document.
+ * `edgeAnim` goes inside the edge's rect (a flash of the border).
+ */
+export const panelSvg = (id: string, width: number, height: number, rx = 12, edgeAnim = '') =>
+  `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${PANEL.top}"/><stop offset="1" stop-color="${PANEL.bottom}"/></linearGradient></defs>` +
+  `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="${rx}" fill="url(#${id})"/>` +
+  `<path d="M${rx + 2} 1.5H${width - rx - 2}" stroke="${PANEL.glow}" stroke-opacity="0.05" stroke-width="1"/>` +
+  `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="${rx}" fill="none" stroke="${PANEL.edge}" stroke-width="1.5">${edgeAnim}</rect>`
+
+/**
+ * The band's one ornament: a faint halftone of square dots that gathers toward the
+ * top-right corner of the box (x1, y0) and thins to nothing a quarter-circle away.
+ * Deterministic, so a redraw gives the same picture.
+ */
+export const halftone = (
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  opts: { step?: number; color?: string; opacity?: number; corner?: 'tr' | 'br' } = {},
+) => {
+  const step = opts.step ?? 4
+  const size = +(step * 0.5).toFixed(2)
+  const cols = Math.floor((x1 - x0) / step)
+  const rows = Math.floor((y1 - y0) / step)
+  const cells: string[] = []
+  for (let cx = 0; cx < cols; cx++) {
+    for (let ry = 0; ry < rows; ry++) {
+      const dx = cx / Math.max(1, cols - 1)
+      const dy = ry / Math.max(1, rows - 1)
+      // Full at the corner, gone a quarter-circle away; the noise thins it between.
+      const t = Math.pow(Math.max(0, 1 - Math.hypot(dx, dy)), 1.3)
+      if (noise(cx + 101, ry + 7) >= t) continue
+      const x = x1 - (cx + 1) * step
+      const y = opts.corner === 'br' ? y1 - (ry + 1) * step : y0 + ry * step
+      cells.push(`M${x.toFixed(1)} ${y.toFixed(1)}h${size}v${size}h-${size}z`)
+    }
+  }
+  return cells.length > 0 ? `<path d="${cells.join('')}" fill="${opts.color ?? '#b8b0ab'}" fill-opacity="${opts.opacity ?? 0.16}"/>` : ''
+}
 
 /** ≈-free money for a stat card: always two decimals, $15.62. */
 export const fmtCost = (usd: number) => `$${usd.toFixed(2)}`
@@ -376,16 +420,19 @@ export const cardSvg = (
   const height = 50
   const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
   const border = opts.changed
-    ? `<animate attributeName="stroke" from="${accent}" to="#4a4240" dur="1.1s" fill="freeze"/>`
+    ? `<animate attributeName="stroke" from="${accent}" to="${PANEL.edge}" dur="1.1s" fill="freeze"/>`
     : ''
   const rise = opts.changed
     ? `<animate attributeName="opacity" from="0" to="1" dur="0.45s" fill="freeze" ${spline}/>` +
       `<animateTransform attributeName="transform" type="translate" from="0 8" to="0 0" dur="0.45s" fill="freeze" ${spline}/>`
     : ''
+  const iconColor = opts.iconColor ?? '#8f8985'
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="12" fill="none" stroke="#4a4240" stroke-width="1.5">${border}</rect>` +
-    (opts.icon ? iconGroup(opts.icon, opts.iconColor ?? '#8f8985', 13, 7.5, 15, 2.1) : '') +
+    panelSvg('cardg', width, height, 12, border) +
+    halftone(Math.round(width * 0.45), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
+    // The icon sits on a disc tinted its own colour, the way a tool badge does.
+    (opts.icon ? `<circle cx="20.5" cy="15" r="11" fill="${iconColor}" fill-opacity="0.13"/>` + iconGroup(opts.icon, iconColor, 13, 7.5, 15, 2.1) : '') +
     `<text x="${opts.icon ? 34 : 14}" y="19" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#8f8985">${esc(label)}</text>` +
     `<text x="14" y="39" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#ece7e4">${esc(value)}${rise}</text>` +
     `</svg>`
@@ -527,7 +574,7 @@ export const chartSvg = (log: CodeLog, width: number, fullHeight: number, opts: 
     for (let i = 0; i <= lines; i++) {
       const gy = top + (priceH * i) / lines
       body +=
-        `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${width - padR}" y2="${gy.toFixed(1)}" stroke="#2b2827" stroke-width="1"/>` +
+        `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${width - padR}" y2="${gy.toFixed(1)}" stroke="#3a3533" stroke-width="1" stroke-dasharray="2 3"/>` +
         `<text x="${width - padR + 5}" y="${(gy + 3).toFixed(1)}" ${font} font-size="8.5" fill="#6f6a66">${Math.round(hi - ((hi - lo) * i) / lines)}</text>`
     }
     list.forEach((c, i) => {
@@ -550,7 +597,8 @@ export const chartSvg = (log: CodeLog, width: number, fullHeight: number, opts: 
   }
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${fullHeight}" width="${width}" height="${fullHeight}"><g transform="translate(0 ${pad})">` +
-    `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="12" fill="none" stroke="#4a4240" stroke-width="1.5"/>` +
+    panelSvg('chartg', width, height, 12) +
+    (list.length === 0 ? halftone(Math.round(width * 0.62), Math.round(height * 0.5), width - 7, height - 7, { corner: 'br' }) : '') +
     `<text x="12" y="${compact ? 15 : 17}" ${font} font-size="${compact ? 10.5 : 11.5}" fill="#8f8985">Code · net lines</text>` +
     `<text x="${width - 12}" y="${compact ? 16 : 18}" text-anchor="end" ${font} font-size="${compact ? 12.5 : 14}" font-weight="700" fill="${tone}">${signed(net)}</text>` +
     body +

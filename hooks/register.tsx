@@ -132,7 +132,9 @@ export const ringSvg = (
       ? `<animate attributeName="stroke-dasharray" from="${arcFrom.toFixed(2)} ${c.toFixed(2)}" to="${arc.toFixed(2)} ${c.toFixed(2)}" dur="0.9s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"/>`
       : ''
   const pulse = opts.pulse ? `<animate attributeName="stroke-opacity" values="1;0.5;1" dur="1.4s" repeatCount="indefinite"/>` : ''
-  const track = `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/>`
+  // A disc tinted the arc's colour under the icon, so the gauge reads as one piece.
+  const disc = `<circle cx="22" cy="22" r="13" fill="${color}" fill-opacity="0.12"/>`
+  const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/>`
   const fill =
     arc > 0
       ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${arc.toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)">${grow}${pulse}</circle>`
