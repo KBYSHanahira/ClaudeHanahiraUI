@@ -1,0 +1,6 @@
+{
+  "name": "hanahira-claude-ui",
+  "version": "0.1.0",
+  "description": "Hanahira UI: a status band above the prompt (tasks, context, limits, spend) and card-style transcript rows",
+  "author": { "name": "Hanahira" }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "hanahira-plugins",
+  "owner": { "name": "Hanahira" },
+  "metadata": { "description": "Claude Code plugins by Hanahira" },
+  "plugins": [{ "name": "hanahira-claude-ui", "source": "./", "description": "Status band, stat rings and card-style transcript for Claude Code" }]
+}

@@ -1,0 +1,559 @@
+// Pure helpers for the transcript: no engine calls here, so tests run them as is.
+
+import { hasIcon, iconGroup } from './icons'
+import type { IconName } from './icons'
+
+export type Kind = 'read' | 'edit' | 'write' | 'run' | 'search' | 'agent' | 'web' | 'plan' | 'other'
+
+export const KIND_COLOR: Record<Kind, string> = {
+  read: '#7cb7ff',
+  edit: '#ffb86b',
+  write: '#ff7ab6',
+  run: '#ffd166',
+  search: '#5fd3c4',
+  agent: '#9b8cf7',
+  web: '#6fc3ff',
+  plan: '#7bd88f',
+  other: '#a8a29e',
+}
+
+export const KIND_GLYPH: Record<Kind, string> = {
+  read: '▤',
+  edit: '✎',
+  write: '✚',
+  run: '>_',
+  search: '⌕',
+  agent: '◈',
+  web: '◍',
+  plan: '☑',
+  other: '⚙',
+}
+
+export const KIND_ICON: Record<Kind, IconName> = {
+  read: 'file',
+  edit: 'pencil',
+  write: 'filePlus',
+  run: 'terminal',
+  search: 'search',
+  agent: 'bot',
+  web: 'globe',
+  plan: 'checklist',
+  other: 'cube',
+}
+
+export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+export const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
+const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
+
+type Input = Record<string, unknown>
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+
+/** What a tool row says: a coloured verb and the thing it acted on. */
+export const describe = (tool: string, raw: unknown, isRerun = false) => {
+  const i = (raw ?? {}) as Input
+  const name = short(tool)
+  const path = str(i.file_path) || str(i.path) || str(i.notebook_path)
+  switch (name) {
+    case 'Bash':
+      return {
+        kind: 'run' as Kind,
+        verb: isRerun ? 'Rerun' : 'Run',
+        target: clip(str(i.description) || str(i.command).replace(/\s+/g, ' '), 64),
+      }
+    case 'Read':
+      return { kind: 'read' as Kind, verb: 'Read', target: base(path) }
+    case 'Edit':
+    case 'NotebookEdit':
+      return { kind: 'edit' as Kind, verb: 'Edit', target: base(path) }
+    case 'Write':
+      return { kind: 'write' as Kind, verb: 'Write', target: base(path) }
+    case 'Grep':
+      return { kind: 'search' as Kind, verb: 'Search', target: clip(str(i.pattern), 48) }
+    case 'Glob':
+      return { kind: 'search' as Kind, verb: 'Find', target: clip(str(i.pattern), 48) }
+    case 'Agent':
+    case 'Task':
+      return { kind: 'agent' as Kind, verb: 'Delegate', target: clip(str(i.description), 56) }
+    case 'WebFetch': {
+      const url = str(i.url)
+      return { kind: 'web' as Kind, verb: 'Fetch', target: clip(url.replace(/^https?:\/\//, ''), 56) }
+    }
+    case 'WebSearch':
+      return { kind: 'web' as Kind, verb: 'Search web', target: clip(str(i.query), 56) }
+    case 'AskUserQuestion': {
+      const first = Array.isArray(i.questions) ? ((i.questions[0] ?? {}) as { question?: string }).question : ''
+      return { kind: 'agent' as Kind, verb: 'Ask', target: clip(first ?? '', 64) }
+    }
+    case 'TodoWrite':
+    case 'update_plan': {
+      const n = Array.isArray(i.todos) ? i.todos.length : Array.isArray(i.items) ? i.items.length : 0
+      return { kind: 'plan' as Kind, verb: 'Plan', target: n > 0 ? `${n} steps` : 'update' }
+    }
+    default:
+      return { kind: 'other' as Kind, verb: 'Use', target: name }
+  }
+}
+
+export const parseTests = (text: string) => {
+  const passed = /(\d+)\s+pass(?:ed)?\b/i.exec(text)
+  const failed = /(\d+)\s+fail(?:ed|ures?)?\b/i.exec(text)
+  return {
+    passed: passed ? Number(passed[1]) : null,
+    failed: failed ? Number(failed[1]) : null,
+  }
+}
+
+export type PillIcon = 'check' | 'cross' | 'ban'
+export type Pill = { text: string; fg: string; bg: string; running?: boolean; icon?: PillIcon }
+
+export const PILL = {
+  ok: { fg: '#a9e6b4', bg: '#2d4232' },
+  bad: { fg: '#f4a1b3', bg: '#4a2b33' },
+  busy: { fg: '#c4baff', bg: '#2d2a3f' },
+  warn: { fg: '#ffd9a0', bg: '#3a3224' },
+}
+
+/** The status pill at the right of a tool row. */
+export const statusPill = (
+  tool: string,
+  s: { isRunning: boolean; isErrored: boolean; isInterrupted: boolean; output?: unknown },
+): Pill => {
+  if (s.isRunning) return { text: 'running', running: true, ...PILL.busy }
+  if (s.isInterrupted) return { text: 'interrupted', icon: 'ban', ...PILL.warn }
+  if (s.isErrored) return { text: 'error', icon: 'cross', ...PILL.bad }
+
+  const out = (s.output ?? {}) as Input
+  const name = short(tool)
+  if (name === 'Bash') {
+    const t = parseTests(`${str(out.stdout)}\n${str(out.stderr)}`)
+    if (t.failed) return { text: `${t.failed} failed`, icon: 'cross', ...PILL.bad }
+    if (t.passed) return { text: `${t.passed} passed`, icon: 'check', ...PILL.ok }
+    return { text: 'done', icon: 'check', ...PILL.ok }
+  }
+  if (name === 'Edit' || name === 'Write' || name === 'NotebookEdit') return { text: 'saved', icon: 'check', ...PILL.ok }
+  if (name === 'Read') {
+    const file = (out.file ?? {}) as Input
+    const n = typeof file.numLines === 'number' ? file.numLines : null
+    return { text: n === null ? 'read' : `${n} lines`, icon: 'check', ...PILL.ok }
+  }
+  return { text: 'done', icon: 'check', ...PILL.ok }
+}
+
+export const fmtDuration = (ms: number) => {
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`
+  const s = Math.round(ms / 1000)
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+/** A round badge: tinted disc, ring, glyph. */
+export const badgeSvg = (color: string, icon: string, size: number, running = false) => {
+  const g = icon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const fs = icon.length > 1 ? 12 : 14
+  const mark = hasIcon(icon)
+    ? iconGroup(icon, color, 8, 8, 16, 2.1)
+    : `<text x="16" y="${icon.length > 1 ? 20.5 : 21}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="${fs}" font-weight="700" fill="${color}">${g}</text>`
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">` +
+    `<circle cx="16" cy="16" r="15" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-opacity="0.45"/>` +
+    (running
+      ? `<circle cx="16" cy="16" r="5" fill="none" stroke="${color}" stroke-width="1.6" stroke-opacity="0.6">` +
+        `<animate attributeName="r" from="5" to="14" dur="1.3s" repeatCount="indefinite"/>` +
+        `<animate attributeName="stroke-opacity" from="0.6" to="0" dur="1.3s" repeatCount="indefinite"/></circle>`
+      : '') +
+    mark +
+    `</svg>`
+  )
+}
+
+export type DiffRow = { n: number | null; sign: '+' | '-' | ' '; text: string }
+
+/** Rows of a unified patch, numbered like an editor: new-file lines, old lines for removals. */
+export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
+  const rows: DiffRow[] = []
+  if (Array.isArray(hunks) && hunks.length > 0) {
+    for (const h of hunks as { oldStart: number; newStart: number; lines: string[] }[]) {
+      let oldLine = h.oldStart
+      let newLine = h.newStart
+      for (const line of h.lines ?? []) {
+        const sign = line[0] === '+' ? '+' : line[0] === '-' ? '-' : ' '
+        const text = line.slice(1)
+        if (sign === '+') rows.push({ n: newLine++, sign, text })
+        else if (sign === '-') rows.push({ n: oldLine++, sign, text })
+        else {
+          rows.push({ n: newLine, sign, text })
+          oldLine++
+          newLine++
+        }
+      }
+    }
+  } else if (fallback) {
+    fallback.split('\n').forEach((text, i) => rows.push({ n: i + 1, sign: '+', text }))
+  }
+  const total = rows.length
+  return { rows: rows.slice(0, max), more: Math.max(0, total - max) }
+}
+
+export const countChanges = (rows: DiffRow[]) => ({
+  added: rows.filter(r => r.sign === '+').length,
+  removed: rows.filter(r => r.sign === '-').length,
+})
+
+// A cheap deterministic hash in [0, 1): the same bar draws the same dots every time.
+const noise = (x: number, y: number) => {
+  let h = (x * 374761393 + y * 668265263) >>> 0
+  h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+
+
+/** ≈-free money for a stat card: always two decimals, $15.62. */
+export const fmtCost = (usd: number) => `$${usd.toFixed(2)}`
+
+/** 0:18, 12:05, 1:02:03 (hours only when needed). */
+export const fmtClock = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 1000))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = String(s % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+/** Token counts with k / M / B / T: 950, 1.5k, 196k, 1.25M, 3.4B. */
+export const fmtTokens = (n: number) => {
+  const units = ['', 'k', 'M', 'B', 'T']
+  const shape = (v: number) => {
+    const s = v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : v.toFixed(0)
+    return s.includes('.') ? s.replace(/\.?0+$/, '') : s
+  }
+  let v = Math.max(0, n)
+  let u = 0
+  while (v >= 1000 && u < units.length - 1) {
+    v /= 1000
+    u++
+  }
+  if (u === 0) return String(Math.round(v))
+  let s = shape(v)
+  if (parseFloat(s) >= 1000 && u < units.length - 1) {
+    v /= 1000
+    u++
+    s = shape(v)
+  }
+  return s + units[u]
+}
+
+/** Rough width of a label in px at a given font size: symbols run wide, capitals a little wider. */
+const labelWidth = (text: string, fs: number) =>
+  Math.round(
+    [...text].reduce((w, ch) => {
+      if (ch === ' ') return w + fs * 0.3
+      if (ch.charCodeAt(0) > 0x2000) return w + fs * 1.0
+      if (/[A-Z0-9mwMW%…]/.test(ch)) return w + fs * 0.66
+      return w + fs * 0.56
+    }, 0),
+  )
+
+/**
+ * A capsule badge: fully rounded, tinted fill, bold label. `textLength` pins the
+ * label to the width measured here, so the capsule fits whatever font draws it.
+ */
+export const pillSvg = (text: string, fg: string, bg: string, height = 24, running = false, icon?: PillIcon) => {
+  const fs = +(height * 0.52).toFixed(1)
+  const tl = labelWidth(text, fs)
+  const dotR = +(height * 0.11).toFixed(2)
+  const gap = +(height * 0.3).toFixed(2)
+  const lead = running ? Math.round(2 * gap + 2 * dotR + height * 0.3) : icon ? Math.round(height * 0.62) : 0 // room for the dots or the icon
+  const width = tl + lead + Math.round(height * 0.95)
+  const t = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const tx = (width + lead) / 2
+  // Three dots that fade in turn, and a slow pulse of the fill. Both are SMIL, which a
+  // surface plays only when the Svg is `isInteractive`; plain shapes, so any renderer draws them.
+  const pulse = running ? `<animate attributeName="fill-opacity" values="1;0.62;1" dur="1.8s" repeatCount="indefinite"/>` : ''
+  const dots = running
+    ? [0, 1, 2]
+        .map(
+          i =>
+            `<circle cx="${(height * 0.5 + i * gap).toFixed(2)}" cy="${height / 2}" r="${dotR}" fill="${fg}" opacity="0.35">` +
+            `<animate attributeName="opacity" values="0.35;1;0.35" dur="1.2s" begin="${(i * 0.2).toFixed(1)}s" repeatCount="indefinite"/></circle>`,
+        )
+        .join('')
+    : ''
+  const mark = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3) : ''
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}">${pulse}</rect>` +
+    dots +
+    mark +
+    `<text x="${tx}" y="${(height / 2 + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}" textLength="${tl}" lengthAdjust="spacingAndGlyphs">${t}</text>` +
+    `</svg>`
+  return { svg, width, height }
+}
+
+/**
+ * A loading bar with no number behind it: a dark rounded track sprinkled with faint
+ * dots and, while `live`, a soft glow that sweeps across it, lighting a dithered
+ * field of violet dots as it passes. Idle, it is just the quiet track.
+ *
+ * The sweep is SMIL, which a surface plays only for an `isInteractive` Svg.
+ * `padBottom` adds transparent room under the bar, in px.
+ */
+export const loadingSvg = (
+  width: number,
+  height: number,
+  color: string,
+  opts: { live?: boolean; padBottom?: number } = {},
+) => {
+  const w = Math.max(120, Math.round(width))
+  const h = height
+  const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
+  const uid = `l${w}_${h}` // ids stay unique if two bars ever share a document
+  const step = Math.max(3, Math.round(h / 6.5))
+  const size = +(step * 0.55).toFixed(2)
+  const rows = Math.max(1, Math.floor((h - 4) / step))
+  const top = (h - rows * step) / 2
+
+  const faint: string[] = []
+  const bright: string[] = []
+  const dim: string[] = []
+  for (let cx = 0; cx * step + step < w - 6; cx++) {
+    const x = 8 + cx * step
+    for (let ry = 0; ry < rows; ry++) {
+      const r = noise(cx, ry)
+      const y = top + ry * step
+      const cell = `M${x} ${y.toFixed(1)}h${size}v${size}h-${size}z`
+      if (r < 0.1) faint.push(cell)
+      if (r < 0.74) (r < 0.36 ? bright : dim).push(cell)
+    }
+  }
+
+  const gw = Math.round(w * 0.4)
+  const sweep = opts.live
+    ? `<defs>` +
+      `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+      `<mask id="${uid}m" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}">` +
+      `<rect x="${-gw}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" repeatCount="indefinite"/></rect>` +
+      `</mask></defs>` +
+      `<g mask="url(#${uid}m)">` +
+      `<rect width="${w}" height="${h}" rx="${h / 2}" fill="${color}" fill-opacity="0.2"/>` +
+      `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
+      `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
+      `</g>`
+    : ''
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}">` +
+    `<rect width="${w}" height="${h}" rx="${h / 2}" fill="#262323"/>` +
+    `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.12"/>` +
+    `<path d="${faint.join('')}" fill="#8a8480" fill-opacity="0.3"/>` +
+    sweep +
+    `</svg>`
+  )
+}
+
+/** The little status dot of the band: still when idle, with a ripple while Claude works. */
+export const dotSvg = (color: string, live: boolean, size = 14) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" width="${size}" height="${size}">` +
+  (live
+    ? `<circle cx="7" cy="7" r="4" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.7">` +
+      `<animate attributeName="r" from="4" to="7" dur="1.4s" repeatCount="indefinite"/>` +
+      `<animate attributeName="stroke-opacity" from="0.7" to="0" dur="1.4s" repeatCount="indefinite"/></circle>`
+    : '') +
+  `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
+  `</svg>`
+
+/**
+ * A stat card as SVG. When `changed`, the value rises into place and the border
+ * flashes the accent colour once; an unchanged card is a still picture.
+ */
+export const cardSvg = (
+  label: string,
+  value: string,
+  opts: { changed?: boolean; accent?: string; icon?: IconName; iconColor?: string } = {},
+) => {
+  const accent = opts.accent ?? '#9b8cf7'
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const width = Math.max(150, Math.round(value.length * 11 + 34))
+  const height = 50
+  const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
+  const border = opts.changed
+    ? `<animate attributeName="stroke" from="${accent}" to="#4a4240" dur="1.1s" fill="freeze"/>`
+    : ''
+  const rise = opts.changed
+    ? `<animate attributeName="opacity" from="0" to="1" dur="0.45s" fill="freeze" ${spline}/>` +
+      `<animateTransform attributeName="transform" type="translate" from="0 8" to="0 0" dur="0.45s" fill="freeze" ${spline}/>`
+    : ''
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="12" fill="none" stroke="#4a4240" stroke-width="1.5">${border}</rect>` +
+    (opts.icon ? iconGroup(opts.icon, opts.iconColor ?? '#8f8985', 13, 7.5, 15, 2.1) : '') +
+    `<text x="${opts.icon ? 34 : 14}" y="19" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#8f8985">${esc(label)}</text>` +
+    `<text x="14" y="39" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#ece7e4">${esc(value)}${rise}</text>` +
+    `</svg>`
+  return { svg, width, height }
+}
+
+/**
+ * The tool-call counter as a labelled capsule: bolt, the number, and the word it counts.
+ * A growing count makes the capsule flash and the number rise once; a hover title says
+ * what it is (shown by a surface that plays an interactive Svg).
+ */
+export const countSvg = (count: number, opts: { changed?: boolean; label?: string } = {}) => {
+  const height = 24
+  const word = opts.label ?? (count === 1 ? 'tool' : 'tools')
+  const num = String(count)
+  const fs = 12.5
+  const numW = Math.round(num.length * fs * 0.62)
+  const wordW = Math.round(word.length * 11 * 0.56)
+  const numX = 28
+  const wordX = numX + numW + 5
+  const width = wordX + wordW + 11
+  const bg = '#33301f'
+  const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
+  const flash = opts.changed ? `<animate attributeName="fill" from="#6b5a22" to="${bg}" dur="0.8s" fill="freeze"/>` : ''
+  const rise = opts.changed
+    ? `<animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" dur="0.4s" fill="freeze" ${spline}/>` +
+      `<animate attributeName="opacity" from="0" to="1" dur="0.4s" fill="freeze" ${spline}/>`
+    : ''
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<title>Tool calls this turn</title>` +
+    `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}">${flash}</rect>` +
+    iconGroup('bolt', '#ffd166', 9, 5.5, 13, 2.4) +
+    `<text x="${numX}" y="16.3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f6e3a1" textLength="${numW}" lengthAdjust="spacingAndGlyphs">${num}${rise}</text>` +
+    `<text x="${wordX}" y="16" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#b8a96a" textLength="${wordW}" lengthAdjust="spacingAndGlyphs">${word}</text>` +
+    `</svg>`
+  return { svg, width, height }
+}
+
+/**
+ * "resets in 3h 20m" from a rate-limit window's reset time (ISO) and now, or null when the
+ * time is missing or unreadable. Whole units only: 45m, 2h, 3h 20m, 2d 4h.
+ */
+export const fmtReset = (iso: string | undefined, now: number): string | null => {
+  if (!iso) return null
+  const at = Date.parse(iso)
+  if (Number.isNaN(at)) return null
+  const ms = at - now
+  if (ms <= 0) return 'resetting now'
+  const mins = Math.floor(ms / 60_000)
+  if (mins < 1) return 'resets in <1m'
+  if (mins < 60) return `resets in ${mins}m`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `resets in ${hours}h${mins % 60 ? ` ${mins % 60}m` : ''}`
+  const days = Math.floor(hours / 24)
+  return `resets in ${days}d${hours % 24 ? ` ${hours % 24}h` : ''}`
+}
+
+export type Candle = { o: number; h: number; l: number; c: number; v: number }
+export type CodeLog = { net: number; candles: Candle[]; cur: Candle | null }
+
+export const NO_CODE: CodeLog = { net: 0, candles: [], cur: null }
+
+/** A stored value is whatever an earlier version left: rebuild a clean log from it. */
+export const asCode = (v: unknown): CodeLog => {
+  const x = v as Partial<CodeLog> | null | undefined
+  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? n : 0)
+  const candle = (c: unknown): Candle | null => {
+    const k = c as Partial<Candle> | null | undefined
+    return k && typeof k === 'object' ? { o: num(k.o), h: num(k.h), l: num(k.l), c: num(k.c), v: num(k.v) } : null
+  }
+  if (!x || typeof x !== 'object') return NO_CODE
+  return {
+    net: num(x.net),
+    candles: (Array.isArray(x.candles) ? x.candles : []).map(candle).filter((c): c is Candle => c !== null),
+    cur: candle(x.cur),
+  }
+}
+
+/** One file change moves the running net of lines: removals first, then additions. */
+export const applyEdit = (log: CodeLog, added: number, removed: number): CodeLog => {
+  if (added <= 0 && removed <= 0) return log
+  const cur = log.cur ?? { o: log.net, h: log.net, l: log.net, c: log.net, v: 0 }
+  const low = log.net - removed
+  const net = log.net - removed + added
+  return {
+    net,
+    candles: log.candles,
+    cur: { o: cur.o, h: Math.max(cur.h, net), l: Math.min(cur.l, low), c: net, v: cur.v + added + removed },
+  }
+}
+
+/** A prompt starts a new candle on the next edit; the turn's end closes the open one. */
+export const closeCandle = (log: CodeLog, keep = 40): CodeLog =>
+  log.cur ? { net: log.net, candles: [...log.candles, log.cur].slice(-keep), cur: null } : log
+
+const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`)
+
+/**
+ * Lines of code as a stock chart: one candle per prompt that changed files. Open is the net
+ * lines before the prompt, close the net after, wicks the lowest and highest the net reached
+ * inside it; the bars under are how many lines it touched. Green up, red down, amber flat.
+ * `changed` plays a short fade-in of the newest candle; otherwise the picture is still.
+ */
+export const chartSvg = (log: CodeLog, width: number, fullHeight: number, opts: { changed?: boolean; padTop?: number } = {}) => {
+  const pad = Math.max(0, Math.round(opts.padTop ?? 0)) // clear room above the frame, in px
+  const height = fullHeight - pad
+  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const all = log.cur ? [...log.candles, log.cur] : log.candles
+  const slots = 24
+  const list = all.slice(-slots)
+  const padL = 10
+  const padR = 40
+  const compact = height < 70 // a short chart: no volume bars, two grid lines
+  const top = compact ? 22 : 26
+  const bottom = compact ? 7 : 8
+  const plotW = width - padL - padR
+  const plotH = height - top - bottom
+  const priceH = compact ? plotH : Math.round(plotH * 0.74)
+  const volTop = top + priceH + 4
+  const volH = plotH - priceH - 4
+  const net = log.net
+  const tone = net > 0 ? '#34c38f' : net < 0 ? '#f2736b' : '#e0a03a'
+  let body = ''
+  if (list.length === 0) {
+    body = `<text x="${width / 2}" y="${top + plotH / 2 + 4}" text-anchor="middle" ${font} font-size="11" fill="#6f6a66">no code changes yet</text>`
+  } else {
+    let lo = Math.min(...list.map(c => c.l))
+    let hi = Math.max(...list.map(c => c.h))
+    if (hi === lo) {
+      hi += 1
+      lo -= 1
+    }
+    const y = (p: number) => top + ((hi - p) / (hi - lo)) * priceH
+    const slot = plotW / slots
+    const bw = Math.max(2, Math.min(9, slot - 3))
+    const vmax = Math.max(...list.map(c => c.v), 1)
+    const lines = compact ? 2 : 3
+    for (let i = 0; i <= lines; i++) {
+      const gy = top + (priceH * i) / lines
+      body +=
+        `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${width - padR}" y2="${gy.toFixed(1)}" stroke="#2b2827" stroke-width="1"/>` +
+        `<text x="${width - padR + 5}" y="${(gy + 3).toFixed(1)}" ${font} font-size="8.5" fill="#6f6a66">${Math.round(hi - ((hi - lo) * i) / lines)}</text>`
+    }
+    list.forEach((c, i) => {
+      const cx = padL + slot * (i + 0.5)
+      const col = c.c > c.o ? '#34c38f' : c.c < c.o ? '#f2736b' : '#e0a03a'
+      const yo = y(c.o)
+      const yc = y(c.c)
+      const bodyTop = Math.min(yo, yc)
+      const bodyH = Math.max(1.5, Math.abs(yo - yc))
+      const vh = Math.max(1, (c.v / vmax) * volH)
+      const last = i === list.length - 1 && opts.changed === true
+      const fade = last ? `<animate attributeName="opacity" from="0.15" to="1" dur="0.6s" fill="freeze"/>` : ''
+      body +=
+        `<g>${fade}` +
+        (compact ? '' : `<rect x="${(cx - bw / 2).toFixed(1)}" y="${(volTop + volH - vh).toFixed(1)}" width="${bw}" height="${vh.toFixed(1)}" fill="#4a4543"/>`) +
+        `<line x1="${cx.toFixed(1)}" y1="${y(c.h).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${y(c.l).toFixed(1)}" stroke="${col}" stroke-width="1.2"/>` +
+        `<rect x="${(cx - bw / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${bw}" height="${bodyH.toFixed(1)}" fill="${col}"/>` +
+        `</g>`
+    })
+  }
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${fullHeight}" width="${width}" height="${fullHeight}"><g transform="translate(0 ${pad})">` +
+    `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="12" fill="none" stroke="#4a4240" stroke-width="1.5"/>` +
+    `<text x="12" y="${compact ? 15 : 17}" ${font} font-size="${compact ? 10.5 : 11.5}" fill="#8f8985">Code · net lines</text>` +
+    `<text x="${width - 12}" y="${compact ? 16 : 18}" text-anchor="end" ${font} font-size="${compact ? 12.5 : 14}" font-weight="700" fill="${tone}">${signed(net)}</text>` +
+    body +
+    `</g></svg>`
+  return { svg, width, height: fullHeight }
+}
