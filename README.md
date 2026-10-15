@@ -155,7 +155,7 @@ claude plugin validate /path/to/hanahira-claude-ui
 claude --plugin-dir /path/to/hanahira-claude-ui
 ```
 
-純粋関数は `hooks/chat.ts` などにまとめ、テスト（`hooks/*.test.ts`）があります。構成：
+純粋関数は `hooks/chat.ts` などにまとめ、テスト（`hooks/*.test.ts`）があります。`bun test` で実行できます（`scripts/test-preload.ts` がエンジンのモジュールの代わりを務めます。`claude plugin test` のある CLI ではそちらでも）。構成：
 
 ```text
 .claude-plugin/   plugin.json / marketplace.json
@@ -165,6 +165,9 @@ hooks/
   chat.ts         表示用の純粋関数（SVG・書式・チャート）
   agents.ts       エージェントカード・価格表
   icons.ts        線アイコン一式
+scripts/
+  test-preload.ts bun test 用のエンジン代替モジュール
+  preview.ts      docs/preview.svg を描く
 types/index.d.ts  状態（$.state）の型
 ```
 

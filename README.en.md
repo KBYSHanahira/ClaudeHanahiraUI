@@ -155,7 +155,7 @@ claude plugin validate /path/to/hanahira-claude-ui
 claude --plugin-dir /path/to/hanahira-claude-ui
 ```
 
-Pure functions live in `hooks/chat.ts` and friends and have tests (`hooks/*.test.ts`). Layout:
+Pure functions live in `hooks/chat.ts` and friends and have tests (`hooks/*.test.ts`): run them with `bun test` (`scripts/test-preload.ts` stands in for the engine's modules; a CLI that has `claude plugin test` can run them there too). Layout:
 
 ```text
 .claude-plugin/   plugin.json / marketplace.json
@@ -165,6 +165,9 @@ hooks/
   chat.ts         pure display helpers (SVG, formats, chart)
   agents.ts       agent cards, price table
   icons.ts        the line-icon set
+scripts/
+  test-preload.ts engine stand-ins for bun test
+  preview.ts      draws docs/preview.svg
 types/index.d.ts  the shape of the state ($.state)
 ```
 
