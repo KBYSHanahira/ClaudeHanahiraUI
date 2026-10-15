@@ -34,7 +34,17 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
 
-### What it looks like (sketch)
+### What it looks like
+
+<div align="center">
+
+<img src="docs/preview.png" alt="Hanahira Claude UI status band: rings, cards, code chart, agent cards" width="900">
+
+*Drawn by the plugin's own SVG builders with sample numbers. Regenerate: `bun scripts/preview.ts`*
+
+</div>
+
+#### What it looks like (sketch)
 
 ```text
 ┌─ spa  ⎇ main  ▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  45:30  ● working   ⚡ 8 tools ─┐

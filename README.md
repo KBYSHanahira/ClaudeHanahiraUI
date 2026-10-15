@@ -34,7 +34,17 @@
 
 > **正直さの原則：** エージェントカードの表示はすべて実際の値です。モデル名は API が返したもの、effort はエンジンが送った値だけを表示し、不明なものは推測せず省略するか `model pending` と表示します。エージェントごとの費用は価格表（`hooks/agents.ts`）からの **概算** で、`≈` を付けています。
 
-### 画面イメージ（概念図）
+### 画面イメージ
+
+<div align="center">
+
+<img src="docs/preview.png" alt="Hanahira Claude UI status band: rings, cards, code chart, agent cards" width="900">
+
+*プラグイン自身の SVG 描画関数で作った画像です（数値はサンプル）。再生成: `bun scripts/preview.ts`*
+
+</div>
+
+#### 画面イメージ（概念図）
 
 ```text
 ┌─ spa  ⎇ main  ▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  45:30  ● working   ⚡ 8 tools ─┐
