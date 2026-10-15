@@ -23,7 +23,7 @@ export const accentFor = (effort: string | null, model: string) => {
   return (family && FAMILY_COLOR[family]) || '#a8a29e'
 }
 
-const FAMILY = '(haiku|sonnet|opus|fable)'
+const FAMILY = '(haiku|sonnet|opus|fable|mythos)'
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1).toLowerCase()
 
 /**
@@ -41,21 +41,49 @@ export const prettyModel = (id: string) => {
   return id
 }
 
-/** US dollars per million tokens: input, output, cache read, cache write. List prices, rounded: edit to match yours. */
-export const PRICES: Record<string, [number, number, number, number]> = {
-  haiku: [1, 5, 0.1, 1.25],
-  sonnet: [3, 15, 0.3, 3.75],
-  opus: [5, 25, 0.5, 6.25],
-  fable: [5, 25, 0.5, 6.25],
+type Price = [number, number, number, number]
+
+/**
+ * US dollars per million tokens: input, output, cache read, 5-minute cache write.
+ * From platform.claude.com/docs/en/about-claude/pricing; keyed by "family version" because the
+ * price moves between versions of one family. Standard rates only: fast mode, batch and the 1.1x
+ * US-only inference multiplier are not applied, as the counts do not say which applied. Haiku 5.5 is the rate for prompts up to 100k tokens:
+ * the counts here are totals, so the over-100k rate cannot be told apart. Edit to match yours.
+ */
+export const PRICES: Record<string, Price> = {
+  'fable 5.1': [10, 50, 0.25, 12.5],
+  'fable 5': [10, 50, 1, 12.5],
+  'mythos 5.1': [10, 50, 0.25, 12.5],
+  'mythos 5': [10, 50, 1, 12.5],
+  'opus 5.5': [4, 20, 0.2, 5],
+  'opus 5': [5, 25, 0.5, 6.25],
+  'opus 4.8': [5, 25, 0.5, 6.25],
+  'opus 4.7': [5, 25, 0.5, 6.25],
+  'opus 4.6': [5, 25, 0.5, 6.25],
+  'opus 4.5': [5, 25, 0.5, 6.25],
+  'opus 4.1': [15, 75, 1.5, 18.75],
+  'opus 4': [15, 75, 1.5, 18.75],
+  'sonnet 5.5': [2, 10, 0.1, 2.5],
+  'sonnet 5': [2, 10, 0.2, 2.5],
+  'sonnet 4.6': [3, 15, 0.3, 3.75],
+  'sonnet 4.5': [3, 15, 0.3, 3.75],
+  'sonnet 4': [3, 15, 0.3, 3.75],
+  'haiku 5.5': [0.1, 0.5, 0.01, 0.125],
+  'haiku 4.5': [1, 5, 0.1, 1.25],
+  'haiku 3.5': [0.8, 4, 0.08, 1],
 }
+
+/** A bare alias (`opus`) means the newest version of the family. */
+const LATEST: Record<string, string> = { fable: 'fable 5.1', mythos: 'mythos 5.1', opus: 'opus 5.5', sonnet: 'sonnet 5.5', haiku: 'haiku 5.5' }
 
 export type Counts = Pick<Agent, 'input' | 'output' | 'cacheRead' | 'cacheWrite'>
 
 /** An estimate from token counts and the table above, not a bill. */
 export const agentUsd = (model: string, c: Counts): number | null => {
-  const family = /(haiku|sonnet|opus|fable)/i.exec(model)?.[1]?.toLowerCase()
-  const price = family ? PRICES[family] : undefined
-  if (!price) return null // an unknown model has no price here: say so, do not borrow another's
+  const name = prettyModel(model).toLowerCase()
+  // A version the table lacks (or an id we cannot read) has no price: say so, do not borrow another's.
+  const price = PRICES[LATEST[name] ?? name]
+  if (!price) return null
   const [i, o, r, w] = price
   return (c.input * i + c.output * o + c.cacheRead * r + c.cacheWrite * w) / 1e6
 }

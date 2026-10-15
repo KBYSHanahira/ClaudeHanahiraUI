@@ -59,9 +59,24 @@ describe('cost', () => {
     expect(agentUsd('', c)).toBeNull()
   })
 
-  test('prices by family and totals tokens', () => {
-    expect(agentUsd('claude-sonnet-5-5', c)).toBeCloseTo(18)
-    expect(agentUsd('claude-haiku-5-5', c)).toBeCloseTo(6)
+  test('prices by version, as the pricing page lists them', () => {
+    expect(agentUsd('claude-sonnet-5-5', c)).toBeCloseTo(12)
+    expect(agentUsd('claude-haiku-5-5', c)).toBeCloseTo(0.6)
+    expect(agentUsd('claude-opus-5-5', c)).toBeCloseTo(24)
+    expect(agentUsd('claude-opus-4-5', c)).toBeCloseTo(30)
+    expect(agentUsd('claude-opus-4-1', c)).toBeCloseTo(90)
+    expect(agentUsd('claude-fable-5-1', c)).toBeCloseTo(60)
+    expect(agentUsd('claude-3-5-haiku-20241022', c)).toBeCloseTo(4.8)
+    expect(agentUsd('claude-mythos-5-1', c)).toBeCloseTo(60)
+  })
+
+  test('a bare alias is the newest version; a version the table lacks is null', () => {
+    expect(agentUsd('opus', c)).toBeCloseTo(24)
+    expect(agentUsd('claude-opus-9-9', c)).toBeNull()
+  })
+
+  test('cache tokens use their own rates, and totals add up', () => {
+    expect(agentUsd('claude-fable-5-1', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 1_000_000 })).toBeCloseTo(12.75)
     expect(totalTokens({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 })).toBe(10)
     expect(usd(0.29)).toBe('$0.29')
     expect(usd(0.001)).toBe('$0.00')
