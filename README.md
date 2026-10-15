@@ -81,13 +81,17 @@ export CLAUDE_CODE_PLUGIN_DIRS=/path/to/hanahira-claude-ui
 
 ### 🌐 SSH 接続先で使う場合
 
-SSH でつないだ場合、Claude Code 本体は **接続先のマシン** で動きます。そのため Mod も **接続先のマシンに入れる必要があります**（手元のマシンに入れただけでは読み込まれません）。接続先で上の方法 1 か方法 3 を実行してください。
+Claude Code Desktop で SSH 接続先を使う場合、Claude Code 本体は **接続先のマシン** で動きます。Desktop は手元のプラグインを接続先へ同期しますが、**`hooks/` フォルダは同期されません**。しかも同期された（中身のない）同名のコピーが、接続先にインストールした本物を上書きしてしまうため、普通に入れても何も表示されません。
+
+そこで、接続先には **別名（`hanahira-claude-ui-ssh`）のコピー** を入れます。**接続先のマシンで**、このリポジトリをクローンして次を実行してください:
 
 ```bash
-scp -r ./hanahira-claude-ui user@host:~/plugins/
-# 接続先で
-claude --plugin-dir ~/plugins/hanahira-claude-ui
+git clone https://github.com/KBYSHanahira/ClaudeHanahiraUI.git
+cd ClaudeHanahiraUI
+scripts/install-ssh.sh
 ```
+
+その後、Desktop で **新しいセッション** を開きます（開いているセッションには反映されません）。`git pull` で更新したら、もう一度 `scripts/install-ssh.sh` を実行してください。手元のマシン（ローカル）で使う場合はこの手順は不要で、方法 1 のままで動きます。
 
 ---
 

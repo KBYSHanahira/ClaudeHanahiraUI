@@ -81,13 +81,17 @@ export CLAUDE_CODE_PLUGIN_DIRS=/path/to/hanahira-claude-ui
 
 ### 🌐 Using it over SSH
 
-Over SSH, Claude Code itself runs on the **remote machine**, so the mod must be **installed on the remote machine** too; installing it only on your local machine does nothing. On the remote, use Option 1 or Option 3:
+With Claude Code Desktop over SSH, Claude Code itself runs on the **remote machine**. Desktop syncs your local plugin to the remote, but **without its `hooks/` folder**, and that empty same-named copy overrides a real install on the remote, so a normal install shows nothing.
+
+So the remote gets its own copy under a **different name** (`hanahira-claude-ui-ssh`). **On the remote machine**, clone this repository and run:
 
 ```bash
-scp -r ./hanahira-claude-ui user@host:~/plugins/
-# then on the remote
-claude --plugin-dir ~/plugins/hanahira-claude-ui
+git clone https://github.com/KBYSHanahira/ClaudeHanahiraUI.git
+cd ClaudeHanahiraUI
+scripts/install-ssh.sh
 ```
+
+Then open a **new session** in Desktop (open sessions do not pick it up). After a `git pull`, run `scripts/install-ssh.sh` again. Using it on your local machine needs none of this; Option 1 works as is.
 
 ---
 
