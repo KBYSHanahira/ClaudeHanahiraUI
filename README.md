@@ -103,6 +103,46 @@ scripts/install-ssh.sh
 
 その後、Desktop で **新しいセッション** を開きます（開いているセッションには反映されません）。`git pull` で更新したら、もう一度 `scripts/install-ssh.sh` を実行してください。手元のマシン（ローカル）で使う場合はこの手順は不要で、方法 1 のままで動きます。
 
+## 🔄 アップデート
+
+新しいバージョンが出たら、**インストールした方法に合わせて** 更新します。更新後は **新しいセッション** を開いてください（開いているセッションには反映されません）。
+
+### マーケットプレイスから入れた場合（方法 1）
+
+Claude Code の **ターミナル** で、次の 2 つを順に入力します。
+
+```text
+/plugin marketplace update hanahira-plugins
+/plugin update hanahira-claude-ui@hanahira-plugins
+```
+
+または、`/plugin` を開いて **Marketplaces** → `hanahira-plugins` → **Update**、続けて **Installed** → `hanahira-claude-ui` → **Update** でも更新できます。
+
+### ZIP / `.plugin` で入れた場合（方法 2）
+
+最新の ZIP を入手し、もう一度 **設定 → Plugins → Upload a plugin** からアップロードします（上書きされます）。
+
+### フォルダを指定している場合（方法 3）
+
+そのフォルダで `git pull` するだけです。
+
+```bash
+cd /path/to/hanahira-claude-ui
+git pull
+```
+
+### SSH 接続先の場合
+
+**接続先のマシンで**、クローンしたフォルダを更新して、インストールスクリプトをもう一度実行します。
+
+```bash
+cd ClaudeHanahiraUI
+git pull
+scripts/install-ssh.sh
+```
+
+> 💡 バージョンは `.claude-plugin/plugin.json` の `version` で確認できます。更新したのに変わらないときは、Claude Code を一度終了して開き直してください。
+
 ---
 
 ## 🚀 使い方

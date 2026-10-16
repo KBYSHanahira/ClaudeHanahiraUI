@@ -103,6 +103,46 @@ scripts/install-ssh.sh
 
 Then open a **new session** in Desktop (open sessions do not pick it up). After a `git pull`, run `scripts/install-ssh.sh` again. Using it on your local machine needs none of this; Option 1 works as is.
 
+## 🔄 Updating
+
+When a new version comes out, update **the same way you installed**. Then open a **new session** (open sessions do not pick up changes).
+
+### Installed from the marketplace (Option 1)
+
+In the Claude Code **terminal**, run these two in order:
+
+```text
+/plugin marketplace update hanahira-plugins
+/plugin update hanahira-claude-ui@hanahira-plugins
+```
+
+Or open `/plugin`, go to **Marketplaces** → `hanahira-plugins` → **Update**, then **Installed** → `hanahira-claude-ui` → **Update**.
+
+### Installed from a ZIP / `.plugin` (Option 2)
+
+Get the latest ZIP and upload it again under **Settings → Plugins → Upload a plugin** (it replaces the old one).
+
+### Pointing at a folder (Option 3)
+
+Just `git pull` in that folder:
+
+```bash
+cd /path/to/hanahira-claude-ui
+git pull
+```
+
+### Over SSH
+
+**On the remote machine**, update the clone and run the install script again:
+
+```bash
+cd ClaudeHanahiraUI
+git pull
+scripts/install-ssh.sh
+```
+
+> 💡 The version is the `version` field in `.claude-plugin/plugin.json`. If nothing changes after updating, quit and reopen Claude Code once.
+
 ---
 
 ## 🚀 Usage
