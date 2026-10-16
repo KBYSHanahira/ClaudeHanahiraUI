@@ -141,14 +141,16 @@ export const statusPill = (
 
 /** Whole seconds as s / m / h / d: 7s, 1m 4s, 2h 5m, 3d 4h. */
 export const fmtElapsed = (totalSecs: number) => {
-  const s = Math.max(0, Math.floor(totalSecs))
+  const s = Number.isFinite(totalSecs) ? Math.max(0, Math.floor(totalSecs)) : 0
   if (s < 60) return `${s}s`
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
   if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
   return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
 }
 
-export const fmtDuration = (ms: number) => (ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000)))
+/** Tenths of a second under a minute; compared after rounding so 59.96 s reads 1m 0s, not 60.0 s. */
+export const fmtDuration = (ms: number) =>
+  Math.round(ms / 100) < 600 ? `${(ms / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000))
 
 /** A round badge: tinted disc, ring, glyph. */
 export const badgeSvg = (color: string, icon: string, size: number, running = false) => {

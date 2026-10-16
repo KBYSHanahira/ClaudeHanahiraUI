@@ -446,12 +446,15 @@ export const register: Register = on => {
     ticker?.cancel()
     ticker = null
     const nowMs = await $.clock.now()
-    const s = Math.round((nowMs - startedAt) / 1000)
-    await update($, seconds, () => s)
-    if (startedAt > 0) await update($, runMs, t => (t ?? 0) + (nowMs - startedAt))
+    if (startedAt > 0) {
+      // No prompt.submit seen (e.g. a reload mid-turn): startedAt is 0 and the span would be epoch seconds.
+      const s = Math.round((nowMs - startedAt) / 1000)
+      await update($, seconds, () => s)
+      await update($, runMs, t => (t ?? 0) + (nowMs - startedAt))
+      $.ui.status(`${THEME.fallbackTitle} · ${fmtElapsed(s)}`)
+    }
     startedAt = 0
     await update($, tick, n => (n ?? 0) + 1)
-    $.ui.status(`${THEME.fallbackTitle} · ${fmtElapsed(s)}`)
     return next(e)
   })
 

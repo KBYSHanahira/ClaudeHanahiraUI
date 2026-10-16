@@ -76,6 +76,11 @@ describe('format', () => {
   test('fmtDuration', () => {
     expect(fmtDuration(1100)).toBe('1.1 s')
     expect(fmtDuration(64000)).toBe('1m 4s')
+    expect(fmtDuration(59949)).toBe('59.9 s')
+    expect(fmtDuration(59950)).toBe('1m 0s')
+    expect(fmtDuration(60000)).toBe('1m 0s')
+    expect(fmtDuration(3_700_000)).toBe('1h 1m')
+    expect(fmtDuration(NaN)).toBe('0s')
   })
 
   test('fmtElapsed', () => {
@@ -83,6 +88,15 @@ describe('format', () => {
     expect(fmtElapsed(64)).toBe('1m 4s')
     expect(fmtElapsed(7500)).toBe('2h 5m')
     expect(fmtElapsed(90000)).toBe('1d 1h')
+    expect(fmtElapsed(59)).toBe('59s')
+    expect(fmtElapsed(60)).toBe('1m 0s')
+    expect(fmtElapsed(3599)).toBe('59m 59s')
+    expect(fmtElapsed(3600)).toBe('1h 0m')
+    expect(fmtElapsed(86399)).toBe('23h 59m')
+    expect(fmtElapsed(86400)).toBe('1d 0h')
+    expect(fmtElapsed(-5)).toBe('0s')
+    expect(fmtElapsed(NaN)).toBe('0s')
+    expect(fmtElapsed(Infinity)).toBe('0s')
   })
 
   test('badgeSvg escapes the glyph', () => {
