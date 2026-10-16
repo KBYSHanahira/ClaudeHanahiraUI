@@ -451,7 +451,6 @@ export const register: Register = on => {
       const s = Math.round((nowMs - startedAt) / 1000)
       await update($, seconds, () => s)
       await update($, runMs, t => (t ?? 0) + (nowMs - startedAt))
-      $.ui.status(`${THEME.fallbackTitle} · ${fmtElapsed(s)}`)
     }
     startedAt = 0
     await update($, tick, n => (n ?? 0) + 1)
