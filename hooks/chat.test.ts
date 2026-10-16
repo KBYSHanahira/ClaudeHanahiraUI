@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { KIND_ICON, NO_CODE, applyEdit, asCode, chartSvg, closeCandle, fmtReset, badgeSvg, cardSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration, fmtTokens, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
+import { KIND_ICON, fmtReset, badgeSvg, cardSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
 
 describe('describe', () => {
   test('Bash runs, then reruns', () => {
@@ -77,6 +78,13 @@ describe('format', () => {
     expect(fmtDuration(64000)).toBe('1m 4s')
   })
 
+  test('fmtElapsed', () => {
+    expect(fmtElapsed(7)).toBe('7s')
+    expect(fmtElapsed(64)).toBe('1m 4s')
+    expect(fmtElapsed(7500)).toBe('2h 5m')
+    expect(fmtElapsed(90000)).toBe('1d 1h')
+  })
+
   test('badgeSvg escapes the glyph', () => {
     expect(badgeSvg('#fff', '>_', 30)).toContain('&gt;_')
   })
@@ -118,6 +126,25 @@ describe('fmtTokens', () => {
   test('zero and negatives', () => {
     expect(fmtTokens(0)).toBe('0')
     expect(fmtTokens(-4)).toBe('0')
+  })
+})
+
+describe('tokensPerSec', () => {
+  test('output tokens over seconds', () => {
+    expect(tokensPerSec(500, 5000)).toBe(100)
+    expect(tokensPerSec(90, 1000)).toBe(90)
+  })
+
+  test('too short or untimed gives null', () => {
+    expect(tokensPerSec(5, 1000)).toBeNull()
+    expect(tokensPerSec(500, 0)).toBeNull()
+    expect(tokensPerSec(500, -3)).toBeNull()
+  })
+
+  test('fmtSpeed keeps one decimal only under 10', () => {
+    expect(fmtSpeed(8.46)).toBe('8.5')
+    expect(fmtSpeed(42.4)).toBe('42')
+    expect(fmtSpeed(100)).toBe('100')
   })
 })
 
@@ -289,38 +316,5 @@ describe('fmtReset', () => {
     expect(fmtReset(undefined, now)).toBeNull()
     expect(fmtReset('', now)).toBeNull()
     expect(fmtReset('not a date', now)).toBeNull()
-  })
-})
-
-describe('code chart', () => {
-  test('an edit moves the net: removals first, then additions', () => {
-    const a = applyEdit(NO_CODE, 5, 2)
-    expect(a.net).toBe(3)
-    expect(a.cur).toEqual({ o: 0, h: 3, l: -2, c: 3, v: 7 })
-    const b = applyEdit(a, 0, 6)
-    expect(b.net).toBe(-3)
-    expect(b.cur?.l).toBe(-3)
-    expect(b.cur?.o).toBe(0)
-  })
-  test('an empty change leaves the log as it was', () => {
-    expect(applyEdit(NO_CODE, 0, 0)).toBe(NO_CODE)
-  })
-  test('closing keeps the candle and clears the open one', () => {
-    const c = closeCandle(applyEdit(NO_CODE, 4, 0))
-    expect(c.cur).toBeNull()
-    expect(c.candles).toHaveLength(1)
-    expect(applyEdit(c, 1, 0).cur?.o).toBe(4)
-  })
-  test('stored junk becomes a clean log', () => {
-    expect(asCode('x')).toEqual(NO_CODE)
-    expect(asCode({ net: 'a', candles: 5 }).candles).toEqual([])
-  })
-  test('the chart is a still picture unless something changed', () => {
-    const log = closeCandle(applyEdit(NO_CODE, 10, 3))
-    expect(chartSvg(log, 220, 112).svg).toBe(chartSvg(log, 220, 112).svg)
-    expect(chartSvg(log, 220, 112).svg).not.toContain('<animate')
-    expect(chartSvg(log, 220, 112, { changed: true }).svg).toContain('<animate')
-    expect(chartSvg(NO_CODE, 220, 112).svg).toContain('no code changes yet')
-    expect(chartSvg(log, 220, 112).svg).toContain('+7')
   })
 })

@@ -139,11 +139,16 @@ export const statusPill = (
   return { text: 'done', icon: 'check', ...PILL.ok }
 }
 
-export const fmtDuration = (ms: number) => {
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`
-  const s = Math.round(ms / 1000)
-  return `${Math.floor(s / 60)}m ${s % 60}s`
+/** Whole seconds as s / m / h / d: 7s, 1m 4s, 2h 5m, 3d 4h. */
+export const fmtElapsed = (totalSecs: number) => {
+  const s = Math.max(0, Math.floor(totalSecs))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
 }
+
+export const fmtDuration = (ms: number) => (ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000)))
 
 /** A round badge: tinted disc, ring, glyph. */
 export const badgeSvg = (color: string, icon: string, size: number, running = false) => {
@@ -286,6 +291,16 @@ export const fmtTokens = (n: number) => {
   return s + units[u]
 }
 
+/**
+ * Output speed of one model response, in tokens per second. A reply too short to time
+ * (a bare tool call) or with no usable clock gives null, so it never drags the figure down.
+ */
+export const tokensPerSec = (outputTokens: number, ms: number, minTokens = 20) =>
+  outputTokens >= minTokens && ms > 0 ? outputTokens / (ms / 1000) : null
+
+/** Speed for a tile: 42, 8.5 (one decimal under 10). */
+export const fmtSpeed = (tps: number) => (tps < 10 ? String(Math.round(tps * 10) / 10) : String(Math.round(tps)))
+
 /** Rough width of a label in px at a given font size: symbols run wide, capitals a little wider. */
 const labelWidth = (text: string, fs: number) =>
   Math.round(
@@ -416,7 +431,7 @@ export const cardSvg = (
 ) => {
   const accent = opts.accent ?? '#9b8cf7'
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const width = Math.max(150, Math.round(value.length * 11 + 34))
+  const width = Math.max(112, Math.round(value.length * 10 + 28))
   const height = 50
   const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
   const border = opts.changed
@@ -489,119 +504,4 @@ export const fmtReset = (iso: string | undefined, now: number): string | null =>
   if (hours < 24) return `resets in ${hours}h${mins % 60 ? ` ${mins % 60}m` : ''}`
   const days = Math.floor(hours / 24)
   return `resets in ${days}d${hours % 24 ? ` ${hours % 24}h` : ''}`
-}
-
-export type Candle = { o: number; h: number; l: number; c: number; v: number }
-export type CodeLog = { net: number; candles: Candle[]; cur: Candle | null }
-
-export const NO_CODE: CodeLog = { net: 0, candles: [], cur: null }
-
-/** A stored value is whatever an earlier version left: rebuild a clean log from it. */
-export const asCode = (v: unknown): CodeLog => {
-  const x = v as Partial<CodeLog> | null | undefined
-  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? n : 0)
-  const candle = (c: unknown): Candle | null => {
-    const k = c as Partial<Candle> | null | undefined
-    return k && typeof k === 'object' ? { o: num(k.o), h: num(k.h), l: num(k.l), c: num(k.c), v: num(k.v) } : null
-  }
-  if (!x || typeof x !== 'object') return NO_CODE
-  return {
-    net: num(x.net),
-    candles: (Array.isArray(x.candles) ? x.candles : []).map(candle).filter((c): c is Candle => c !== null),
-    cur: candle(x.cur),
-  }
-}
-
-/** One file change moves the running net of lines: removals first, then additions. */
-export const applyEdit = (log: CodeLog, added: number, removed: number): CodeLog => {
-  if (added <= 0 && removed <= 0) return log
-  const cur = log.cur ?? { o: log.net, h: log.net, l: log.net, c: log.net, v: 0 }
-  const low = log.net - removed
-  const net = log.net - removed + added
-  return {
-    net,
-    candles: log.candles,
-    cur: { o: cur.o, h: Math.max(cur.h, net), l: Math.min(cur.l, low), c: net, v: cur.v + added + removed },
-  }
-}
-
-/** A prompt starts a new candle on the next edit; the turn's end closes the open one. */
-export const closeCandle = (log: CodeLog, keep = 40): CodeLog =>
-  log.cur ? { net: log.net, candles: [...log.candles, log.cur].slice(-keep), cur: null } : log
-
-const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`)
-
-/**
- * Lines of code as a stock chart: one candle per prompt that changed files. Open is the net
- * lines before the prompt, close the net after, wicks the lowest and highest the net reached
- * inside it; the bars under are how many lines it touched. Green up, red down, amber flat.
- * `changed` plays a short fade-in of the newest candle; otherwise the picture is still.
- */
-export const chartSvg = (log: CodeLog, width: number, fullHeight: number, opts: { changed?: boolean; padTop?: number } = {}) => {
-  const pad = Math.max(0, Math.round(opts.padTop ?? 0)) // clear room above the frame, in px
-  const height = fullHeight - pad
-  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
-  const all = log.cur ? [...log.candles, log.cur] : log.candles
-  const slots = 24
-  const list = all.slice(-slots)
-  const padL = 10
-  const padR = 40
-  const compact = height < 70 // a short chart: no volume bars, two grid lines
-  const top = compact ? 22 : 26
-  const bottom = compact ? 7 : 8
-  const plotW = width - padL - padR
-  const plotH = height - top - bottom
-  const priceH = compact ? plotH : Math.round(plotH * 0.74)
-  const volTop = top + priceH + 4
-  const volH = plotH - priceH - 4
-  const net = log.net
-  const tone = net > 0 ? '#34c38f' : net < 0 ? '#f2736b' : '#e0a03a'
-  let body = ''
-  if (list.length === 0) {
-    body = `<text x="${width / 2}" y="${top + plotH / 2 + 4}" text-anchor="middle" ${font} font-size="11" fill="#6f6a66">no code changes yet</text>`
-  } else {
-    let lo = Math.min(...list.map(c => c.l))
-    let hi = Math.max(...list.map(c => c.h))
-    if (hi === lo) {
-      hi += 1
-      lo -= 1
-    }
-    const y = (p: number) => top + ((hi - p) / (hi - lo)) * priceH
-    const slot = plotW / slots
-    const bw = Math.max(2, Math.min(9, slot - 3))
-    const vmax = Math.max(...list.map(c => c.v), 1)
-    const lines = compact ? 2 : 3
-    for (let i = 0; i <= lines; i++) {
-      const gy = top + (priceH * i) / lines
-      body +=
-        `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${width - padR}" y2="${gy.toFixed(1)}" stroke="#3a3533" stroke-width="1" stroke-dasharray="2 3"/>` +
-        `<text x="${width - padR + 5}" y="${(gy + 3).toFixed(1)}" ${font} font-size="8.5" fill="#6f6a66">${Math.round(hi - ((hi - lo) * i) / lines)}</text>`
-    }
-    list.forEach((c, i) => {
-      const cx = padL + slot * (i + 0.5)
-      const col = c.c > c.o ? '#34c38f' : c.c < c.o ? '#f2736b' : '#e0a03a'
-      const yo = y(c.o)
-      const yc = y(c.c)
-      const bodyTop = Math.min(yo, yc)
-      const bodyH = Math.max(1.5, Math.abs(yo - yc))
-      const vh = Math.max(1, (c.v / vmax) * volH)
-      const last = i === list.length - 1 && opts.changed === true
-      const fade = last ? `<animate attributeName="opacity" from="0.15" to="1" dur="0.6s" fill="freeze"/>` : ''
-      body +=
-        `<g>${fade}` +
-        (compact ? '' : `<rect x="${(cx - bw / 2).toFixed(1)}" y="${(volTop + volH - vh).toFixed(1)}" width="${bw}" height="${vh.toFixed(1)}" fill="#4a4543"/>`) +
-        `<line x1="${cx.toFixed(1)}" y1="${y(c.h).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${y(c.l).toFixed(1)}" stroke="${col}" stroke-width="1.2"/>` +
-        `<rect x="${(cx - bw / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${bw}" height="${bodyH.toFixed(1)}" fill="${col}"/>` +
-        `</g>`
-    })
-  }
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${fullHeight}" width="${width}" height="${fullHeight}"><g transform="translate(0 ${pad})">` +
-    panelSvg('chartg', width, height, 12) +
-    (list.length === 0 ? halftone(Math.round(width * 0.62), Math.round(height * 0.5), width - 7, height - 7, { corner: 'br' }) : '') +
-    `<text x="12" y="${compact ? 15 : 17}" ${font} font-size="${compact ? 10.5 : 11.5}" fill="#8f8985">Code · net lines</text>` +
-    `<text x="${width - 12}" y="${compact ? 16 : 18}" text-anchor="end" ${font} font-size="${compact ? 12.5 : 14}" font-weight="700" fill="${tone}">${signed(net)}</text>` +
-    body +
-    `</g></svg>`
-  return { svg, width, height: fullHeight }
 }

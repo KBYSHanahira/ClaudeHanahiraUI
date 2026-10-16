@@ -18,6 +18,7 @@ import {
   fmtClock,
   fmtCost,
   fmtDuration,
+  fmtElapsed,
   fmtReset,
   fmtSpeed,
   fmtTokens,
@@ -450,7 +451,7 @@ export const register: Register = on => {
     if (startedAt > 0) await update($, runMs, t => (t ?? 0) + (nowMs - startedAt))
     startedAt = 0
     await update($, tick, n => (n ?? 0) + 1)
-    $.ui.status(`${THEME.fallbackTitle} · ${s}s`)
+    $.ui.status(`${THEME.fallbackTitle} · ${fmtElapsed(s)}`)
     return next(e)
   })
 
@@ -619,7 +620,7 @@ export const register: Register = on => {
           {shownSecs !== null ? (
             <Box gap={1} alignItems="center">
               {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
-              <Text dimColor>{shownSecs}s</Text>
+              <Text dimColor>{fmtElapsed(shownSecs)}</Text>
             </Box>
           ) : null}
           {pillEl(
@@ -633,9 +634,9 @@ export const register: Register = on => {
           )}
         </Box>
 
-        <Box flexDirection="row" alignItems="flex-start" flexWrap="nowrap" gap={2}>
-          <Box flexDirection="column" flexShrink={0}>
-        <Box columnGap={3} rowGap={0} alignItems="center" flexWrap="nowrap">
+        <Box flexDirection="row" alignItems="flex-start" flexWrap="nowrap" gap={2} width="100%">
+          <Box flexDirection="column" flexShrink={1} flexGrow={1} minWidth={0}>
+        <Box columnGap={3} rowGap={1} alignItems="center" flexWrap="wrap">
           {tiles.map(t => (
             <Box key={`tile-${t.key}`} gap={1} alignItems="center">
               {t.percent === null ? (
@@ -664,7 +665,7 @@ export const register: Register = on => {
           ))}
         </Box>
 
-        <Box gap={1} marginTop={1} alignItems="flex-start" flexWrap="wrap">
+        <Box gap={1} marginTop={1} alignItems="flex-start" flexWrap="nowrap">
           {cards.map((c, i) =>
             Svg ? (
               <Svg

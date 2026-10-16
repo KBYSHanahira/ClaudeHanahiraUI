@@ -38,7 +38,9 @@ declare module 'claude-code' {
       stats: Stats
       usage: Usage
       tokens: Tokens
+      model: string | null
       runMs: number
+      speed: { tps: number | null; peak: number }
       tick: number
       agents: Agent[]
       code: { net: number; candles: { o: number; h: number; l: number; c: number; v: number }[]; cur: { o: number; h: number; l: number; c: number; v: number } | null }

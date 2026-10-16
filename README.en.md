@@ -4,7 +4,7 @@
 
 **Turn Claude Code into a dashboard you can read at a glance.**
 
-An interface mod for Claude Code: a status band above the prompt, ring gauges, agent cards, and a candlestick chart of the lines of code you add and remove.
+An interface mod for Claude Code: a status band above the prompt, ring gauges, and agent cards.
 
 [![Language: 日本語](https://img.shields.io/badge/lang-日本語-e8825f?style=for-the-badge)](README.md)
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
@@ -26,7 +26,6 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 | 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar that sweeps while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
 | ⭕ | **Ring gauges** | Context, 5-hour limit and 7-day limit as rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
 | 💰 | **Total cards** | Cost, Tokens and Time as cards; a value animates only at the moment it changes. |
-| 📈 | **Code chart** | One candlestick per prompt that changed files: the net lines added or removed, drawn like a stock chart. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
 | 🧾 | **Transcript styling** | Your message as a card; tool rows with a round icon, coloured verb, status and duration; numbered diff cards. |
 | 🎞️ | **Motion** | Only where a value really changes or work is running. Unchanged figures stay still. |
@@ -38,7 +37,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 <div align="center">
 
-<img src="docs/preview.png" alt="Hanahira Claude UI status band: rings, cards, code chart, agent cards" width="900">
+<img src="docs/preview.png" alt="Hanahira Claude UI status band: rings, cards, agent cards" width="900">
 
 *Drawn by the plugin's own SVG builders with sample numbers. Regenerate: `bun scripts/preview.ts`*
 
@@ -48,9 +47,9 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 ```text
 ┌─ spa  ⎇ main  ▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  45:30  ● working   ⚡ 8 tools ─┐
-│  ◔ 15%            ◔ 4%                ◔ 22%             ┌ Code · net lines ──┐ │
-│  context 151k/1M  of 5-hour limit     of 7-day limit    │    ▂ ▅ ▇ █   +207 │ │
-│                   resets in 3h 59m    resets in 2d 8h   └────────────────────┘ │
+│  ◔ 15%            ◔ 4%                ◔ 22%                                    │
+│  context 151k/1M  of 5-hour limit     of 7-day limit                           │
+│                   resets in 3h 59m    resets in 2d 8h                          │
 │  [ Cost ≈$46.22 ] [ Tokens 172M ] [ Time 45:30 ]                              │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -166,18 +165,8 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 | **Cost** | The session total the engine reports (marked `≈`). |
 | **Tokens** | Total tokens counted since the plugin loaded, subagents included, with cache reads and writes. |
 | **Time** | Total time spent working. |
-| **Code · net lines** | See below. |
 | **Agent cards** | A row above the band's frame. A running card pulses; a finished one flashes green and leaves. |
 
-### 📈 Reading the code chart
-
-- **One candle = one prompt that changed files** (a prompt with no edits draws none)
-- **The vertical axis = net lines**: lines added minus lines removed, accumulated over the session
-- 🟩 **green** = up　🟥 **red** = down　🟨 **amber** = flat
-- **Wicks** = the lowest and highest the net reached during that prompt
-- The number at the top right (e.g. `+207`) is the current net
-- The data is counted from the Edit / Write results (the patches), subagents' edits included
-- The latest 24 candles are shown
 
 > **Why the token count looks huge:** Tokens adds up every model response's input, output, cache reads and cache writes. In a long session with a large context, the same context is re-read from the cache on every response, so the total reaches hundreds of millions. A cache read costs far less than ordinary input.
 
@@ -210,7 +199,7 @@ Pure functions live in `hooks/chat.ts` and friends and have tests (`hooks/*.test
 hooks/
   hooks.json      module registration
   register.tsx    the hooks (band, transcript, agents)
-  chat.ts         pure display helpers (SVG, formats, chart)
+  chat.ts         pure display helpers (SVG, formats)
   agents.ts       agent cards, price table
   icons.ts        the line-icon set
 scripts/

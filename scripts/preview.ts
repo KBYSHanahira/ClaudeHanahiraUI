@@ -2,7 +2,7 @@
 // builders (chat.ts, agents.ts, icons.ts) with sample numbers. Run: bun scripts/preview.ts
 import { writeFileSync } from 'node:fs'
 import { agentCardSvg, CARD_W, CARD_H } from '../hooks/agents'
-import { cardSvg, chartSvg, countSvg, dotSvg, loadingSvg } from '../hooks/chat'
+import { cardSvg, countSvg, dotSvg, loadingSvg } from '../hooks/chat'
 import { iconGroup, iconSvg } from '../hooks/icons'
 import type { Agent } from '../types'
 
@@ -25,7 +25,6 @@ const agents: Agent[] = [
   { id: 'a1', name: 'code-reviewer', type: 'general-purpose', model: 'claude-sonnet-5-5', effort: 'high', background: true, status: 'running', startedAt: now - 84_000, endedAt: null, tools: 12, input: 1200, output: 5400, cacheRead: 310000, cacheWrite: 22000 },
   { id: 'a2', name: 'test-runner', type: 'general-purpose', model: 'claude-haiku-5-5', effort: 'low', background: true, status: 'done', startedAt: now - 52_000, endedAt: now - 1_000, tools: 5, input: 800, output: 2100, cacheRead: 90000, cacheWrite: 9000 },
 ]
-const candles = [[0, 24, 0, 24], [24, 60, 20, 52], [52, 52, 30, 38], [38, 90, 38, 84], [84, 140, 80, 131], [131, 131, 96, 104], [104, 188, 104, 177], [177, 207, 170, 207]].map(([o, h, l, c]) => ({ o, h: Math.max(o, h, c), l: Math.min(o, l, c), c, v: Math.abs(c - o) }))
 
 const W = 1000
 const H = 400
@@ -44,14 +43,13 @@ const rings: [number, string, string, string, string, string][] = [
   [15, '#e8825f', 'cpu', '15%', 'context', '151k / 1M'],
   [4, '#e8825f', 'clock', '4%', 'of 5-hour limit', 'resets in 3h 59m'],
   [22, '#e8825f', 'calendar', '22%', 'of 7-day limit', 'resets in 2d 8h'],
+  [72, ACCENT, 'bolt', '58', 'tokens / sec', 'peak 81'],
 ]
 rings.forEach(([p, col, ic, big, cap, sub], i) => {
   const x = 40 + i * 205
   parts.push(nest(ring(p, col, 64, ic as never), x, 84))
   parts.push(`<text x="${x + 78}" y="112" ${font} font-size="26" font-weight="700" fill="#ece7e3">${big}</text><text x="${x + 78}" y="132" ${font} font-size="12.5" fill="#a8a29e">${cap}</text><text x="${x + 78}" y="148" ${font} font-size="12" fill="#7d7672">${sub}</text>`)
 })
-// code chart
-parts.push(nest(chartSvg({ net: 207, candles: candles.slice(0, -1), cur: candles[candles.length - 1] }, 320, 118, { padTop: 8 }), 650, 70))
 // total cards
 const cards: [string, string, never, string][] = [['Cost', '≈$46.22', 'coin' as never, '#f2c94c'], ['Tokens', '172M', 'layers' as never, '#9b8cf7'], ['Time', '45:30', 'stopwatch' as never, '#7bd88f']]
 let cx = 40
