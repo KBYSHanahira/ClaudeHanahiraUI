@@ -107,6 +107,14 @@ Then open a **new session** in Desktop (open sessions do not pick it up). After 
 
 When a new version comes out, update **the same way you installed**. Then open a **new session** (open sessions do not pick up changes).
 
+### 🧰 One command (`update.sh`)
+
+No need to remember the commands: this one line updates a marketplace install (on an SSH host with a clone, `scripts/update.sh` also runs `git pull` and `install-ssh.sh`).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KBYSHanahira/ClaudeHanahiraUI/main/scripts/update.sh | bash
+```
+
 ### Installed from the marketplace (Option 1)
 
 In the Claude Code **terminal**, run these two in order:

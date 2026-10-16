@@ -107,6 +107,14 @@ scripts/install-ssh.sh
 
 新しいバージョンが出たら、**インストールした方法に合わせて** 更新します。更新後は **新しいセッション** を開いてください（開いているセッションには反映されません）。
 
+### 🧰 一発で更新（`update.sh`）
+
+コマンドを覚えなくても、次の 1 行でマーケットプレイス版を更新できます（SSH 接続先でクローン済みなら、`scripts/update.sh` が `git pull` と `install-ssh.sh` まで行います）。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KBYSHanahira/ClaudeHanahiraUI/main/scripts/update.sh | bash
+```
+
 ### マーケットプレイスから入れた場合（方法 1）
 
 Claude Code の **ターミナル** で、次の 2 つを順に入力します。
