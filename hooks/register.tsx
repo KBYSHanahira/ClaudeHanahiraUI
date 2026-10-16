@@ -2,14 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Agent, Info, Stats, Tokens, Usage } from '../types'
-import { agentCardSvg, agentMoves, visibleAgents } from './agents'
+import { agentCardSvg, agentMoves, prettyModel, visibleAgents } from './agents'
 import {
   KIND_COLOR,
-  NO_CODE,
-  applyEdit,
-  asCode,
-  chartSvg,
-  closeCandle,
   KIND_GLYPH,
   KIND_ICON,
   PILL,
@@ -24,12 +19,15 @@ import {
   fmtCost,
   fmtDuration,
   fmtReset,
+  fmtSpeed,
   fmtTokens,
   loadingSvg,
   pillSvg,
   statusPill,
+  tokensPerSec,
 } from './chat'
 import { iconGroup, iconSvg } from './icons'
+import { VERSION } from './version'
 import type { IconName } from './icons'
 
 // Per-call facts the transcript rows read: how long a call took, which Bash
@@ -48,8 +46,12 @@ const tokens = atom({ plugin: 'hanahira-claude-ui', key: 'tokens' } as const, NO
 const EMPTY: Stats = { tools: 0, byTool: {}, files: [], last: null }
 const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, limits: [] }
 
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; color?: string }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; color?: string; calm?: boolean }
+// Output speed of the latest main-thread response, and the best seen: the ring fills against it.
+const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
+// The model the main thread last answered with, as the API reported it.
+const model = atom({ plugin: 'hanahira-claude-ui', key: 'model' } as const, null as string | null)
 
 const stats = atom({ plugin: 'hanahira-claude-ui', key: 'stats' } as const, EMPTY)
 /** A stored value is whatever an earlier version or a reload left behind: never trust its shape. */
@@ -60,7 +62,6 @@ const firstSeenAt = new Map<string, number>()
 const statusAt = new Map<string, { status: string; at: number }>()
 const efforts = new Map<string, string>()
 
-const code = atom({ plugin: 'hanahira-claude-ui', key: 'code' } as const, NO_CODE)
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
 const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
@@ -161,7 +162,6 @@ const ringBase = new Map<string, { percent: number; from: number }>()
 const cardFlash = new Map<string, { value: string; changed: boolean }>()
 const lastCard = new Map<string, string>()
 let lastTools = 0
-let chartSeen = { sig: '', changed: false }
 let toolsSeen = { count: -1, grew: false }
 
 type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban' }
@@ -243,7 +243,6 @@ export const register: Register = on => {
       void update($, tick, n => (n ?? 0) + 1)
     })
     await update($, stats, () => EMPTY)
-    await update($, code, c => closeCandle(asCode(c)))
     return next(e)
   })
 
@@ -332,15 +331,6 @@ export const register: Register = on => {
     const t1 = await $.clock.now()
     remember(durations, e.tool_use_id, t1 - t0)
 
-    // A file change moves the code chart: lines added and removed, as the patch reports them.
-    if (name === 'Edit' || name === 'Write') {
-      const out = (result as { result?: unknown }).result as { structuredPatch?: unknown; content?: string; type?: string } | undefined
-      if (out && typeof out === 'object') {
-        const { added, removed } = countChanges(diffRows(out.structuredPatch, out.type === 'create' ? out.content : undefined, Infinity).rows)
-        if (added > 0 || removed > 0) await update($, code, c => applyEdit(asCode(c), added, removed))
-      }
-    }
-
     // The Agent tool's own record carries the id and the model (a launch the spawn hook missed
     // is caught here), and, for a foreground agent, that it is already done.
     if ((name === 'Agent' || name === 'Task') && !agentId) {
@@ -382,6 +372,7 @@ export const register: Register = on => {
   // Every model response, the moment it lands: its tokens, and the spend and context as
   // the status line has them. (turn.complete used to add the turn's tokens at the very end.)
   on('turn.step', async function* ($, e, next) {
+    const t0 = await $.clock.now()
     const r = yield* next(e)
     const u = r.usage
     // What this request really used: the effort the engine sent, the model the API reported.
@@ -396,6 +387,10 @@ export const register: Register = on => {
         cacheWrite: (t.cacheWrite ?? 0) + u.cache_creation_input_tokens,
       }))
     }
+    // Speed of the main thread only: subagents run beside it and would blur the figure.
+    const tps = !aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
+    if (!aid && u?.model) await update($, model, () => u.model)
+    if (tps !== null) await update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, tps) }))
     if (aid) {
       await update($, agents, list =>
         asList(list).map(a =>
@@ -447,7 +442,6 @@ export const register: Register = on => {
       }
       return next(e)
     }
-    await update($, code, c => closeCandle(asCode(c)))
     ticker?.cancel()
     ticker = null
     const nowMs = await $.clock.now()
@@ -463,7 +457,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const [st, secs, where, use, tk, run, , nowMs, roster, codeRaw] = await Promise.all([
+    const [st, secs, where, use, tk, run, , nowMs, roster, sp, mdl] = await Promise.all([
       read($, stats),
       read($, seconds),
       read($, info),
@@ -473,7 +467,8 @@ export const register: Register = on => {
       read($, tick), // only to be redrawn on each beat
       $.clock.now(),
       read($, agents),
-      read($, code),
+      read($, speed),
+      read($, model),
     ])
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
@@ -493,6 +488,8 @@ export const register: Register = on => {
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c' },
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7' },
       { label: 'Time', value: fmtClock((run ?? 0) + liveMs), icon: 'stopwatch' as IconName, color: '#7bd88f' },
+      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7' },
+      { label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' },
     ]
 
     // Remember what was drawn: rings grow from their last value, cards flash when theirs changes.
@@ -506,13 +503,6 @@ export const register: Register = on => {
       cardChanged.set(c.label, changed)
       lastCard.set(c.label, c.value)
     }
-    // The code chart: its flash stays set while the data stays, so a redraw is the same picture.
-    const log = asCode(codeRaw)
-    const chartSig = `${log.net}:${log.candles.length}:${log.cur?.c ?? ''}:${log.cur?.v ?? ''}`
-    const prevChart = chartSeen.sig === chartSig ? chartSeen.changed : chartSeen.sig !== '' && chartSeen.sig !== chartSig
-    chartSeen = { sig: chartSig, changed: prevChart }
-    const chartW = Math.max(200, Math.min(340, Math.floor(e.props.bodyColumns * 8 - 520)))
-    const chartArt = chartW >= 150 ? chartSvg(log, chartW, 118, { changed: prevChart, padTop: 8 }) : null
     const cardArt = cards.map(c => cardSvg(c.label, c.value, { changed: cardChanged.get(c.label) === true, accent: THEME.accent, icon: c.icon, iconColor: c.color }))
 
     // The tool counter flashes only when it grows (a reset to 0 at a new prompt stays quiet).
@@ -551,6 +541,17 @@ export const register: Register = on => {
         caption: `of ${limitLabel(l.kind)}`,
         sub: fmtReset(l.resetsAt, nowMs) ?? undefined,
       })),
+      // Model speed: the ring fills against the best seen this session, and never turns red.
+      {
+        key: 'speed',
+        icon: 'bolt' as IconName,
+        percent: sp.tps === null || !(sp.peak > 0) ? 0 : Math.min(100, (sp.tps / sp.peak) * 100),
+        big: sp.tps === null ? '—' : fmtSpeed(sp.tps),
+        caption: 'tokens / sec',
+        sub: sp.peak > 0 ? `peak ${fmtSpeed(sp.peak)}` : undefined,
+        color: THEME.accent,
+        calm: true,
+      },
     ]
     const ringFrom = new Map<string, number>()
     for (const t of tiles) {
@@ -643,13 +644,13 @@ export const register: Register = on => {
                 <Svg
                   source={ringSvg(t.percent, (t.color ?? ringColor(t.percent)), RING, {
                     from: ringFrom.get(t.key) ?? 0,
-                    pulse: t.percent >= 85,
+                    pulse: !t.calm && t.percent >= 85,
                     icon: t.icon,
                   })}
                   alt={`${t.big} ${t.caption}`}
                   width={RING}
                   height={RING}
-                  isInteractive={ringMoves(t.percent, ringFrom.get(t.key) ?? 0, t.percent >= 85)}
+                  isInteractive={ringMoves(t.percent, ringFrom.get(t.key) ?? 0, !t.calm && t.percent >= 85)}
                 />
               ) : (
                 <Text color={(t.color ?? ringColor(t.percent))}>{glyph(t.percent)}</Text>
@@ -663,7 +664,7 @@ export const register: Register = on => {
           ))}
         </Box>
 
-        <Box gap={1} marginTop={1} alignItems="flex-start" flexWrap="nowrap">
+        <Box gap={1} marginTop={1} alignItems="flex-start" flexWrap="wrap">
           {cards.map((c, i) =>
             Svg ? (
               <Svg
@@ -690,9 +691,6 @@ export const register: Register = on => {
           )}
         </Box>
           </Box>
-          {Svg && chartArt ? (
-            <Svg source={chartArt.svg} alt={`Code net lines ${log.net}`} width={chartArt.width} height={chartArt.height} isInteractive={prevChart} />
-          ) : null}
         </Box>
       </Box>
       </Box>
