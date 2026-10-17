@@ -1,9 +1,10 @@
 // Renders docs/preview.svg / preview.png: the status band drawn by the plugin's own SVG
 // builders (chat.ts, agents.ts, icons.ts) with sample numbers. Run: bun scripts/preview.ts
 import { writeFileSync } from 'node:fs'
-import { agentCardSvg, CARD_W, CARD_H } from '../hooks/agents'
-import { cardSvg, countSvg, dotSvg, loadingSvg } from '../hooks/chat'
+import { agentCardSvg, CARD_W, CARD_H, prettyModel } from '../hooks/agents'
+import { cardSvg, countSvg, dotSvg, fmtClock, fmtElapsed, loadingSvg } from '../hooks/chat'
 import { iconGroup, iconSvg } from '../hooks/icons'
+import { VERSION } from '../hooks/version'
 import type { Agent } from '../types'
 
 const ACCENT = '#9b8cf7'
@@ -35,12 +36,13 @@ parts.push(`<rect x="14" y="14" width="${W - 28}" height="${H - 28}" rx="14" fil
 parts.push(nest(dotSvg(ACCENT, false), 36, 36))
 parts.push(nest(iconSvg('folder', '#a8a29e', 14), 58, 36))
 parts.push(`<text x="78" y="48" ${font} font-size="15" font-weight="600" fill="#ece7e3">spa</text><text x="116" y="48" ${font} font-size="14" fill="#a8a29e">⎇ main</text>`)
-parts.push(nest(loadingSvg(560, 14, ACCENT, { live: true }), 190, 34))
-parts.push(`<text x="768" y="48" ${font} font-size="14" fill="#a8a29e">45:30</text><circle cx="822" cy="43" r="4.5" fill="${WARM}"/><text x="832" y="48" ${font} font-size="14" fill="${WARM}">working</text>`)
+parts.push(nest(loadingSvg(500, 14, ACCENT, { live: true }), 190, 34))
+parts.push(nest(iconSvg('clock', '#a8a29e', 14), 704, 36))
+parts.push(`<text x="724" y="48" ${font} font-size="14" fill="#a8a29e">${fmtElapsed(134)}</text><circle cx="822" cy="43" r="4.5" fill="${WARM}"/><text x="832" y="48" ${font} font-size="14" fill="${WARM}">working</text>`)
 parts.push(nest(countSvg(8), 900, 30))
 // rings
 const rings: [number, string, string, string, string, string][] = [
-  [15, '#e8825f', 'cpu', '15%', 'context', '151k / 1M'],
+  [15, '#e8825f', 'chip', '15%', 'context', '151k / 1M'],
   [4, '#e8825f', 'clock', '4%', 'of 5-hour limit', 'resets in 3h 59m'],
   [22, '#e8825f', 'calendar', '22%', 'of 7-day limit', 'resets in 2d 8h'],
   [72, ACCENT, 'bolt', '58', 'tokens / sec', 'peak 81'],
@@ -51,7 +53,7 @@ rings.forEach(([p, col, ic, big, cap, sub], i) => {
   parts.push(`<text x="${x + 78}" y="112" ${font} font-size="26" font-weight="700" fill="#ece7e3">${big}</text><text x="${x + 78}" y="132" ${font} font-size="12.5" fill="#a8a29e">${cap}</text><text x="${x + 78}" y="148" ${font} font-size="12" fill="#7d7672">${sub}</text>`)
 })
 // total cards
-const cards: [string, string, never, string][] = [['Cost', '≈$46.22', 'coin' as never, '#f2c94c'], ['Tokens', '172M', 'layers' as never, '#9b8cf7'], ['Time', '45:30', 'stopwatch' as never, '#7bd88f']]
+const cards: [string, string, never, string][] = [['Cost', '≈$46.22', 'coin' as never, '#f2c94c'], ['Tokens', '172M', 'layers' as never, '#9b8cf7'], ['Time', fmtClock(2_730_000), 'stopwatch' as never, '#7bd88f'], ['Model', prettyModel('claude-opus-5-5'), 'bot' as never, '#5eb5f7'], ['UI', `v${VERSION}`, 'cube' as never, '#f28b82']]
 let cx = 40
 for (const [l, v, ic, col] of cards) {
   const a = cardSvg(l, v, { accent: ACCENT, icon: ic, iconColor: col })
