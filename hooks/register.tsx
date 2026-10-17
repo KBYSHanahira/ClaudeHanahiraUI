@@ -485,7 +485,7 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
 
 
-    // Overall figures, as three cards: spend, tokens, and time spent running.
+    // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
     const allTokens = (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)
     const cards = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c' },
