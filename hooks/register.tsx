@@ -133,15 +133,19 @@ export const ringSvg = (
     Math.abs(arc - arcFrom) > 0.5
       ? `<animate attributeName="stroke-dasharray" from="${arcFrom.toFixed(2)} ${c.toFixed(2)}" to="${arc.toFixed(2)} ${c.toFixed(2)}" dur="0.9s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"/>`
       : ''
-  const pulse = opts.pulse ? `<animate attributeName="stroke-opacity" values="1;0.5;1" dur="1.4s" repeatCount="indefinite"/>` : ''
-  // A disc tinted the arc's colour under the icon, so the gauge reads as one piece.
-  const disc = `<circle cx="22" cy="22" r="13" fill="${color}" fill-opacity="0.12"/>`
+  // Near the limit the arc breathes, slow and eased: a warning, not a strobe.
+  const pulse = opts.pulse
+    ? `<animate attributeName="stroke-opacity" values="1;0.55;1" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" dur="2s" repeatCount="indefinite"/>`
+    : ''
+  // A disc tinted the arc's colour fills the middle, and the icon fills the disc: big enough
+  // to read at a glance, so the gauge reads as one piece.
+  const disc = `<circle cx="22" cy="22" r="15" fill="${color}" fill-opacity="0.13"/>`
   const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/>`
   const fill =
     arc > 0
       ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${arc.toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)">${grow}${pulse}</circle>`
       : ''
-  const mark = opts.icon ? iconGroup(opts.icon, color, 15, 15, 14, 2.4) : ''
+  const mark = opts.icon ? iconGroup(opts.icon, color, 12, 12, 20, 2.1) : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">${track}${fill}${mark}</svg>`
 }
 
@@ -506,9 +510,11 @@ export const register: Register = on => {
       cardChanged.set(c.label, changed)
       lastCard.set(c.label, c.value)
     }
-    const cardLive = e.props.isWorking // card icons breathe while a turn runs
+    // While a turn runs only the Time card's tile breathes: it is the one figure moving every
+    // second. Five tiles breathing at once read as noise, not as news.
+    const cardLive = (label: string) => e.props.isWorking && label === 'Time'
     const cardArt = cards.map(c =>
-      cardSvg(c.label, c.value, { changed: cardChanged.get(c.label) === true, accent: THEME.accent, icon: c.icon, iconColor: c.color, live: cardLive ? { now: nowMs } : undefined }),
+      cardSvg(c.label, c.value, { changed: cardChanged.get(c.label) === true, accent: THEME.accent, icon: c.icon, iconColor: c.color, live: cardLive(c.label) ? { now: nowMs } : undefined }),
     )
 
     // The tool counter flashes only when it grows (a reset to 0 at a new prompt stays quiet).
@@ -679,7 +685,7 @@ export const register: Register = on => {
                 alt={`${c.label} ${c.value}`}
                 width={cardArt[i].width}
                 height={cardArt[i].height}
-                isInteractive={cardLive || cardChanged.get(c.label) === true}
+                isInteractive={cardLive(c.label) || cardChanged.get(c.label) === true}
               />
             ) : (
               <Box

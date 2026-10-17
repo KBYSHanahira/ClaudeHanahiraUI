@@ -1,4 +1,5 @@
-// A small set of line icons, drawn for this plugin: one 24x24 grid, round caps, no fill.
+// A small set of duotone icons, drawn for this plugin: one 24x24 grid, round caps, and a soft
+// fill of the icon's own colour under the main shape, so a small icon still reads as solid.
 // Pure strings: a surface that cannot draw SVG never sees them.
 
 export type IconName =
@@ -66,15 +67,47 @@ export const ICONS: Record<IconName, string> = {
   ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
 }
 
+/**
+ * The body of each icon that gets the soft fill, in the same 24x24 box. An icon left out
+ * (a check, a list) is all line and stays that way.
+ */
+export const ICON_FILL: Partial<Record<IconName, string>> = {
+  terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/>',
+  file: '<path d="M7 3h7l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19.5v-15A1.5 1.5 0 0 1 7 3z"/>',
+  filePlus: '<path d="M7 3h7l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19.5v-15A1.5 1.5 0 0 1 7 3z"/>',
+  pencil: '<path d="M4 20l1-4.5L16.2 4.3a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8L8.5 19z"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/>',
+  bot: '<rect x="4" y="8" width="16" height="11" rx="3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/>',
+  cube: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>',
+  chip: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  clock: '<circle cx="12" cy="12" r="9"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2.5"/>',
+  gauge: '<path d="M4.5 17.5a8.5 8.5 0 1 1 15 0z"/>',
+  coin: '<circle cx="12" cy="12" r="9"/>',
+  layers: '<path d="M12 3.5l9 4.5-9 4.5L3 8z"/>',
+  stopwatch: '<circle cx="12" cy="13.5" r="7.5"/>',
+  bolt: '<path d="M13.5 3L5.5 13.5h6L10.5 21l8-10.5h-6z"/>',
+  folder: '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.7l2 2.3h7.3A2.5 2.5 0 0 1 21 9.8v7.7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/>',
+  ban: '<circle cx="12" cy="12" r="8.5"/>',
+}
+
+/** How strong the soft fill is under the line: enough to read as solid, light enough to keep the line. */
+export const ICON_FILL_OPACITY = 0.3
+
 export const hasIcon = (name: string): name is IconName => Object.prototype.hasOwnProperty.call(ICONS, name)
 
 /**
  * An icon as a `<g>` to drop inside another SVG: its top-left corner at (x, y), `size` px square.
- * The stroke is set in icon units, so a small icon keeps a sturdy line.
+ * The stroke is set in icon units, so a small icon keeps a sturdy line. `fill` is the strength
+ * of the soft fill under the line (0 for line only).
  */
-export const iconGroup = (name: IconName, color: string, x: number, y: number, size: number, width = 2) =>
-  `<g transform="translate(${+x.toFixed(2)} ${+y.toFixed(2)}) scale(${+(size / 24).toFixed(4)})" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</g>`
+export const iconGroup = (name: IconName, color: string, x: number, y: number, size: number, width = 2, fill = ICON_FILL_OPACITY) => {
+  const body = ICON_FILL[name]
+  const under = body && fill > 0 ? `<g fill="${color}" fill-opacity="${fill}" stroke="none">${body}</g>` : ''
+  return `<g transform="translate(${+x.toFixed(2)} ${+y.toFixed(2)}) scale(${+(size / 24).toFixed(4)})" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${under}${ICONS[name]}</g>`
+}
 
 /** An icon as a standalone SVG. */
-export const iconSvg = (name: IconName, color: string, size = 16, width = 2) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${iconGroup(name, color, 0, 0, size, width)}</svg>`
+export const iconSvg = (name: IconName, color: string, size = 16, width = 2, fill = ICON_FILL_OPACITY) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${iconGroup(name, color, 0, 0, size, width, fill)}</svg>`

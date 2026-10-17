@@ -187,10 +187,11 @@ describe('pillSvg', () => {
 })
 
 describe('running pill animation', () => {
-  test('a running capsule spins and pulses; a settled one stays still', () => {
+  test('a running capsule waves its dots and keeps the capsule still; a settled one stays still', () => {
     const run = pillSvg('running', '#c4baff', '#2d3a3f', 24, true)
     expect(run.svg).toContain('<animate ')
     expect(run.svg).toContain('repeatCount="indefinite"')
+    expect(run.svg).not.toContain('attributeName="fill-opacity"')
     expect(pillSvg('done', '#fff', '#000', 24, false).svg).not.toContain('animate')
   })
 
@@ -202,18 +203,24 @@ describe('running pill animation', () => {
 
 
 describe('loadingSvg', () => {
-  test('idle is a quiet track: no animation, no mask', () => {
+  test('idle is a quiet groove: no animation, no clip', () => {
     const svg = loadingSvg(500, 18, '#9b8cf7')
     expect(svg).toContain('width="500" height="18"')
     expect(svg).not.toContain('<animate')
-    expect(svg).not.toContain('<mask')
+    expect(svg).not.toContain('clipPath')
   })
 
-  test('live sweeps a soft glow across the track', () => {
+  test('live glides an eased comet along the groove, one way', () => {
     const svg = loadingSvg(500, 18, '#9b8cf7', { live: true })
-    expect(svg).toContain('<mask id="l500_18m"')
-    expect(svg).toContain('<animate attributeName="x" from="-200" to="500"')
+    expect(svg).toContain('<clipPath id="l500_18c"')
+    // groove from 9 to 491 (482 wide), comet 32% of it: starts just left of the groove, ends past it
+    expect(svg).toContain('<animate attributeName="x" from="-145" to="491"')
+    expect(svg).toContain('keySplines="0.65 0 0.35 1"')
     expect(svg).toContain('repeatCount="indefinite"')
+  })
+
+  test('draws no dither: the groove is one shape', () => {
+    expect(loadingSvg(500, 18, '#9b8cf7')).not.toContain('h1.')
   })
 
   test('draws no number: no label, no pill', () => {
@@ -232,8 +239,9 @@ describe('loadingSvg', () => {
 })
 
 describe('more motion', () => {
-  test('a running badge pings inside its disc; a settled one is still', () => {
-    expect(badgeSvg('#ffd166', '>_', 30, true)).toContain('<animate attributeName="r"')
+  test('a running badge turns an arc round its ring; a settled one is still', () => {
+    expect(badgeSvg('#ffd166', '>_', 30, true)).toContain('type="rotate" from="0 16 16" to="360 16 16"')
+    expect(badgeSvg('#ffd166', '>_', 30, true)).not.toContain('attributeName="r"')
     expect(badgeSvg('#ffd166', '>_', 30, false)).not.toContain('<animate')
   })
 
@@ -242,16 +250,16 @@ describe('more motion', () => {
     expect(dotSvg('#9b8cf7', false)).not.toContain('<animate')
   })
 
-  test('a changed card rises and flashes; an unchanged one is still', () => {
-    const moved = cardSvg('Cost', '≈$15.62', { changed: true })
+  test('a changed card rises and flashes its own colour; an unchanged one is still', () => {
+    const moved = cardSvg('Cost', '≈$15.62', { changed: true, iconColor: '#f2c94c' })
     expect(moved.svg).toContain('animateTransform')
-    expect(moved.svg).toContain('attributeName="stroke"')
+    expect(moved.svg).toContain('attributeName="stroke" from="#f2c94c"')
     expect(cardSvg('Cost', '≈$15.62').svg).not.toContain('<animate')
   })
 
   test('a live card breathes, with no sweep; an idle one stays still', () => {
     const live = cardSvg('Cost', '$1', { icon: 'coin', live: { now: 1_000 } }).svg
-    expect(live).toContain('attributeName="fill-opacity" values="0.13;0.3;0.13"')
+    expect(live).toContain('attributeName="fill-opacity" values="0.14;0.3;0.14"')
     expect(live).toContain(`begin="${phaseBegin(1_000, CARD_BREATHE_MS)}"`)
     expect(live).not.toContain('clip-path')
     expect(live).not.toContain('attributeName="x"')
@@ -274,7 +282,7 @@ describe('icons', () => {
   test('every tool kind has a drawn icon, and the badge centres it in the disc', () => {
     for (const icon of Object.values(KIND_ICON)) {
       const svg = badgeSvg('#ffd166', icon, 30)
-      expect(svg).toContain('translate(8 8) scale(0.6667)') // 16px mark, top-left at 8, 8: dead centre in 32
+      expect(svg).toContain('translate(7 7) scale(0.75)') // 18px mark, top-left at 7, 7: dead centre in 32
       expect(svg).not.toContain('<text')
     }
   })
@@ -290,9 +298,16 @@ describe('icons', () => {
     expect(withIcon.svg).toContain('<g transform="translate(10.08')
   })
 
-  test('a card with an icon shifts its label right', () => {
-    expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).toContain('x="34" y="19"')
-    expect(cardSvg('Cost', '$1').svg).toContain('x="14" y="19"')
+  test('a card with an icon puts it in a tile and sets the text beside it', () => {
+    const svg = cardSvg('Cost', '$1', { icon: 'coin' }).svg
+    expect(svg).toContain('<rect x="8" y="8" width="36" height="36" rx="10"')
+    expect(svg).toContain('translate(15 15) scale(0.9167)') // 22px icon, centred in the tile
+    expect(svg).toContain('x="54" y="21"')
+    expect(cardSvg('Cost', '$1').svg).toContain('x="14" y="21"')
+  })
+
+  test('the card has no halftone texture', () => {
+    expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).not.toMatch(/h\d+(\.\d+)?v\d/)
   })
 })
 

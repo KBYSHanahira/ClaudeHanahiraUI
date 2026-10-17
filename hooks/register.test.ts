@@ -82,7 +82,7 @@ describe('ring motion', () => {
 
   test('an unchanged ring is still; a pulsing one breathes', () => {
     expect(ringSvg(60, '#e8825f', 38, { from: 60 })).not.toContain('<animate')
-    expect(ringSvg(90, '#f2736b', 38, { from: 90, pulse: true })).toContain('values="1;0.5;1"')
+    expect(ringSvg(90, '#f2736b', 38, { from: 90, pulse: true })).toContain('values="1;0.55;1"')
   })
 
   test('ringMoves says when a frame is worth running', () => {

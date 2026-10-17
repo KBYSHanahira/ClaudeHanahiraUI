@@ -1,7 +1,7 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { clip, fmtClock, fmtTokens } from './chat'
+import { SPIN_S, clip, fmtClock, fmtTokens } from './chat'
 import { iconGroup } from './icons'
 
 const EFFORT_COLOR: Record<string, string> = {
@@ -144,7 +144,8 @@ const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 /**
  * One agent as a card, all in one SVG so it can move as one piece. `pop` makes it bounce in
  * (it just appeared); `flash` washes its border green once (it just finished). A running
- * card has a pulsing border and a light travelling along its bar. SMIL: played only by an
+ * card wears its accent on the border, turns a small spinner where the check will go, and
+ * glides a light along its bar: one direction, eased. SMIL: played only by an
  * `isInteractive` Svg, so `agentMoves` says when a card is worth that.
  */
 export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash?: boolean; padBottom?: number } = {}) => {
@@ -172,14 +173,17 @@ export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash
   const stats = esc(clip(`${a.tools} tools · ${fmtTokens(totalTokens(a))} · ${costText} · ${when}`, 40))
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
 
-  const border = running
-    ? `<animate attributeName="stroke" values="#3a3836;${accent};#3a3836" dur="2s" repeatCount="indefinite"/>`
-    : opts.flash
-      ? `<animate attributeName="stroke" from="#7bd88f" to="#3a3836" dur="1.2s" fill="freeze"/>`
-      : ''
+  // A running card's border holds its accent, still: the spinner and the bar already say "busy".
+  const edge = running ? accent : '#3a3836'
+  const edgeOpacity = running ? 0.55 : 1
+  const border = !running && opts.flash ? `<animate attributeName="stroke" from="#7bd88f" to="#3a3836" dur="1.2s" fill="freeze"/>` : ''
 
+  const sr = 6
+  const sc = 2 * Math.PI * sr
   const mark = running
-    ? `<circle cx="${W - 20}" cy="18" r="4" fill="#f2736b"><animate attributeName="opacity" values="1;0.35;1" dur="1.2s" repeatCount="indefinite"/></circle>`
+    ? `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2.2"/>` +
+      `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}">` +
+      `<animateTransform attributeName="transform" type="rotate" from="0 ${W - 21} 17" to="360 ${W - 21} 17" dur="${SPIN_S}s" repeatCount="indefinite"/></circle>`
     : a.status === 'done'
       ? iconGroup('check', '#7bd88f', W - 29, 9, 16, 3)
       : a.status === 'error'
@@ -189,15 +193,19 @@ export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash
   const barX = 10
   const barW = W - 20
   const barY = H - 12
+  const seg = Math.round(barW * 0.3)
+  const uid = `ab${a.id.replace(/[^A-Za-z0-9_-]/g, '')}`
   const bar =
     `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="#2b2827"/>` +
     (running
-      ? `<rect x="${barX}" y="${barY}" width="${Math.round(barW * 0.28)}" height="4" rx="2" fill="${accent}">` +
-        `<animate attributeName="x" values="${barX};${barX + barW - Math.round(barW * 0.28)};${barX}" dur="1.8s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/></rect>`
+      ? `<defs><clipPath id="${uid}"><rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2"/></clipPath>` +
+        `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity="0"/><stop offset="0.75" stop-color="${accent}"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></linearGradient></defs>` +
+        `<g clip-path="url(#${uid})"><rect x="${barX - seg}" y="${barY}" width="${seg}" height="4" fill="url(#${uid}g)">` +
+        `<animate attributeName="x" from="${barX - seg}" to="${barX + barW}" dur="1.6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"/></rect></g>`
       : `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="${accent}"/>`)
 
   const card =
-    `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="#3a3836" stroke-width="1.5">${border}</rect>` +
+    `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5">${border}</rect>` +
     `<svg x="10" y="9" width="38" height="38" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>` +
     `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ece7e4"${nameFit}>${name}</text>` +
     `<text x="58" y="38" ${font} font-size="11" fill="#b9b3af">${model}</text>` +

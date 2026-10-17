@@ -152,21 +152,27 @@ export const fmtElapsed = (totalSecs: number) => {
 export const fmtDuration = (ms: number) =>
   Math.round(ms / 100) < 600 ? `${(ms / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000))
 
-/** A round badge: tinted disc, ring, glyph. */
+/** One turn of a running spinner, in seconds: steady and unhurried, so it reads as "busy", not "alarm". */
+export const SPIN_S = 1.1
+
+/** A round badge: tinted disc, ring, glyph. While running, a short arc turns around the ring. */
 export const badgeSvg = (color: string, icon: string, size: number, running = false) => {
   const g = icon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const fs = icon.length > 1 ? 12 : 14
   const mark = hasIcon(icon)
-    ? iconGroup(icon, color, 8, 8, 16, 2.1)
+    ? iconGroup(icon, color, 7, 7, 18, 2)
     : `<text x="16" y="${icon.length > 1 ? 20.5 : 21}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="${fs}" font-weight="700" fill="${color}">${g}</text>`
+  // A quarter of the ring, turning: one clear sign of work in place of a ripple that fights the icon.
+  const r = 14.5
+  const c = 2 * Math.PI * r
+  const spin = running
+    ? `<circle cx="16" cy="16" r="${r}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${(c * 0.26).toFixed(2)} ${c.toFixed(2)}">` +
+      `<animateTransform attributeName="transform" type="rotate" from="0 16 16" to="360 16 16" dur="${SPIN_S}s" repeatCount="indefinite"/></circle>`
+    : ''
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">` +
-    `<circle cx="16" cy="16" r="15" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-opacity="0.45"/>` +
-    (running
-      ? `<circle cx="16" cy="16" r="5" fill="none" stroke="${color}" stroke-width="1.6" stroke-opacity="0.6">` +
-        `<animate attributeName="r" from="5" to="14" dur="1.3s" repeatCount="indefinite"/>` +
-        `<animate attributeName="stroke-opacity" from="0.6" to="0" dur="1.3s" repeatCount="indefinite"/></circle>`
-      : '') +
+    `<circle cx="16" cy="16" r="15" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-opacity="${running ? 0.22 : 0.45}"/>` +
+    spin +
     mark +
     `</svg>`
   )
@@ -205,13 +211,6 @@ export const countChanges = (rows: DiffRow[]) => ({
   removed: rows.filter(r => r.sign === '-').length,
 })
 
-// A cheap deterministic hash in [0, 1): the same bar draws the same dots every time.
-const noise = (x: number, y: number) => {
-  let h = (x * 374761393 + y * 668265263) >>> 0
-  h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
-}
-
 /** The surface every card and chart sits on: a soft top-lit gradient and a hairline edge. */
 export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow: '#ffffff' }
 
@@ -225,38 +224,6 @@ export const panelSvg = (id: string, width: number, height: number, rx = 12, edg
   `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="${rx}" fill="url(#${id})"/>` +
   `<path d="M${rx + 2} 1.5H${width - rx - 2}" stroke="${PANEL.glow}" stroke-opacity="0.05" stroke-width="1"/>` +
   `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="${rx}" fill="none" stroke="${PANEL.edge}" stroke-width="1.5">${edgeAnim}</rect>`
-
-/**
- * The band's one ornament: a faint halftone of square dots that gathers toward the
- * top-right corner of the box (x1, y0) and thins to nothing a quarter-circle away.
- * Deterministic, so a redraw gives the same picture.
- */
-export const halftone = (
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  opts: { step?: number; color?: string; opacity?: number; corner?: 'tr' | 'br' } = {},
-) => {
-  const step = opts.step ?? 4
-  const size = +(step * 0.5).toFixed(2)
-  const cols = Math.floor((x1 - x0) / step)
-  const rows = Math.floor((y1 - y0) / step)
-  const cells: string[] = []
-  for (let cx = 0; cx < cols; cx++) {
-    for (let ry = 0; ry < rows; ry++) {
-      const dx = cx / Math.max(1, cols - 1)
-      const dy = ry / Math.max(1, rows - 1)
-      // Full at the corner, gone a quarter-circle away; the noise thins it between.
-      const t = Math.pow(Math.max(0, 1 - Math.hypot(dx, dy)), 1.3)
-      if (noise(cx + 101, ry + 7) >= t) continue
-      const x = x1 - (cx + 1) * step
-      const y = opts.corner === 'br' ? y1 - (ry + 1) * step : y0 + ry * step
-      cells.push(`M${x.toFixed(1)} ${y.toFixed(1)}h${size}v${size}h-${size}z`)
-    }
-  }
-  return cells.length > 0 ? `<path d="${cells.join('')}" fill="${opts.color ?? '#b8b0ab'}" fill-opacity="${opts.opacity ?? 0.16}"/>` : ''
-}
 
 /** ≈-free money for a stat card: always two decimals, $15.62. */
 export const fmtCost = (usd: number) => `$${usd.toFixed(2)}`
@@ -327,22 +294,22 @@ export const pillSvg = (text: string, fg: string, bg: string, height = 24, runni
   const width = tl + lead + Math.round(height * 0.95)
   const t = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const tx = (width + lead) / 2
-  // Three dots that fade in turn, and a slow pulse of the fill. Both are SMIL, which a
-  // surface plays only when the Svg is `isInteractive`; plain shapes, so any renderer draws them.
-  const pulse = running ? `<animate attributeName="fill-opacity" values="1;0.62;1" dur="1.8s" repeatCount="indefinite"/>` : ''
+  // Three dots that light in turn, a wave left to right, eased. One motion only: the capsule
+  // itself stays still. SMIL, which a surface plays only when the Svg is `isInteractive`.
+  const ease = 'calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1"'
   const dots = running
     ? [0, 1, 2]
         .map(
           i =>
-            `<circle cx="${(height * 0.5 + i * gap).toFixed(2)}" cy="${height / 2}" r="${dotR}" fill="${fg}" opacity="0.35">` +
-            `<animate attributeName="opacity" values="0.35;1;0.35" dur="1.2s" begin="${(i * 0.2).toFixed(1)}s" repeatCount="indefinite"/></circle>`,
+            `<circle cx="${(height * 0.5 + i * gap).toFixed(2)}" cy="${height / 2}" r="${dotR}" fill="${fg}" opacity="0.3">` +
+            `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${(i * 0.18).toFixed(2)}s" repeatCount="indefinite" ${ease}/></circle>`,
         )
         .join('')
     : ''
   const mark = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3) : ''
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}">${pulse}</rect>` +
+    `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}"/>` +
     dots +
     mark +
     `<text x="${tx}" y="${(height / 2 + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}" textLength="${tl}" lengthAdjust="spacingAndGlyphs">${t}</text>` +
@@ -351,11 +318,12 @@ export const pillSvg = (text: string, fg: string, bg: string, height = 24, runni
 }
 
 /**
- * A loading bar with no number behind it: a dark rounded track sprinkled with faint
- * dots and, while `live`, a soft glow that sweeps across it, lighting a dithered
- * field of violet dots as it passes. Idle, it is just the quiet track.
+ * The band's activity bar, with no number behind it: a dark capsule holding a slim groove.
+ * While `live`, a soft comet of the accent glides along the groove, easing in and out, with a
+ * faint halo under it. Idle, it is just the quiet groove.
  *
- * The sweep is SMIL, which a surface plays only for an `isInteractive` Svg.
+ * The glide is SMIL, which a surface plays only for an `isInteractive` Svg. The picture is the
+ * same for the same size, so the band's once-a-second redraw does not restart it.
  * `padBottom` adds transparent room under the bar, in px.
  */
 export const loadingSvg = (
@@ -368,45 +336,29 @@ export const loadingSvg = (
   const h = height
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
   const uid = `l${w}_${h}` // ids stay unique if two bars ever share a document
-  const step = Math.max(3, Math.round(h / 6.5))
-  const size = +(step * 0.55).toFixed(2)
-  const rows = Math.max(1, Math.floor((h - 4) / step))
-  const top = (h - rows * step) / 2
-
-  const faint: string[] = []
-  const bright: string[] = []
-  const dim: string[] = []
-  for (let cx = 0; cx * step + step < w - 6; cx++) {
-    const x = 8 + cx * step
-    for (let ry = 0; ry < rows; ry++) {
-      const r = noise(cx, ry)
-      const y = top + ry * step
-      const cell = `M${x} ${y.toFixed(1)}h${size}v${size}h-${size}z`
-      if (r < 0.1) faint.push(cell)
-      if (r < 0.74) (r < 0.36 ? bright : dim).push(cell)
-    }
-  }
-
-  const gw = Math.round(w * 0.4)
-  const sweep = opts.live
+  const inset = Math.round(h / 2)
+  const gh = Math.max(3, Math.round(h * 0.24)) // groove height
+  const gy = (h - gh) / 2
+  const gw = w - 2 * inset
+  const comet = Math.round(gw * 0.32)
+  const ease = 'calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"'
+  const glide = `<animate attributeName="x" from="${inset - comet}" to="${inset + gw}" dur="1.8s" repeatCount="indefinite" ${ease}/>`
+  const live = opts.live
     ? `<defs>` +
-      `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
-      `<mask id="${uid}m" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}">` +
-      `<rect x="${-gw}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" repeatCount="indefinite"/></rect>` +
-      `</mask></defs>` +
-      `<g mask="url(#${uid}m)">` +
-      `<rect width="${w}" height="${h}" rx="${h / 2}" fill="${color}" fill-opacity="0.2"/>` +
-      `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
-      `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
-      `</g>`
+      `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${color}" stop-opacity="0"/><stop offset="0.7" stop-color="${color}" stop-opacity="0.9"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient>` +
+      `<clipPath id="${uid}c"><rect x="${inset}" y="${gy}" width="${gw}" height="${gh}" rx="${gh / 2}"/></clipPath>` +
+      `<clipPath id="${uid}t"><rect width="${w}" height="${h}" rx="${h / 2}"/></clipPath>` +
+      `</defs>` +
+      // The halo: the same comet, wider and faint, on the capsule.
+      `<g clip-path="url(#${uid}t)"><rect x="${inset - comet}" y="0" width="${comet}" height="${h}" fill="url(#${uid}g)" opacity="0.16">${glide}</rect></g>` +
+      `<g clip-path="url(#${uid}c)"><rect x="${inset - comet}" y="${gy}" width="${comet}" height="${gh}" fill="url(#${uid}g)">${glide}</rect></g>`
     : ''
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}">` +
     `<rect width="${w}" height="${h}" rx="${h / 2}" fill="#262323"/>` +
-    `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.12"/>` +
-    `<path d="${faint.join('')}" fill="#8a8480" fill-opacity="0.3"/>` +
-    sweep +
+    `<rect x="${inset}" y="${gy}" width="${gw}" height="${gh}" rx="${gh / 2}" fill="${color}" fill-opacity="${opts.live ? 0.14 : 0.08}"/>` +
+    live +
     `</svg>`
   )
 }
@@ -422,7 +374,7 @@ export const dotSvg = (color: string, live: boolean, size = 14) =>
   `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
   `</svg>`
 
-/** While a turn runs, a card's icon disc breathes in its own colour over this period. */
+/** While a turn runs, a live card's icon tile breathes in its own colour over this period. */
 export const CARD_BREATHE_MS = 2400
 
 /** SMIL `begin` that puts a looping animation at the phase it would have reached at `atMs`,
@@ -430,42 +382,51 @@ export const CARD_BREATHE_MS = 2400
 export const phaseBegin = (atMs: number, periodMs: number) =>
   `${(-(((atMs % periodMs) + periodMs) % periodMs) / 1000).toFixed(3)}s`
 
+/** Card geometry: the icon tile on the left, label over value beside it. */
+export const CARD = { height: 52, tile: 36, icon: 22, textX: 54, pad: 16 }
+
 /**
- * A stat card as SVG. When `changed`, the value rises into place and the border
- * flashes the accent colour once; an unchanged card is a still picture.
- * With `live` (a turn is running), the icon disc breathes.
+ * A stat card as SVG: a tinted icon tile on the left, the label over the value beside it.
+ * When `changed`, the value rises into place and the border flashes the card's own colour
+ * once; an unchanged card is a still picture. With `live` (this card's figure is moving, a
+ * turn is running), the icon tile breathes, phase-locked to the clock.
  */
 export const cardSvg = (
   label: string,
   value: string,
   opts: { changed?: boolean; accent?: string; icon?: IconName; iconColor?: string; live?: { now: number } } = {},
 ) => {
-  const accent = opts.accent ?? '#9b8cf7'
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const width = Math.max(112, Math.round(value.length * 10 + 28))
-  const height = 50
+  const iconColor = opts.iconColor ?? '#8f8985'
+  const flashColor = opts.iconColor ?? opts.accent ?? '#9b8cf7'
+  const textX = opts.icon ? CARD.textX : 14
+  const textW = Math.max(labelWidth(value, 17), labelWidth(label, 11.5))
+  const width = Math.max(opts.icon ? 120 : 96, textX + textW + CARD.pad)
+  const height = CARD.height
   const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
   const border = opts.changed
-    ? `<animate attributeName="stroke" from="${accent}" to="${PANEL.edge}" dur="1.1s" fill="freeze"/>`
+    ? `<animate attributeName="stroke" from="${flashColor}" to="${PANEL.edge}" dur="1.1s" fill="freeze" ${spline}/>`
     : ''
   const rise = opts.changed
     ? `<animate attributeName="opacity" from="0" to="1" dur="0.45s" fill="freeze" ${spline}/>` +
-      `<animateTransform attributeName="transform" type="translate" from="0 8" to="0 0" dur="0.45s" fill="freeze" ${spline}/>`
+      `<animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" dur="0.45s" fill="freeze" ${spline}/>`
     : ''
-  const iconColor = opts.iconColor ?? '#8f8985'
-  // While working, the icon disc breathes, phase-locked to the clock so a redraw continues it.
   const ease = '0.45 0 0.55 1'
   const breathe = opts.live
-    ? `<animate attributeName="fill-opacity" values="0.13;0.3;0.13" keyTimes="0;0.5;1" calcMode="spline" keySplines="${ease};${ease}" dur="${CARD_BREATHE_MS / 1000}s" begin="${phaseBegin(opts.live.now, CARD_BREATHE_MS)}" repeatCount="indefinite"/>`
+    ? `<animate attributeName="fill-opacity" values="0.14;0.3;0.14" keyTimes="0;0.5;1" calcMode="spline" keySplines="${ease};${ease}" dur="${CARD_BREATHE_MS / 1000}s" begin="${phaseBegin(opts.live.now, CARD_BREATHE_MS)}" repeatCount="indefinite"/>`
+    : ''
+  const t = (height - CARD.tile) / 2
+  const io = t + (CARD.tile - CARD.icon) / 2
+  const tile = opts.icon
+    ? `<rect x="${t}" y="${t}" width="${CARD.tile}" height="${CARD.tile}" rx="10" fill="${iconColor}" fill-opacity="0.14" stroke="${iconColor}" stroke-opacity="0.3">${breathe}</rect>` +
+      iconGroup(opts.icon, iconColor, io, io, CARD.icon, 2)
     : ''
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     panelSvg('cardg', width, height, 12, border) +
-    halftone(Math.round(width * 0.45), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
-    // The icon sits on a disc tinted its own colour, the way a tool badge does.
-    (opts.icon ? `<circle cx="20.5" cy="15" r="11" fill="${iconColor}" fill-opacity="0.13">${breathe}</circle>` + iconGroup(opts.icon, iconColor, 13, 7.5, 15, 2.1) : '') +
-    `<text x="${opts.icon ? 34 : 14}" y="19" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#8f8985">${esc(label)}</text>` +
-    `<text x="14" y="39" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#ece7e4">${esc(value)}${rise}</text>` +
+    tile +
+    `<text x="${textX}" y="21" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#9a938f">${esc(label)}</text>` +
+    `<text x="${textX}" y="40" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#f1ece8">${esc(value)}${rise}</text>` +
     `</svg>`
   return { svg, width, height }
 }

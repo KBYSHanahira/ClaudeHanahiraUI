@@ -18,7 +18,7 @@ const ring = (percent: number, color: string, size: number, icon: Parameters<typ
   const stroke = 5
   const r = (44 - stroke) / 2
   const c = 2 * Math.PI * r
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}"><circle cx="22" cy="22" r="13" fill="${color}" fill-opacity="0.12"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${((percent / 100) * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>${iconGroup(icon, color, 15, 15, 14, 2.4)}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}"><circle cx="22" cy="22" r="15" fill="${color}" fill-opacity="0.13"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${((percent / 100) * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>${iconGroup(icon, color, 12, 12, 20, 2.1)}</svg>`
 }
 
 const now = 1_000_000

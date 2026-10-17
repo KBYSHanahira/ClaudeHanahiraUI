@@ -161,9 +161,11 @@ describe('agent card', () => {
     expect(agentCardSvg(mk({ name: 'a<b>&c' }), 1).svg).toContain('a&lt;b&gt;&amp;c')
   })
 
-  test('running pulses its border and sweeps its bar; a finished card is still', () => {
+  test('running turns a spinner and glides its bar one way, border still; a finished card is still', () => {
     const run = agentCardSvg(mk(), 5000).svg
-    expect(run).toContain('values="#3a3836;')
+    expect(run).toContain('type="rotate"')
+    expect(run).toContain('keySplines="0.65 0 0.35 1"')
+    expect(run).not.toContain('attributeName="stroke"')
     expect(run).toContain('repeatCount="indefinite"')
     const done = agentCardSvg(mk({ status: 'done', endedAt: 4000 }), 5000).svg
     expect(done).not.toContain('<animate')
