@@ -203,24 +203,18 @@ describe('running pill animation', () => {
 
 
 describe('loadingSvg', () => {
-  test('idle is a quiet groove: no animation, no clip', () => {
+  test('idle is a quiet track: no animation, no mask', () => {
     const svg = loadingSvg(500, 18, '#9b8cf7')
     expect(svg).toContain('width="500" height="18"')
     expect(svg).not.toContain('<animate')
-    expect(svg).not.toContain('clipPath')
+    expect(svg).not.toContain('<mask')
   })
 
-  test('live glides an eased comet along the groove, one way', () => {
+  test('live sweeps a soft glow across the track', () => {
     const svg = loadingSvg(500, 18, '#9b8cf7', { live: true })
-    expect(svg).toContain('<clipPath id="l500_18c"')
-    // groove from 9 to 491 (482 wide), comet 32% of it: starts just left of the groove, ends past it
-    expect(svg).toContain('<animate attributeName="x" from="-145" to="491"')
-    expect(svg).toContain('keySplines="0.65 0 0.35 1"')
+    expect(svg).toContain('<mask id="l500_18m"')
+    expect(svg).toContain('<animate attributeName="x" from="-200" to="500"')
     expect(svg).toContain('repeatCount="indefinite"')
-  })
-
-  test('draws no dither: the groove is one shape', () => {
-    expect(loadingSvg(500, 18, '#9b8cf7')).not.toContain('h1.')
   })
 
   test('draws no number: no label, no pill', () => {
@@ -306,8 +300,9 @@ describe('icons', () => {
     expect(cardSvg('Cost', '$1').svg).toContain('x="14" y="21"')
   })
 
-  test('the card has no halftone texture', () => {
-    expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).not.toMatch(/h\d+(\.\d+)?v\d/)
+  test('the card carries the halftone texture in its own colour', () => {
+    const svg = cardSvg('Cost', '$1', { icon: 'coin', iconColor: '#f2c94c' }).svg
+    expect(svg).toMatch(/<path d="M[^"]*h2v2h-2z[^"]*" fill="#f2c94c" fill-opacity="0.22"\/>/)
   })
 })
 

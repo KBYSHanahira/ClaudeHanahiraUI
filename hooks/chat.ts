@@ -211,6 +211,13 @@ export const countChanges = (rows: DiffRow[]) => ({
   removed: rows.filter(r => r.sign === '-').length,
 })
 
+// A cheap deterministic hash in [0, 1): the same bar draws the same dots every time.
+const noise = (x: number, y: number) => {
+  let h = (x * 374761393 + y * 668265263) >>> 0
+  h = ((h ^ (h >>> 13)) * 1274126177) >>> 0
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
 /** The surface every card and chart sits on: a soft top-lit gradient and a hairline edge. */
 export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow: '#ffffff' }
 
@@ -224,6 +231,38 @@ export const panelSvg = (id: string, width: number, height: number, rx = 12, edg
   `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="${rx}" fill="url(#${id})"/>` +
   `<path d="M${rx + 2} 1.5H${width - rx - 2}" stroke="${PANEL.glow}" stroke-opacity="0.05" stroke-width="1"/>` +
   `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="${rx}" fill="none" stroke="${PANEL.edge}" stroke-width="1.5">${edgeAnim}</rect>`
+
+/**
+ * The band's one ornament: a faint halftone of square dots that gathers toward the
+ * top-right corner of the box (x1, y0) and thins to nothing a quarter-circle away.
+ * Deterministic, so a redraw gives the same picture.
+ */
+export const halftone = (
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  opts: { step?: number; color?: string; opacity?: number; corner?: 'tr' | 'br' } = {},
+) => {
+  const step = opts.step ?? 4
+  const size = +(step * 0.5).toFixed(2)
+  const cols = Math.floor((x1 - x0) / step)
+  const rows = Math.floor((y1 - y0) / step)
+  const cells: string[] = []
+  for (let cx = 0; cx < cols; cx++) {
+    for (let ry = 0; ry < rows; ry++) {
+      const dx = cx / Math.max(1, cols - 1)
+      const dy = ry / Math.max(1, rows - 1)
+      // Full at the corner, gone a quarter-circle away; the noise thins it between.
+      const t = Math.pow(Math.max(0, 1 - Math.hypot(dx, dy)), 1.3)
+      if (noise(cx + 101, ry + 7) >= t) continue
+      const x = x1 - (cx + 1) * step
+      const y = opts.corner === 'br' ? y1 - (ry + 1) * step : y0 + ry * step
+      cells.push(`M${x.toFixed(1)} ${y.toFixed(1)}h${size}v${size}h-${size}z`)
+    }
+  }
+  return cells.length > 0 ? `<path d="${cells.join('')}" fill="${opts.color ?? '#b8b0ab'}" fill-opacity="${opts.opacity ?? 0.16}"/>` : ''
+}
 
 /** ≈-free money for a stat card: always two decimals, $15.62. */
 export const fmtCost = (usd: number) => `$${usd.toFixed(2)}`
@@ -318,12 +357,11 @@ export const pillSvg = (text: string, fg: string, bg: string, height = 24, runni
 }
 
 /**
- * The band's activity bar, with no number behind it: a dark capsule holding a slim groove.
- * While `live`, a soft comet of the accent glides along the groove, easing in and out, with a
- * faint halo under it. Idle, it is just the quiet groove.
+ * A loading bar with no number behind it: a dark rounded track sprinkled with faint
+ * dots and, while `live`, a soft glow that sweeps across it, lighting a dithered
+ * field of violet dots as it passes. Idle, it is just the quiet track.
  *
- * The glide is SMIL, which a surface plays only for an `isInteractive` Svg. The picture is the
- * same for the same size, so the band's once-a-second redraw does not restart it.
+ * The sweep is SMIL, which a surface plays only for an `isInteractive` Svg.
  * `padBottom` adds transparent room under the bar, in px.
  */
 export const loadingSvg = (
@@ -336,29 +374,45 @@ export const loadingSvg = (
   const h = height
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
   const uid = `l${w}_${h}` // ids stay unique if two bars ever share a document
-  const inset = Math.round(h / 2)
-  const gh = Math.max(3, Math.round(h * 0.24)) // groove height
-  const gy = (h - gh) / 2
-  const gw = w - 2 * inset
-  const comet = Math.round(gw * 0.32)
-  const ease = 'calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"'
-  const glide = `<animate attributeName="x" from="${inset - comet}" to="${inset + gw}" dur="1.8s" repeatCount="indefinite" ${ease}/>`
-  const live = opts.live
+  const step = Math.max(3, Math.round(h / 6.5))
+  const size = +(step * 0.55).toFixed(2)
+  const rows = Math.max(1, Math.floor((h - 4) / step))
+  const top = (h - rows * step) / 2
+
+  const faint: string[] = []
+  const bright: string[] = []
+  const dim: string[] = []
+  for (let cx = 0; cx * step + step < w - 6; cx++) {
+    const x = 8 + cx * step
+    for (let ry = 0; ry < rows; ry++) {
+      const r = noise(cx, ry)
+      const y = top + ry * step
+      const cell = `M${x} ${y.toFixed(1)}h${size}v${size}h-${size}z`
+      if (r < 0.1) faint.push(cell)
+      if (r < 0.74) (r < 0.36 ? bright : dim).push(cell)
+    }
+  }
+
+  const gw = Math.round(w * 0.4)
+  const sweep = opts.live
     ? `<defs>` +
-      `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${color}" stop-opacity="0"/><stop offset="0.7" stop-color="${color}" stop-opacity="0.9"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient>` +
-      `<clipPath id="${uid}c"><rect x="${inset}" y="${gy}" width="${gw}" height="${gh}" rx="${gh / 2}"/></clipPath>` +
-      `<clipPath id="${uid}t"><rect width="${w}" height="${h}" rx="${h / 2}"/></clipPath>` +
-      `</defs>` +
-      // The halo: the same comet, wider and faint, on the capsule.
-      `<g clip-path="url(#${uid}t)"><rect x="${inset - comet}" y="0" width="${comet}" height="${h}" fill="url(#${uid}g)" opacity="0.16">${glide}</rect></g>` +
-      `<g clip-path="url(#${uid}c)"><rect x="${inset - comet}" y="${gy}" width="${comet}" height="${gh}" fill="url(#${uid}g)">${glide}</rect></g>`
+      `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+      `<mask id="${uid}m" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}">` +
+      `<rect x="${-gw}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" repeatCount="indefinite"/></rect>` +
+      `</mask></defs>` +
+      `<g mask="url(#${uid}m)">` +
+      `<rect width="${w}" height="${h}" rx="${h / 2}" fill="${color}" fill-opacity="0.2"/>` +
+      `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
+      `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
+      `</g>`
     : ''
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}">` +
     `<rect width="${w}" height="${h}" rx="${h / 2}" fill="#262323"/>` +
-    `<rect x="${inset}" y="${gy}" width="${gw}" height="${gh}" rx="${gh / 2}" fill="${color}" fill-opacity="${opts.live ? 0.14 : 0.08}"/>` +
-    live +
+    `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.12"/>` +
+    `<path d="${faint.join('')}" fill="#8a8480" fill-opacity="0.3"/>` +
+    sweep +
     `</svg>`
   )
 }
@@ -424,6 +478,8 @@ export const cardSvg = (
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     panelSvg('cardg', width, height, 12, border) +
+    // The halftone gathers in the top-right corner and starts past the label, so no dot sits on text.
+    halftone(Math.max(Math.round(width * 0.45), Math.ceil(textX + labelWidth(label, 11.5) + 6)), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
     tile +
     `<text x="${textX}" y="21" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#9a938f">${esc(label)}</text>` +
     `<text x="${textX}" y="40" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#f1ece8">${esc(value)}${rise}</text>` +
