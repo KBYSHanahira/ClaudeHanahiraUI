@@ -422,23 +422,23 @@ export const dotSvg = (color: string, live: boolean, size = 14) =>
   `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
   `</svg>`
 
-/**
- * A stat card as SVG. When `changed`, the value rises into place and the border
- * flashes the accent colour once; an unchanged card is a still picture.
- */
-/** Card motion while a turn runs: one sweep cycle, how long the sweep itself takes, and the
- * delay from one card to the next so the light rolls along the row. */
-export const CARD_SWEEP = { cycleMs: 3600, sweepMs: 1100, staggerMs: 160, breatheMs: 2400 }
+/** While a turn runs, a card's icon disc breathes in its own colour over this period. */
+export const CARD_BREATHE_MS = 2400
 
 /** SMIL `begin` that puts a looping animation at the phase it would have reached at `atMs`,
  * so a redraw (the band redraws every second) continues the motion instead of restarting it. */
 export const phaseBegin = (atMs: number, periodMs: number) =>
   `${(-(((atMs % periodMs) + periodMs) % periodMs) / 1000).toFixed(3)}s`
 
+/**
+ * A stat card as SVG. When `changed`, the value rises into place and the border
+ * flashes the accent colour once; an unchanged card is a still picture.
+ * With `live` (a turn is running), the icon disc breathes.
+ */
 export const cardSvg = (
   label: string,
   value: string,
-  opts: { changed?: boolean; accent?: string; icon?: IconName; iconColor?: string; live?: { now: number; index: number } } = {},
+  opts: { changed?: boolean; accent?: string; icon?: IconName; iconColor?: string; live?: { now: number } } = {},
 ) => {
   const accent = opts.accent ?? '#9b8cf7'
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -453,20 +453,10 @@ export const cardSvg = (
       `<animateTransform attributeName="transform" type="translate" from="0 8" to="0 0" dur="0.45s" fill="freeze" ${spline}/>`
     : ''
   const iconColor = opts.iconColor ?? '#8f8985'
-  // While working: a soft diagonal light sweeps across the card, each card a beat after the one
-  // on its left, and the icon disc breathes in its own colour. Both are phase-locked to the clock.
-  const at = opts.live ? opts.live.now - opts.live.index * CARD_SWEEP.staggerMs : 0
+  // While working, the icon disc breathes, phase-locked to the clock so a redraw continues it.
   const ease = '0.45 0 0.55 1'
   const breathe = opts.live
-    ? `<animate attributeName="fill-opacity" values="0.13;0.3;0.13" keyTimes="0;0.5;1" calcMode="spline" keySplines="${ease};${ease}" dur="${CARD_SWEEP.breatheMs / 1000}s" begin="${phaseBegin(opts.live.now, CARD_SWEEP.breatheMs)}" repeatCount="indefinite"/>`
-    : ''
-  const gw = Math.round(width * 0.6)
-  const k = +(CARD_SWEEP.sweepMs / CARD_SWEEP.cycleMs).toFixed(4)
-  const sheen = opts.live
-    ? `<defs><clipPath id="cardc"><rect x="1.5" y="1.5" width="${width - 3}" height="${height - 3}" rx="11"/></clipPath>` +
-      `<linearGradient id="cards" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>` +
-      `<g clip-path="url(#cardc)"><rect x="${-gw}" y="0" width="${gw}" height="${height}" fill="url(#cards)" transform="skewX(-20)">` +
-      `<animate attributeName="x" values="${-gw};${width + 24};${width + 24}" keyTimes="0;${k};1" calcMode="spline" keySplines="0.3 0 0.2 1;0 0 1 1" dur="${CARD_SWEEP.cycleMs / 1000}s" begin="${phaseBegin(at, CARD_SWEEP.cycleMs)}" repeatCount="indefinite"/></rect></g>`
+    ? `<animate attributeName="fill-opacity" values="0.13;0.3;0.13" keyTimes="0;0.5;1" calcMode="spline" keySplines="${ease};${ease}" dur="${CARD_BREATHE_MS / 1000}s" begin="${phaseBegin(opts.live.now, CARD_BREATHE_MS)}" repeatCount="indefinite"/>`
     : ''
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
@@ -476,7 +466,6 @@ export const cardSvg = (
     (opts.icon ? `<circle cx="20.5" cy="15" r="11" fill="${iconColor}" fill-opacity="0.13">${breathe}</circle>` + iconGroup(opts.icon, iconColor, 13, 7.5, 15, 2.1) : '') +
     `<text x="${opts.icon ? 34 : 14}" y="19" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#8f8985">${esc(label)}</text>` +
     `<text x="14" y="39" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#ece7e4">${esc(value)}${rise}</text>` +
-    sheen +
     `</svg>`
   return { svg, width, height }
 }

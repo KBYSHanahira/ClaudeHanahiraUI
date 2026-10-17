@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CARD_SWEEP, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+import { CARD_BREATHE_MS, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
   fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
 
 describe('describe', () => {
@@ -249,20 +249,13 @@ describe('more motion', () => {
     expect(cardSvg('Cost', '≈$15.62').svg).not.toContain('<animate')
   })
 
-  test('a live card sweeps and breathes; an idle one stays still', () => {
-    const live = cardSvg('Cost', '$1', { icon: 'coin', live: { now: 10_000, index: 0 } }).svg
-    expect(live).toContain('clip-path="url(#cardc)"')
-    expect(live).toContain('attributeName="x"')
+  test('a live card breathes, with no sweep; an idle one stays still', () => {
+    const live = cardSvg('Cost', '$1', { icon: 'coin', live: { now: 1_000 } }).svg
     expect(live).toContain('attributeName="fill-opacity" values="0.13;0.3;0.13"')
+    expect(live).toContain(`begin="${phaseBegin(1_000, CARD_BREATHE_MS)}"`)
+    expect(live).not.toContain('clip-path')
+    expect(live).not.toContain('attributeName="x"')
     expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).not.toContain('<animate')
-  })
-
-  test('the sweep is phase-locked: a redraw a second later continues it, cards trail each other', () => {
-    const begin = (now: number, index: number) =>
-      /attributeName="x"[^>]*begin="(-[\d.]+)s"/.exec(cardSvg('T', '1', { live: { now, index } }).svg)?.[1]
-    expect(begin(1_000, 0)).toBe(phaseBegin(1_000, CARD_SWEEP.cycleMs).slice(0, -1))
-    expect((Number(begin(2_000, 0)) - Number(begin(1_000, 0))).toFixed(3)).toBe('-1.000')
-    expect((Number(begin(1_000, 0)) - Number(begin(1_000, 1))).toFixed(3)).toBe((-CARD_SWEEP.staggerMs / 1000).toFixed(3))
   })
 
   test('phaseBegin wraps and never goes positive', () => {
