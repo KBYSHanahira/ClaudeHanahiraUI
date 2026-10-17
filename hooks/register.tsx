@@ -506,7 +506,10 @@ export const register: Register = on => {
       cardChanged.set(c.label, changed)
       lastCard.set(c.label, c.value)
     }
-    const cardArt = cards.map(c => cardSvg(c.label, c.value, { changed: cardChanged.get(c.label) === true, accent: THEME.accent, icon: c.icon, iconColor: c.color }))
+    const cardLive = e.props.isWorking // cards shimmer while a turn runs
+    const cardArt = cards.map((c, i) =>
+      cardSvg(c.label, c.value, { changed: cardChanged.get(c.label) === true, accent: THEME.accent, icon: c.icon, iconColor: c.color, live: cardLive ? { now: nowMs, index: i } : undefined }),
+    )
 
     // The tool counter flashes only when it grows (a reset to 0 at a new prompt stays quiet).
     const toolsGrew = st.tools === toolsSeen.count ? toolsSeen.grew : st.tools > lastTools
@@ -676,7 +679,7 @@ export const register: Register = on => {
                 alt={`${c.label} ${c.value}`}
                 width={cardArt[i].width}
                 height={cardArt[i].height}
-                isInteractive={cardChanged.get(c.label) === true}
+                isInteractive={cardLive || cardChanged.get(c.label) === true}
               />
             ) : (
               <Box

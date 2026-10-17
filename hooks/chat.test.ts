@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { KIND_ICON, fmtReset, badgeSvg, cardSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+import { CARD_SWEEP, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
   fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
 
 describe('describe', () => {
@@ -247,6 +247,28 @@ describe('more motion', () => {
     expect(moved.svg).toContain('animateTransform')
     expect(moved.svg).toContain('attributeName="stroke"')
     expect(cardSvg('Cost', '≈$15.62').svg).not.toContain('<animate')
+  })
+
+  test('a live card sweeps and breathes; an idle one stays still', () => {
+    const live = cardSvg('Cost', '$1', { icon: 'coin', live: { now: 10_000, index: 0 } }).svg
+    expect(live).toContain('clip-path="url(#cardc)"')
+    expect(live).toContain('attributeName="x"')
+    expect(live).toContain('attributeName="fill-opacity" values="0.13;0.3;0.13"')
+    expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).not.toContain('<animate')
+  })
+
+  test('the sweep is phase-locked: a redraw a second later continues it, cards trail each other', () => {
+    const begin = (now: number, index: number) =>
+      /attributeName="x"[^>]*begin="(-[\d.]+)s"/.exec(cardSvg('T', '1', { live: { now, index } }).svg)?.[1]
+    expect(begin(1_000, 0)).toBe(phaseBegin(1_000, CARD_SWEEP.cycleMs).slice(0, -1))
+    expect((Number(begin(2_000, 0)) - Number(begin(1_000, 0))).toFixed(3)).toBe('-1.000')
+    expect((Number(begin(1_000, 0)) - Number(begin(1_000, 1))).toFixed(3)).toBe((-CARD_SWEEP.staggerMs / 1000).toFixed(3))
+  })
+
+  test('phaseBegin wraps and never goes positive', () => {
+    expect(phaseBegin(0, 3600)).toBe('0.000s')
+    expect(phaseBegin(3700, 3600)).toBe('-0.100s')
+    expect(phaseBegin(-100, 3600)).toBe('-3.500s')
   })
 
   test('a card carries its label and value, escaped, and grows with the value', () => {
