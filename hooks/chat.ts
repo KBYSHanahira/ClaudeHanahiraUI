@@ -361,7 +361,7 @@ export const pillSvg = (text: string, fg: string, bg: string, height = 24, runni
  * dots and, while `live`, a soft glow that sweeps across it, lighting a dithered
  * field of violet dots as it passes. Idle, it is just the quiet track.
  *
- * The sweep is SMIL, which a surface plays only for an `isInteractive` Svg.
+ * The sweep is SMIL, phase-locked to `now`, so a redraw carries it on.
  * `padBottom` adds transparent room under the bar, in px.
  */
 export const loadingSvg = (
@@ -454,10 +454,11 @@ const CLOCK_ROLL_S = 0.35
  * reads as one continuous tick; without SMIL the strips already stand at `elapsedMs`.
  */
 export const clockOdometer = (elapsedMs: number, x: number, y: number, fs: number, lineH: number) => {
-  const shape = fmtClock(elapsedMs)
+  // Layout and numerals from the same whole second, so a new digit never shows as a leading 0.
+  const sec = Math.max(0, Math.floor(elapsedMs / 1000))
+  const shape = fmtClock(sec * 1000)
   const digitW = +(fs * 0.62).toFixed(2)
   const colonW = +(fs * 0.34).toFixed(2)
-  const sec = Math.max(0, Math.floor(elapsedMs / 1000))
   // From the right: unit in seconds and how many numerals the place cycles through.
   const places: Array<[number, number]> = [[1, 10], [10, 6], [60, 10], [600, 6], [3600, 10], [36000, 10]]
   const font = `font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f1ece8" text-anchor="middle"`
@@ -528,8 +529,10 @@ export const cardSvg = (
   const fs = 17
   const lineH = 22
   const odo = opts.clock ? clockOdometer(opts.clock.elapsedMs, textX, 40, fs, lineH) : null
-  const fromW = opts.changed && opts.from !== undefined ? labelWidth(opts.from, fs) : 0
-  const textW = Math.max(odo ? odo.width : labelWidth(value, fs), fromW, labelWidth(label, 11.5))
+  // Sized by the value it settles on, measured the same way whether the clock ticks or not:
+  // the card never changes width once a roll ends, nor when a turn starts or stops. (The
+  // odometer is narrower than this measure, and a wider old value is clipped as it leaves.)
+  const textW = Math.max(labelWidth(value, fs), labelWidth(label, 11.5))
   const width = Math.max(opts.icon ? 120 : 96, textX + textW + CARD.pad)
   const height = CARD.height
   const spline = `calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" begin="${sinceBegin(opts.ago)}"`

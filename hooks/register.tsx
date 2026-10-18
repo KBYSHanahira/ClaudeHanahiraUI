@@ -112,9 +112,6 @@ export const tone = (percent: number) => (percent >= 85 ? '#f2736b' : percent >=
 /** Ring colour:the theme's warm tone, red once the window is nearly spent. */
 export const ringColor = (percent: number) => (percent >= 85 ? '#f2736b' : THEME.warm)
 
-/** True when a ring will move: it grows from another value, or pulses near full. */
-export const ringMoves = (percent: number, from: number, pulse: boolean) => pulse || Math.abs(percent - from) > 0.5
-
 /**
  * A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. Given `from`
  * (the percent it was last drawn at) the arc grows from there; `pulse` breathes it.
@@ -164,7 +161,6 @@ const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 
 // What the stat figures were last drawn as: an animation plays only when a value changes.
-const lastRing = new Map<string, number>()
 
 /** How long a figure counts as "just changed": its roll plays inside this window, and after
  * it the picture is still, so a redraw or a reloaded image never replays an old change. */
@@ -194,6 +190,11 @@ export const noteChange = <T,>(
   if (now - c.at >= CHANGE_MS) return {}
   freshUntil = Math.max(freshUntil, c.at + CHANGE_MS)
   return { from: c.from as T, ago: now - c.at }
+}
+
+/** Drops what noteChange remembers under `prefix` for every id not in `keep` (agents gone). */
+export const forgetChanges = (prefix: string, keep: Set<string>) => {
+  for (const key of changes.keys()) if (key.startsWith(prefix) && !keep.has(key.slice(prefix.length))) changes.delete(key)
 }
 
 type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban' }
@@ -515,7 +516,8 @@ export const register: Register = on => {
     const cards = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c' },
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7' },
-      { label: 'Time', value: fmtClock((run ?? 0) + liveMs), icon: 'stopwatch' as IconName, color: '#7bd88f' },
+      // Whole seconds, floored: the same second the odometer shows, so text and digits agree.
+      { label: 'Time', value: fmtClock(Math.floor(((run ?? 0) + liveMs) / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7' },
       { label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' },
     ]
@@ -564,6 +566,15 @@ export const register: Register = on => {
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
     const crew = visibleAgents(asList(roster), nowMs, { max: THEME.listAgents, keepMs: THEME.keepFinishedMs })
+    // Forget agents that can no longer be shown (finished and past their keep time), so the
+    // per-agent memory stays as small as the strip instead of growing for the whole session.
+    const live = new Set(
+      asList(roster)
+        .filter(a => a.status === 'running' || (a.endedAt !== null && nowMs - a.endedAt <= THEME.keepFinishedMs))
+        .map(a => a.id),
+    )
+    forgetChanges('agent:', live)
+    for (const m of [firstSeenAt, statusAt]) for (const id of m.keys()) if (!live.has(id)) m.delete(id)
     const crewCards = crew.shown.map(a => {
       if (!firstSeenAt.has(a.id)) firstSeenAt.set(a.id, nowMs)
       const seen = statusAt.get(a.id)
@@ -624,7 +635,6 @@ export const register: Register = on => {
       const rc = noteChange(`ring:${t.key}`, t.percent, nowMs, { first: 0 })
       ringFrom.set(t.key, rc.from ?? t.percent)
       ringAgo.set(t.key, rc.ago)
-      lastRing.set(t.key, t.percent)
     }
     // Once the last change has played, draw once more so every picture settles still, even
     // when nothing else would redraw the band (an idle session).
@@ -794,7 +804,8 @@ export const register: Register = on => {
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
     const pill = statusPill(p.tool, p)
     const ms = durations.get(p.tool_use_id)
-    const now = await $.clock.now() // loops pick up their phase, so a redraw does not restart them
+    // Only a running row loops (spinner, busy pill); it picks up its phase so a redraw carries it on.
+    const now = p.isRunning ? await $.clock.now() : 0
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
@@ -884,7 +895,7 @@ export const register: Register = on => {
       .join(' · ')
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
-    const now = await $.clock.now()
+    const now = isRunning ? await $.clock.now() : 0
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored

@@ -401,3 +401,22 @@ describe('redraws carry motion on', () => {
     expect(countSvg(5, { changed: true, from: 4, ago: 250 }).svg).toContain('begin="-0.250s"')
   })
 })
+
+describe('cards hold their width', () => {
+  test('a card is as wide while it rolls as once it settles', () => {
+    const rolling = cardSvg('Model', 'Opus 5.5', { changed: true, from: 'Sonnet 5.5', icon: 'bot' })
+    const still = cardSvg('Model', 'Opus 5.5', { icon: 'bot' })
+    expect(rolling.width).toBe(still.width)
+  })
+
+  test('the Time card is as wide ticking as it is still', () => {
+    const ticking = cardSvg('Time', '12:39', { icon: 'stopwatch', clock: { elapsedMs: 759_000 } })
+    const still = cardSvg('Time', '12:39', { icon: 'stopwatch' })
+    expect(ticking.width).toBe(still.width)
+  })
+
+  test('the odometer lays out the second it shows: no leading 0 just before 10:00', () => {
+    const { markup } = clockOdometer(599_600, 0, 40, 17, 22)
+    expect(markup.match(/<g transform=/g)?.length).toBe(3) // 9:59 — three digits, not 09:59
+  })
+})

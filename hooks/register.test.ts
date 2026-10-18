@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, meter, noteChange, ringMoves, ringSvg, tone, top } from './register'
+import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, meter, forgetChanges, noteChange, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -84,13 +84,6 @@ describe('ring motion', () => {
     expect(ringSvg(60, '#e8825f', 38, { from: 60 })).not.toContain('<animate')
     expect(ringSvg(90, '#f2736b', 38, { from: 90, pulse: true })).toContain('values="1;0.55;1"')
   })
-
-  test('ringMoves says when a frame is worth running', () => {
-    expect(ringMoves(40, 40, false)).toBe(false)
-    expect(ringMoves(41, 40, false)).toBe(true)
-    expect(ringMoves(40, 40, true)).toBe(true)
-    expect(ringMoves(40.2, 40, false)).toBe(false)
-  })
 })
 
 describe('asList', () => {
@@ -124,5 +117,16 @@ describe('noteChange', () => {
   test('first makes the first sight a change: a ring grows in from 0, once', () => {
     expect(noteChange('t:r', 40, 0, { first: 0 }).from).toBe(0)
     expect(noteChange('t:r', 40, CHANGE_MS).from).toBeUndefined()
+  })
+})
+
+describe('forgetChanges', () => {
+  test('drops what it remembers for agents that are gone, keeps the rest', () => {
+    noteChange('agent:gone', 'a', 0)
+    noteChange('agent:kept', 'a', 0)
+    forgetChanges('agent:', new Set(['kept']))
+    // A forgotten agent is new again: its next figure is a first sight, so it does not roll.
+    expect(noteChange('agent:gone', 'b', 100).from).toBeUndefined()
+    expect(noteChange('agent:kept', 'b', 100).from).toBe('a')
   })
 })

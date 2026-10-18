@@ -263,6 +263,3 @@ export const agentCardSvg = (
     height: H + pad,
   }
 }
-
-/** True when a card has something to play: it is running, or it just appeared or finished. */
-export const agentMoves = (a: Agent, opts: { pop?: boolean; flash?: boolean } = {}) => a.status === 'running' || opts.pop === true || opts.flash === true

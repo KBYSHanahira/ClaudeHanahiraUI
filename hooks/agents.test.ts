@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
 import { SPIN_S, phaseBegin } from './chat'
-import { CARD_H, CARD_W, accentFor, agentCardSvg, agentMoves, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { CARD_H, CARD_W, accentFor, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 const mk = (over: Partial<Agent> = {}): Agent => ({
   id: 'a1',
@@ -191,12 +191,6 @@ describe('agent card', () => {
     expect(flash).toContain('from="#7bd88f" to="#3a3836"')
   })
 
-  test('agentMoves says when a card is worth an interactive frame', () => {
-    expect(agentMoves(mk())).toBe(true)
-    expect(agentMoves(mk({ status: 'done' }))).toBe(false)
-    expect(agentMoves(mk({ status: 'done' }), { pop: true })).toBe(true)
-    expect(agentMoves(mk({ status: 'done' }), { flash: true })).toBe(true)
-  })
 
   test('the status mark is drawn: a check, a cross, a ban', () => {
     for (const status of ['done', 'error', 'stopped'] as const) {
