@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CARD_BREATHE_MS, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
   fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
 
 describe('describe', () => {
@@ -418,5 +418,14 @@ describe('cards hold their width', () => {
   test('the odometer lays out the second it shows: no leading 0 just before 10:00', () => {
     const { markup } = clockOdometer(599_600, 0, 40, 17, 22)
     expect(markup.match(/<g transform=/g)?.length).toBe(3) // 9:59 — three digits, not 09:59
+  })
+})
+
+describe('base', () => {
+  test('takes the last part of POSIX and Windows paths alike', () => {
+    expect(base('/home/me/work/app')).toBe('app')
+    expect(base('C:\\Users\\Kobay\\OneDrive\\Desktop\\KikitanTranslator')).toBe('KikitanTranslator')
+    expect(base('C:\\work\\app\\')).toBe('app')
+    expect(base('app')).toBe('app')
   })
 })

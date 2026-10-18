@@ -9,6 +9,7 @@ import {
   KIND_ICON,
   PILL,
   badgeSvg,
+  base,
   cardSvg,
   countSvg,
   dotSvg,
@@ -158,7 +159,6 @@ export const limitLabel = (kind: string) =>
 export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
-const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 
 // What the stat figures were last drawn as: an animation plays only when a value changes.
 
@@ -233,7 +233,7 @@ export const register: Register = on => {
       .run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd })
       .catch(() => null)
     const branch = git !== null && git.exitCode === 0 ? git.stdout.trim() : null
-    const value: Info = { name: cwd.split('/').filter(Boolean).pop() ?? '', branch }
+    const value: Info = { name: base(cwd), branch }
     await update($, info, () => value)
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
     const fresh = await $.session.usage().catch(() => null)
@@ -505,7 +505,9 @@ export const register: Register = on => {
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
     const { Box, Text } = $.ui.resolve(e)
 
-    const title = where?.name || THEME.fallbackTitle
+    // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
+    const title = clip(base(where?.name || '') || THEME.fallbackTitle, 32)
+    const branch = where?.branch ? clip(where.branch, 28) : null
 
     const table = $.ui.resolve(e)
     const Svg = 'Svg' in table ? table.Svg : null
@@ -553,7 +555,7 @@ export const register: Register = on => {
     const gapPx = 8
     const rowPx =
       14 + 14 + textPx(title, true) +
-      (where?.branch ? 14 + gapPx + textPx(where.branch) : 0) +
+      (branch ? 14 + gapPx + textPx(branch) : 0) +
       (14 + gapPx + textPx('59m 59s')) +
       pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width +
       countArt.width +
@@ -561,7 +563,8 @@ export const register: Register = on => {
       4 * gapPx + // the frame's padding and border
       24 // slack for font differences
     const barRoom = Math.min(THEME.barPx, e.props.bodyColumns * 8 - rowPx)
-    const barPx = barRoom >= 80 ? Math.floor(barRoom) : 0 // too little room: no bar at all
+    // Never less than a short bar: if even that does not fit, its box gives way (clipped).
+    const barPx = Math.max(120, Math.floor(barRoom))
 
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
@@ -679,13 +682,13 @@ export const register: Register = on => {
           )}
           {iconEl({ Text, Svg }, 'folder', '#a8a29e', 14, '')}
           <Text bold>{title}</Text>
-          {where?.branch ? (
+          {branch ? (
             <Box gap={1} alignItems="center">
               {iconEl({ Text, Svg }, 'branch', '#a8a29e', 14, '⎇')}
-              <Text dimColor>{where.branch}</Text>
+              <Text dimColor>{branch}</Text>
             </Box>
           ) : null}
-          {Svg && barPx > 0 ? (
+          {Svg ? (
             // If the estimate is still too wide, the bar gives way (clipped), never the pill.
             <Box flexShrink={1} minWidth={0} overflow="hidden">
             <Svg
@@ -855,7 +858,7 @@ export const register: Register = on => {
       <Box flexDirection="column" borderStyle="round" borderColor="#4a4240" marginLeft={3}>
         <Box paddingX={1} gap={1} alignItems="center">
           {iconEl({ Text, Svg }, 'file', '#8f8985', 14, '')}
-          <Text bold dimColor>{(out.filePath ?? '').split('/').pop()}</Text>
+          <Text bold dimColor>{base(out.filePath ?? '')}</Text>
           {added > 0 ? pillEl({ Text, Svg }, { text: `${added} added`, ...PILL.ok }) : null}
           {removed > 0 ? pillEl({ Text, Svg }, { text: `${removed} removed`, ...PILL.bad }) : null}
           {took !== undefined ? <Text dimColor>{fmtDuration(took)}</Text> : null}

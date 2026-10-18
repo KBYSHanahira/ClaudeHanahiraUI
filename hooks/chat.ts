@@ -42,7 +42,8 @@ export const KIND_ICON: Record<Kind, IconName> = {
 }
 
 export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
-export const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
+/** The last part of a path, for POSIX and Windows paths alike (C:\\work\\app → app). */
+export const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 
 type Input = Record<string, unknown>
