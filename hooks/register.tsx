@@ -801,19 +801,21 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
 
     return (
-      <Box justifyContent="space-between" alignItems="center">
-        <Box gap={1} alignItems="center">
+      <Box justifyContent="space-between" alignItems="center" gap={1}>
+        {/* The verb and target give way (cut in the middle, so the file name stays); the
+            pill and the duration on the right never shrink or wrap. */}
+        <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
           {Svg ? (
             <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, p.isRunning, now)} alt={d.verb} width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH[d.kind]} `}</Text>
           )}
-          <Text wrap="truncate">
+          <Text wrap="truncate-middle">
             <Text bold color={color}>{d.verb}</Text>
             <Text> {d.target}</Text>
           </Text>
         </Box>
-        <Box gap={1} alignItems="center">
+        <Box gap={1} alignItems="center" flexShrink={0}>
           {pillEl({ Text, Svg }, pill, now)}
           {ms !== undefined && !p.isRunning ? <Text dimColor>{fmtDuration(ms)}</Text> : null}
         </Box>
@@ -894,19 +896,21 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
 
     return (
-      <Box justifyContent="space-between" alignItems="center">
-        <Box gap={1} alignItems="center">
+      <Box justifyContent="space-between" alignItems="center" gap={1}>
+        {/* The verb and target give way (cut in the middle, so the file name stays); the
+            pill and the duration on the right never shrink or wrap. */}
+        <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
           {Svg ? (
             <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning, now)} alt="Explore" width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH.search} `}</Text>
           )}
-          <Text wrap="truncate">
+          <Text wrap="truncate-middle">
             <Text bold color={color}>Explore</Text>
             <Text> {summary}</Text>
           </Text>
         </Box>
-        {pillEl({ Text, Svg }, pill, now)}
+        <Box flexShrink={0}>{pillEl({ Text, Svg }, pill, now)}</Box>
       </Box>
     )
   })
