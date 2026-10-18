@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CARD_BREATHE_MS, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+import { CARD_BREATHE_MS, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
   fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
 
 describe('describe', () => {
@@ -244,18 +244,46 @@ describe('more motion', () => {
     expect(dotSvg('#9b8cf7', false)).not.toContain('<animate')
   })
 
-  test('a changed card rises and flashes its own colour; an unchanged one is still', () => {
-    const moved = cardSvg('Cost', '≈$15.62', { changed: true, iconColor: '#f2c94c' })
-    expect(moved.svg).toContain('animateTransform')
-    expect(moved.svg).toContain('attributeName="stroke" from="#f2c94c"')
+  test('a changed card rolls the old value out and the new one in, and flashes its own colour', () => {
+    const moved = cardSvg('Cost', '≈$15.62', { changed: true, from: '≈$15.40', iconColor: '#f2c94c' }).svg
+    expect(moved).toContain('≈$15.40')
+    expect(moved).toContain('from="0 0" to="0 -22"') // the old value leaves upward
+    expect(moved).toContain('from="0 22" to="0 0"') // the new one arrives from below
+    expect(moved).toContain('attributeName="stroke" from="#f2c94c"')
     expect(cardSvg('Cost', '≈$15.62').svg).not.toContain('<animate')
+  })
+
+  test('the frame, icon and label never fade when a value changes', () => {
+    const moved = cardSvg('Cost', '$2', { changed: true, from: '$1', icon: 'coin' }).svg
+    const opacityAnims = moved.match(/attributeName="opacity"/g) ?? []
+    expect(opacityAnims.length).toBe(2) // only the two value lines
+    expect(moved).toMatch(/<g clip-path="url\(#cvCost\)">/)
+  })
+
+  test('the clock is a self-running odometer: same markup every second of a turn', () => {
+    const a = cardSvg('Time', '1:06', { icon: 'stopwatch', clock: { elapsedMs: 66_000 } })
+    expect(a.svg).toContain('repeatCount="indefinite"')
+    expect(a.svg).toContain('dur="10s"') // seconds
+    expect(a.svg).toContain('dur="60s"') // tens of seconds
+    expect(a.svg).toContain('dur="600s"') // minutes
+    // The redraws reuse the art drawn at the start, so nothing in it depends on the moment.
+    expect(cardSvg('Time', '1:06', { icon: 'stopwatch', clock: { elapsedMs: 66_000 } }).svg).toBe(a.svg)
+  })
+
+  test('the odometer stands at the right numerals without SMIL', () => {
+    const { markup } = clockOdometer(66_000, 0, 40, 17, 22)
+    // 1:06 → minutes at 1 (strip index 2), tens at 0 (index 1), seconds at 6 (index 7).
+    expect(markup).toContain('translate(0 -44)')
+    expect(markup).toContain('translate(0 -22)')
+    expect(markup).toContain('translate(0 -154)')
+    expect(markup).toContain('begin="-6.000s"')
+    expect(markup).toContain('begin="-66.000s"')
   })
 
   test('a live card breathes, with no sweep; an idle one stays still', () => {
     const live = cardSvg('Cost', '$1', { icon: 'coin', live: { now: 1_000 } }).svg
     expect(live).toContain('attributeName="fill-opacity" values="0.14;0.3;0.14"')
     expect(live).toContain(`begin="${phaseBegin(1_000, CARD_BREATHE_MS)}"`)
-    expect(live).not.toContain('clip-path')
     expect(live).not.toContain('attributeName="x"')
     expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).not.toContain('<animate')
   })
@@ -317,10 +345,12 @@ describe('countSvg', () => {
     expect(countSvg(3).svg).toContain('<title>Tool calls this turn</title>')
   })
 
-  test('flashes and rises only when the count grew', () => {
-    const grew = countSvg(5, { changed: true }).svg
+  test('flashes and rolls the old number out only when the count grew', () => {
+    const grew = countSvg(5, { changed: true, from: 4 }).svg
     expect(grew).toContain('attributeName="fill"')
-    expect(grew).toContain('animateTransform')
+    expect(grew).toContain('>4</text>')
+    expect(grew).toContain('from="0 0" to="0 -14"')
+    expect(grew).toContain('from="0 14" to="0 0"')
     expect(countSvg(5).svg).not.toContain('<animate')
   })
 
@@ -355,5 +385,19 @@ describe('fmtReset', () => {
     expect(fmtReset(undefined, now)).toBeNull()
     expect(fmtReset('', now)).toBeNull()
     expect(fmtReset('not a date', now)).toBeNull()
+  })
+})
+
+describe('redraws carry motion on', () => {
+  test('loops start at the phase the clock has reached, so a new picture continues the old', () => {
+    expect(loadingSvg(400, 18, '#9b8cf7', { live: true, now: 2_500 })).toContain(`begin="${phaseBegin(2_500, 1900)}"`)
+    expect(dotSvg('#9b8cf7', true, 14, 700)).toContain(`begin="${phaseBegin(700, 1400)}"`)
+    expect(badgeSvg('#9b8cf7', 'search', 30, true, 300)).toContain(`begin="${phaseBegin(300, 1100)}"`)
+    expect(pillSvg('working', '#fff', '#000', 24, true, undefined, 1_000).svg).toContain(`begin="${phaseBegin(1_000 - 180, 1200)}"`)
+  })
+
+  test('one-shots resume from the time since they began, never from the start', () => {
+    expect(cardSvg('Cost', '$2', { changed: true, from: '$1', ago: 300 }).svg).toContain('begin="-0.300s"')
+    expect(countSvg(5, { changed: true, from: 4, ago: 250 }).svg).toContain('begin="-0.250s"')
   })
 })

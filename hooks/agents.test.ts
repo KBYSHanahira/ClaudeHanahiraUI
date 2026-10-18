@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
-import { CARD_H, CARD_W, accentFor, agentCardSvg, agentMoves, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { SPIN_S, phaseBegin } from './chat'
+import { CARD_H, CARD_W, accentFor, agentCardSvg, agentMoves, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 const mk = (over: Partial<Agent> = {}): Agent => ({
   id: 'a1',
@@ -150,11 +151,23 @@ describe('agent card', () => {
     expect(agentCardSvg(mk({ name: 'Short' }), 1).svg).not.toContain('textLength')
   })
 
-  test('a running card carries no ticking clock, so its picture holds still between events', () => {
-    const early = agentCardSvg(mk({ startedAt: 0 }), 5_000).svg
-    const later = agentCardSvg(mk({ startedAt: 0 }), 65_000).svg
-    expect(early).toBe(later)
-    expect(early).toContain('working')
+  test('a running card carries no ticking clock, so its stats line holds still between events', () => {
+    expect(agentStats(mk({ startedAt: 0 }))).toBe(agentStats(mk({ startedAt: 0 })))
+    expect(agentStats(mk({ startedAt: 0 }))).toContain('working')
+  })
+
+  test('a running card picks its loops up at the phase reached since the agent started', () => {
+    const svg = agentCardSvg(mk({ startedAt: 0 }), 5_000).svg
+    expect(svg).toContain(`begin="${phaseBegin(5_000, SPIN_S * 1000)}"`)
+    expect(svg).toContain(`begin="${phaseBegin(5_000, 1600)}"`)
+  })
+
+  test('a changed stats line rolls the old one out and the new one in', () => {
+    const svg = agentCardSvg(mk({ tools: 4 }), 1_000, { fromStats: '3 tools · 0 · — · working' }).svg
+    expect(svg).toContain('3 tools · 0 · — · working')
+    expect(svg).toContain('from="0 0" to="0 -14"')
+    expect(svg).toContain('from="0 14" to="0 0"')
+    expect(agentCardSvg(mk({ tools: 4 }), 1_000).svg).not.toContain('to="0 -14"')
   })
 
   test('escapes a name that would break the markup', () => {

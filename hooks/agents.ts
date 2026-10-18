@@ -1,7 +1,7 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { SPIN_S, clip, fmtClock, fmtTokens } from './chat'
+import { CARD_ROLL_S, SPIN_S, clip, fmtClock, fmtTokens, phaseBegin, sinceBegin } from './chat'
 import { iconGroup } from './icons'
 
 const EFFORT_COLOR: Record<string, string> = {
@@ -141,20 +141,43 @@ export const CARD_H = 72
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+/** The card's stats line, as drawn: tools, tokens, spend, and how long a finished one took.
+ * A running card shows no ticking clock, so its line (and picture) changes only with its figures. */
+export const agentStats = (a: Agent) => {
+  const cost = agentUsd(a.model, a)
+  const costText = cost === null ? '—' : `≈${usd(cost)}`
+  const when = a.status === 'running' ? 'working' : fmtClock((a.endedAt ?? a.startedAt) - a.startedAt)
+  return clip(`${a.tools} tools · ${fmtTokens(totalTokens(a))} · ${costText} · ${when}`, 40)
+}
+
 /**
  * One agent as a card, all in one SVG so it can move as one piece. `pop` makes it bounce in
  * (it just appeared); `flash` washes its border green once (it just finished). A running
  * card wears its accent on the border, turns a small spinner where the check will go, and
- * glides a light along its bar: one direction, eased. SMIL: played only by an
- * `isInteractive` Svg, so `agentMoves` says when a card is worth that.
+ * glides a light along its bar: one direction, eased. Given `fromStats`, the old stats line
+ * rolls up and out as the new one rolls in. The loops start at the phase they have reached
+ * since the agent started, so a new picture carries on the motion of the one it replaces.
  */
-export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash?: boolean; padBottom?: number } = {}) => {
+export const agentCardSvg = (
+  a: Agent,
+  now: number,
+  opts: {
+    pop?: boolean
+    flash?: boolean
+    padBottom?: number
+    fromStats?: string
+    /** How long ago it appeared, finished, and its stats changed: a redraw carries each motion on. */
+    popAgo?: number
+    flashAgo?: number
+    statsAgo?: number
+  } = {},
+) => {
   const W = CARD_W
   const H = CARD_H
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0)) // transparent room under the card, in px
   const accent = accentFor(a.effort, a.model)
   const running = a.status === 'running'
-  const ms = (a.endedAt ?? now) - a.startedAt
+  const since = Math.max(0, now - a.startedAt)
   const nameFull = clip(a.name, 24)
   const name = esc(nameFull)
   // The name must stop short of the status mark: pin it to the room it has.
@@ -165,25 +188,21 @@ export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash
   const model = esc(modelText)
   const effort = a.effort ? esc(String(a.effort)) : ''
   const modelW = Math.round(modelText.length * 6.3)
-  // A running card shows no ticking clock: its picture would change every second and restart
-  // the motion. A finished card shows how long it took.
-  const when = running ? 'working' : fmtClock(ms)
-  const cost = agentUsd(a.model, a)
-  const costText = cost === null ? '—' : `≈${usd(cost)}`
-  const stats = esc(clip(`${a.tools} tools · ${fmtTokens(totalTokens(a))} · ${costText} · ${when}`, 40))
+  const statsText = agentStats(a)
+  const stats = esc(statsText)
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
 
   // A running card's border holds its accent, still: the spinner and the bar already say "busy".
   const edge = running ? accent : '#3a3836'
   const edgeOpacity = running ? 0.55 : 1
-  const border = !running && opts.flash ? `<animate attributeName="stroke" from="#7bd88f" to="#3a3836" dur="1.2s" fill="freeze"/>` : ''
+  const border = !running && opts.flash ? `<animate attributeName="stroke" from="#7bd88f" to="#3a3836" dur="1.2s" begin="${sinceBegin(opts.flashAgo)}" fill="freeze"/>` : ''
 
   const sr = 6
   const sc = 2 * Math.PI * sr
   const mark = running
     ? `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2.2"/>` +
       `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}">` +
-      `<animateTransform attributeName="transform" type="rotate" from="0 ${W - 21} 17" to="360 ${W - 21} 17" dur="${SPIN_S}s" repeatCount="indefinite"/></circle>`
+      `<animateTransform attributeName="transform" type="rotate" from="0 ${W - 21} 17" to="360 ${W - 21} 17" dur="${SPIN_S}s" begin="${phaseBegin(since, SPIN_S * 1000)}" repeatCount="indefinite"/></circle>`
     : a.status === 'done'
       ? iconGroup('check', '#7bd88f', W - 29, 9, 16, 3)
       : a.status === 'error'
@@ -201,8 +220,22 @@ export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash
       ? `<defs><clipPath id="${uid}"><rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2"/></clipPath>` +
         `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity="0"/><stop offset="0.75" stop-color="${accent}"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></linearGradient></defs>` +
         `<g clip-path="url(#${uid})"><rect x="${barX - seg}" y="${barY}" width="${seg}" height="4" fill="url(#${uid}g)">` +
-        `<animate attributeName="x" from="${barX - seg}" to="${barX + barW}" dur="1.6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"/></rect></g>`
+        `<animate attributeName="x" from="${barX - seg}" to="${barX + barW}" dur="1.6s" begin="${phaseBegin(since, 1600)}" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"/></rect></g>`
       : `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="${accent}"/>`)
+
+  // The stats line sits in a window one line tall; a changed line rolls through it.
+  const statsAt = (y: number, text: string) => `<text x="58" y="${y}" ${font} font-size="10.5" fill="#8f8985">${text}</text>`
+  const ease = `dur="${CARD_ROLL_S}s" begin="${sinceBegin(opts.statsAgo)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"`
+  const roll = (y0: number, y1: number, o0: number, o1: number) =>
+    `<animateTransform attributeName="transform" type="translate" from="0 ${y0}" to="0 ${y1}" ${ease}/>` +
+    `<animate attributeName="opacity" from="${o0}" to="${o1}" ${ease}/>`
+  const statsLine =
+    opts.fromStats !== undefined && opts.fromStats !== statsText
+      ? `<defs><clipPath id="${uid}s"><rect x="56" y="43" width="${W - 66}" height="14"/></clipPath></defs>` +
+        `<g clip-path="url(#${uid}s)">` +
+        `<g opacity="0">${roll(0, -14, 1, 0)}${statsAt(53, esc(opts.fromStats))}</g>` +
+        `<g>${roll(14, 0, 0, 1)}${statsAt(53, stats)}</g></g>`
+      : statsAt(53, stats)
 
   const card =
     `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5">${border}</rect>` +
@@ -210,7 +243,7 @@ export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash
     `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ece7e4"${nameFit}>${name}</text>` +
     `<text x="58" y="38" ${font} font-size="11" fill="#b9b3af">${model}</text>` +
     (effort ? `<text x="${58 + modelW + 7}" y="38" ${font} font-size="11" font-weight="700" fill="${accent}">${effort}</text>` : '') +
-    `<text x="58" y="53" ${font} font-size="10.5" fill="#8f8985">${stats}</text>` +
+    statsLine +
     mark +
     bar
 
@@ -219,8 +252,8 @@ export const agentCardSvg = (a: Agent, now: number, opts: { pop?: boolean; flash
   const cy = H / 2
   const body = opts.pop
     ? `<g transform="translate(${cx} ${cy})"><g>` +
-      `<animateTransform attributeName="transform" type="scale" values="0.82;1.06;1" keyTimes="0;0.6;1" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>` +
-      `<animate attributeName="opacity" from="0" to="1" dur="0.25s" fill="freeze"/>` +
+      `<animateTransform attributeName="transform" type="scale" values="0.82;1.06;1" keyTimes="0;0.6;1" dur="0.5s" begin="${sinceBegin(opts.popAgo)}" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>` +
+      `<animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="${sinceBegin(opts.popAgo)}" fill="freeze"/>` +
       `<g transform="translate(${-cx} ${-cy})">${card}</g></g></g>`
     : card
 

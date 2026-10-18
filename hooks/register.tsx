@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Agent, Info, Stats, Tokens, Usage } from '../types'
-import { agentCardSvg, agentMoves, prettyModel, visibleAgents } from './agents'
+import { agentCardSvg, agentStats, prettyModel, visibleAgents } from './agents'
 import {
   KIND_COLOR,
   KIND_GLYPH,
@@ -23,7 +23,9 @@ import {
   fmtSpeed,
   fmtTokens,
   loadingSvg,
+  phaseBegin,
   pillSvg,
+  sinceBegin,
   statusPill,
   tokensPerSec,
 } from './chat'
@@ -121,7 +123,7 @@ export const ringSvg = (
   percent: number,
   color: string,
   size: number,
-  opts: { from?: number; pulse?: boolean; icon?: IconName } = {},
+  opts: { from?: number; pulse?: boolean; icon?: IconName; ago?: number; now?: number } = {},
 ) => {
   const stroke = 5
   const r = (44 - stroke) / 2
@@ -131,11 +133,11 @@ export const ringSvg = (
   const arcFrom = opts.from === undefined ? arc : arcAt(opts.from)
   const grow =
     Math.abs(arc - arcFrom) > 0.5
-      ? `<animate attributeName="stroke-dasharray" from="${arcFrom.toFixed(2)} ${c.toFixed(2)}" to="${arc.toFixed(2)} ${c.toFixed(2)}" dur="0.9s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"/>`
+      ? `<animate attributeName="stroke-dasharray" from="${arcFrom.toFixed(2)} ${c.toFixed(2)}" to="${arc.toFixed(2)} ${c.toFixed(2)}" dur="0.9s" begin="${sinceBegin(opts.ago)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"/>`
       : ''
   // Near the limit the arc breathes, slow and eased: a warning, not a strobe.
   const pulse = opts.pulse
-    ? `<animate attributeName="stroke-opacity" values="1;0.55;1" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" dur="2s" repeatCount="indefinite"/>`
+    ? `<animate attributeName="stroke-opacity" values="1;0.55;1" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" dur="2s" begin="${phaseBegin(opts.now ?? 0, 2000)}" repeatCount="indefinite"/>`
     : ''
   // A disc tinted the arc's colour fills the middle, and the icon fills the disc: big enough
   // to read at a glance, so the gauge reads as one piece.
@@ -163,11 +165,36 @@ const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 
 // What the stat figures were last drawn as: an animation plays only when a value changes.
 const lastRing = new Map<string, number>()
-const ringBase = new Map<string, { percent: number; from: number }>()
-const cardFlash = new Map<string, { value: string; changed: boolean }>()
-const lastCard = new Map<string, string>()
-let lastTools = 0
-let toolsSeen = { count: -1, grew: false }
+
+/** How long a figure counts as "just changed": its roll plays inside this window, and after
+ * it the picture is still, so a redraw or a reloaded image never replays an old change. */
+export const CHANGE_MS = 1200
+const changes = new Map<string, { value: unknown; from?: unknown; at: number }>()
+// When the freshest change ends, and whether a redraw is already booked for then.
+let freshUntil = 0
+let settleBooked = false
+
+/**
+ * Notes the figure drawn under `key` and returns the value it changed from, while that change
+ * is fresh (within CHANGE_MS); otherwise `from` is undefined and the figure draws still.
+ * `counts` says which changes deserve motion (the tool counter: only growth); `first` makes
+ * the first sight itself a change from that value (a ring grows in from 0).
+ */
+export const noteChange = <T,>(
+  key: string,
+  value: T,
+  now: number,
+  opts: { counts?: (from: T, to: T) => boolean; first?: T } = {},
+): { from?: T; ago?: number } => {
+  const seen = changes.get(key)
+  if (!seen) changes.set(key, opts.first === undefined ? { value, at: -Infinity } : { value, from: opts.first, at: now })
+  else if (seen.value !== value)
+    changes.set(key, (opts.counts ?? ((a, b) => a !== b))(seen.value as T, value) ? { value, from: seen.value, at: now } : { value, at: -Infinity })
+  const c = changes.get(key)!
+  if (now - c.at >= CHANGE_MS) return {}
+  freshUntil = Math.max(freshUntil, c.at + CHANGE_MS)
+  return { from: c.from as T, ago: now - c.at }
+}
 
 type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban' }
 
@@ -175,19 +202,15 @@ const PILL_GLYPH = { check: '✓', cross: '✕', ban: '⊘' }
 
 /** A status pill: a capsule where the surface draws SVG, else a tinted text block. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pillEl = (els: { Text: any; Svg: any }, p: PillSpec) => {
+const pillEl = (els: { Text: any; Svg: any }, p: PillSpec, now = 0) => {
   const { Text, Svg } = els
   if (!Svg) {
     const label = p.icon ? `${PILL_GLYPH[p.icon]} ${p.text}` : p.text
     return <Text backgroundColor={p.bg} color={p.fg} bold>{` ${label} `}</Text>
   }
-  const b = pillSvg(p.text, p.fg, p.bg, 24, p.running === true, p.icon)
-  // A running pill animates, which the surface plays only for an interactive Svg.
-  return p.running ? (
-    <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} isInteractive />
-  ) : (
-    <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
-  )
+  const b = pillSvg(p.text, p.fg, p.bg, 24, p.running === true, p.icon, now)
+  // An image, never a frame: a frame reloads (and blanks) whenever its picture changes.
+  return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
 }
 
 /** A small icon where the surface draws SVG, else a plain glyph. */
@@ -482,8 +505,6 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
 
     const title = where?.name || THEME.fallbackTitle
-    // Pixel width of the loading bar: what the row leaves after title, time, state, count and close.
-    const barPx = Math.max(260, Math.min(THEME.barPx, (e.props.bodyColumns - 36) * 8))
 
     const table = $.ui.resolve(e)
     const Svg = 'Svg' in table ? table.Svg : null
@@ -499,29 +520,46 @@ export const register: Register = on => {
       { label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' },
     ]
 
-    // Remember what was drawn: rings grow from their last value, cards flash when theirs changes.
-    const cardChanged = new Map<string, boolean>()
-    for (const c of cards) {
-      const before = lastCard.get(c.label)
-      const seen = cardFlash.get(c.label)
-      // The flash stays set while the value stays, so a redraw gives the same picture (no blink).
-      const changed = c.label !== 'Time' && (seen && seen.value === c.value ? seen.changed : before !== undefined && before !== c.value) // the clock ticks; it does not flash
-      cardFlash.set(c.label, { value: c.value, changed })
-      cardChanged.set(c.label, changed)
-      lastCard.set(c.label, c.value)
-    }
-    // While a turn runs only the Time card's tile breathes: it is the one figure moving every
-    // second. Five tiles breathing at once read as noise, not as news.
-    const cardLive = (label: string) => e.props.isWorking && label === 'Time'
-    const cardArt = cards.map(c =>
-      cardSvg(c.label, c.value, { changed: cardChanged.get(c.label) === true, accent: THEME.accent, icon: c.icon, iconColor: c.color, live: cardLive(c.label) ? { now: nowMs } : undefined }),
-    )
+    // A card rolls only in the moment its value changes; the clock ticks and never flashes.
+    const cardFrom = new Map<string, { from?: string; ago?: number }>()
+    for (const c of cards) if (c.label !== 'Time') cardFrom.set(c.label, noteChange(`card:${c.label}`, c.value, nowMs))
+    // While a turn runs only the Time card moves: its tile breathes and its digits roll.
+    const ticking = e.props.isWorking && startedAt > 0
+    const clockMs = (run ?? 0) + liveMs
+    const cardArt = cards.map(c => {
+      if (c.label === 'Time' && ticking)
+        return cardSvg(c.label, c.value, { icon: c.icon, iconColor: c.color, live: { now: clockMs }, clock: { elapsedMs: clockMs } })
+      const { from, ago } = cardFrom.get(c.label) ?? {}
+      return cardSvg(c.label, c.value, {
+        changed: from !== undefined,
+        from,
+        ago,
+        accent: THEME.accent,
+        icon: c.icon,
+        iconColor: c.color,
+      })
+    })
 
     // The tool counter flashes only when it grows (a reset to 0 at a new prompt stays quiet).
-    const toolsGrew = st.tools === toolsSeen.count ? toolsSeen.grew : st.tools > lastTools
-    toolsSeen = { count: st.tools, grew: toolsGrew }
-    lastTools = st.tools
-    const countArt = countSvg(st.tools, { changed: toolsGrew })
+    const tools = noteChange('tools', st.tools, nowMs, { counts: (a, b) => b > a })
+    const countArt = countSvg(st.tools, { changed: tools.from !== undefined, from: tools.from, ago: tools.ago })
+
+    // Pixel width of the loading bar: what the row leaves after everything else on it, so the
+    // pill and the counter are never pushed past the edge. Text is estimated per character;
+    // the time gets room for its widest form, so the bar does not twitch as the seconds grow.
+    const textPx = (t: string, bold = false) => Math.ceil(t.length * (bold ? 8.2 : 7.6))
+    const gapPx = 8
+    const rowPx =
+      14 + 14 + textPx(title, true) +
+      (where?.branch ? 14 + gapPx + textPx(where.branch) : 0) +
+      (14 + gapPx + textPx('59m 59s')) +
+      pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width +
+      countArt.width +
+      8 * gapPx + // between the row's items
+      4 * gapPx + // the frame's padding and border
+      24 // slack for font differences
+    const barRoom = Math.min(THEME.barPx, e.props.bodyColumns * 8 - rowPx)
+    const barPx = barRoom >= 80 ? Math.floor(barRoom) : 0 // too little room: no bar at all
 
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
@@ -533,7 +571,20 @@ export const register: Register = on => {
       const pop = nowMs - (firstSeenAt.get(a.id) ?? nowMs) < 1200
       const changed = statusAt.get(a.id)
       const flash = a.status !== 'running' && seen !== undefined && changed !== undefined && nowMs - changed.at < 1500
-      return { a, pop, flash, art: agentCardSvg(a, nowMs, { pop, flash, padBottom: THEME.stripGap }) }
+      // Every motion on the card is drawn at the point it has reached by now (loops by phase,
+      // the bounce, the flash and the stats roll by time since they began), so a redraw
+      // carries each one on instead of starting it over.
+      const sc = noteChange(`agent:${a.id}`, agentStats(a), nowMs)
+      const art = agentCardSvg(a, nowMs, {
+        pop,
+        flash,
+        padBottom: THEME.stripGap,
+        fromStats: sc.from,
+        statsAgo: sc.ago,
+        popAgo: nowMs - (firstSeenAt.get(a.id) ?? nowMs),
+        flashAgo: changed ? nowMs - changed.at : 0,
+      })
+      return { a, pop, flash, art }
     })
 
     // Stat tiles: a ring when the figure is a percentage, else the icon.
@@ -566,14 +617,23 @@ export const register: Register = on => {
       },
     ]
     const ringFrom = new Map<string, number>()
+    const ringAgo = new Map<string, number | undefined>()
     for (const t of tiles) {
       if (t.percent === null) continue
-      // Keep the same "grew from" value until the figure changes again: a redraw must give the
-      // same picture, or the image reloads and blinks.
-      const seen = ringBase.get(t.key)
-      if (!seen || seen.percent !== t.percent) ringBase.set(t.key, { percent: t.percent, from: seen ? seen.percent : 0 })
-      ringFrom.set(t.key, ringBase.get(t.key)?.from ?? 0)
+      // The arc grows (in from 0 the first time) only in the moment the figure changes.
+      const rc = noteChange(`ring:${t.key}`, t.percent, nowMs, { first: 0 })
+      ringFrom.set(t.key, rc.from ?? t.percent)
+      ringAgo.set(t.key, rc.ago)
       lastRing.set(t.key, t.percent)
+    }
+    // Once the last change has played, draw once more so every picture settles still, even
+    // when nothing else would redraw the band (an idle session).
+    if (freshUntil > nowMs && !settleBooked) {
+      settleBooked = true
+      $.clock.after(freshUntil - nowMs + 50, () => {
+        settleBooked = false
+        void update($, tick, n => (n ?? 0) + 1)
+      })
     }
 
     return (
@@ -588,7 +648,6 @@ export const register: Register = on => {
                     alt={`${a.name}, ${a.status}`}
                     width={art.width}
                     height={art.height}
-                    isInteractive={agentMoves(a, { pop, flash })}
                   />
                 ) : (
                   <Text key={`agent-${a.id}`} dimColor>{`◈ ${a.name} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
@@ -604,7 +663,7 @@ export const register: Register = on => {
       >
         <Box gap={1} alignItems="center">
           {Svg ? (
-            <Svg source={dotSvg(THEME.accent, e.props.isWorking)} alt="" width={14} height={14} isInteractive={e.props.isWorking} />
+            <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, nowMs)} alt="" width={14} height={14} />
           ) : (
             <Text color={THEME.accent}>●</Text>
           )}
@@ -616,17 +675,20 @@ export const register: Register = on => {
               <Text dimColor>{where.branch}</Text>
             </Box>
           ) : null}
-          {Svg ? (
+          {Svg && barPx > 0 ? (
+            // If the estimate is still too wide, the bar gives way (clipped), never the pill.
+            <Box flexShrink={1} minWidth={0} overflow="hidden">
             <Svg
               source={loadingSvg(barPx, THEME.barHeight, THEME.accent, {
                 live: e.props.isWorking,
                 padBottom: THEME.barGap,
+                now: nowMs,
               })}
               alt={e.props.isWorking ? 'Working' : 'Idle'}
               width={barPx}
               height={THEME.barHeight + THEME.barGap}
-              isInteractive
             />
+            </Box>
           ) : null}
           {shownSecs !== null ? (
             <Box gap={1} alignItems="center">
@@ -637,9 +699,10 @@ export const register: Register = on => {
           {pillEl(
             { Text, Svg },
             e.props.isWorking ? { text: 'working', running: true, ...PILL.busy } : { text: 'idle', fg: '#8a8480', bg: '#2a2727' },
+            nowMs,
           )}
           {Svg ? (
-            <Svg source={countArt.svg} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} isInteractive />
+            <Svg source={countArt.svg} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
           ) : (
             <Text dimColor>{`⚡ ${st.tools} ${st.tools === 1 ? 'tool' : 'tools'}`}</Text>
           )}
@@ -656,13 +719,14 @@ export const register: Register = on => {
                 <Svg
                   source={ringSvg(t.percent, (t.color ?? ringColor(t.percent)), RING, {
                     from: ringFrom.get(t.key) ?? 0,
+                    ago: ringAgo.get(t.key),
+                    now: nowMs,
                     pulse: !t.calm && t.percent >= 85,
                     icon: t.icon,
                   })}
                   alt={`${t.big} ${t.caption}`}
                   width={RING}
                   height={RING}
-                  isInteractive={ringMoves(t.percent, ringFrom.get(t.key) ?? 0, !t.calm && t.percent >= 85)}
                 />
               ) : (
                 <Text color={(t.color ?? ringColor(t.percent))}>{glyph(t.percent)}</Text>
@@ -677,6 +741,9 @@ export const register: Register = on => {
         </Box>
 
         <Box gap={1} marginTop={1} alignItems="flex-start" flexWrap="nowrap">
+          {/* Cards are images, not interactive frames: a frame reloads (and blanks) on every
+              new picture, an image swaps in place. Their roll and tick still play where the
+              surface animates images; elsewhere each picture already shows the right value. */}
           {cards.map((c, i) =>
             Svg ? (
               <Svg
@@ -685,7 +752,6 @@ export const register: Register = on => {
                 alt={`${c.label} ${c.value}`}
                 width={cardArt[i].width}
                 height={cardArt[i].height}
-                isInteractive={cardLive(c.label) || cardChanged.get(c.label) === true}
               />
             ) : (
               <Box
@@ -728,6 +794,7 @@ export const register: Register = on => {
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
     const pill = statusPill(p.tool, p)
     const ms = durations.get(p.tool_use_id)
+    const now = await $.clock.now() // loops pick up their phase, so a redraw does not restart them
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
@@ -737,7 +804,7 @@ export const register: Register = on => {
       <Box justifyContent="space-between" alignItems="center">
         <Box gap={1} alignItems="center">
           {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, p.isRunning)} alt={d.verb} width={30} height={30} isInteractive={p.isRunning} />
+            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, p.isRunning, now)} alt={d.verb} width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH[d.kind]} `}</Text>
           )}
@@ -747,7 +814,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box gap={1} alignItems="center">
-          {pillEl({ Text, Svg }, pill)}
+          {pillEl({ Text, Svg }, pill, now)}
           {ms !== undefined && !p.isRunning ? <Text dimColor>{fmtDuration(ms)}</Text> : null}
         </Box>
       </Box>
@@ -815,6 +882,7 @@ export const register: Register = on => {
       .join(' · ')
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
+    const now = await $.clock.now()
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored
@@ -829,7 +897,7 @@ export const register: Register = on => {
       <Box justifyContent="space-between" alignItems="center">
         <Box gap={1} alignItems="center">
           {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning)} alt="Explore" width={30} height={30} isInteractive={isRunning} />
+            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning, now)} alt="Explore" width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH.search} `}</Text>
           )}
@@ -838,7 +906,7 @@ export const register: Register = on => {
             <Text> {summary}</Text>
           </Text>
         </Box>
-        {pillEl({ Text, Svg }, pill)}
+        {pillEl({ Text, Svg }, pill, now)}
       </Box>
     )
   })

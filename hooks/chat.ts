@@ -156,7 +156,7 @@ export const fmtDuration = (ms: number) =>
 export const SPIN_S = 1.1
 
 /** A round badge: tinted disc, ring, glyph. While running, a short arc turns around the ring. */
-export const badgeSvg = (color: string, icon: string, size: number, running = false) => {
+export const badgeSvg = (color: string, icon: string, size: number, running = false, now = 0) => {
   const g = icon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const fs = icon.length > 1 ? 12 : 14
   const mark = hasIcon(icon)
@@ -167,7 +167,7 @@ export const badgeSvg = (color: string, icon: string, size: number, running = fa
   const c = 2 * Math.PI * r
   const spin = running
     ? `<circle cx="16" cy="16" r="${r}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${(c * 0.26).toFixed(2)} ${c.toFixed(2)}">` +
-      `<animateTransform attributeName="transform" type="rotate" from="0 16 16" to="360 16 16" dur="${SPIN_S}s" repeatCount="indefinite"/></circle>`
+      `<animateTransform attributeName="transform" type="rotate" from="0 16 16" to="360 16 16" dur="${SPIN_S}s" begin="${phaseBegin(now, SPIN_S * 1000)}" repeatCount="indefinite"/></circle>`
     : ''
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">` +
@@ -324,7 +324,7 @@ const labelWidth = (text: string, fs: number) =>
  * A capsule badge: fully rounded, tinted fill, bold label. `textLength` pins the
  * label to the width measured here, so the capsule fits whatever font draws it.
  */
-export const pillSvg = (text: string, fg: string, bg: string, height = 24, running = false, icon?: PillIcon) => {
+export const pillSvg = (text: string, fg: string, bg: string, height = 24, running = false, icon?: PillIcon, now = 0) => {
   const fs = +(height * 0.52).toFixed(1)
   const tl = labelWidth(text, fs)
   const dotR = +(height * 0.11).toFixed(2)
@@ -334,14 +334,14 @@ export const pillSvg = (text: string, fg: string, bg: string, height = 24, runni
   const t = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const tx = (width + lead) / 2
   // Three dots that light in turn, a wave left to right, eased. One motion only: the capsule
-  // itself stays still. SMIL, which a surface plays only when the Svg is `isInteractive`.
+  // itself stays still. Phase-locked to `now`, so a redraw carries the wave on.
   const ease = 'calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1"'
   const dots = running
     ? [0, 1, 2]
         .map(
           i =>
             `<circle cx="${(height * 0.5 + i * gap).toFixed(2)}" cy="${height / 2}" r="${dotR}" fill="${fg}" opacity="0.3">` +
-            `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${(i * 0.18).toFixed(2)}s" repeatCount="indefinite" ${ease}/></circle>`,
+            `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${phaseBegin(now - i * 180, 1200)}" repeatCount="indefinite" ${ease}/></circle>`,
         )
         .join('')
     : ''
@@ -368,7 +368,7 @@ export const loadingSvg = (
   width: number,
   height: number,
   color: string,
-  opts: { live?: boolean; padBottom?: number } = {},
+  opts: { live?: boolean; padBottom?: number; now?: number } = {},
 ) => {
   const w = Math.max(120, Math.round(width))
   const h = height
@@ -398,7 +398,7 @@ export const loadingSvg = (
     ? `<defs>` +
       `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
       `<mask id="${uid}m" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}">` +
-      `<rect x="${-gw}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" repeatCount="indefinite"/></rect>` +
+      `<rect x="${-gw}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" begin="${phaseBegin(opts.now ?? 0, 1900)}" repeatCount="indefinite"/></rect>` +
       `</mask></defs>` +
       `<g mask="url(#${uid}m)">` +
       `<rect width="${w}" height="${h}" rx="${h / 2}" fill="${color}" fill-opacity="0.2"/>` +
@@ -418,12 +418,12 @@ export const loadingSvg = (
 }
 
 /** The little status dot of the band: still when idle, with a ripple while Claude works. */
-export const dotSvg = (color: string, live: boolean, size = 14) =>
+export const dotSvg = (color: string, live: boolean, size = 14, now = 0) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" width="${size}" height="${size}">` +
   (live
     ? `<circle cx="7" cy="7" r="4" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.7">` +
-      `<animate attributeName="r" from="4" to="7" dur="1.4s" repeatCount="indefinite"/>` +
-      `<animate attributeName="stroke-opacity" from="0.7" to="0" dur="1.4s" repeatCount="indefinite"/></circle>`
+      `<animate attributeName="r" from="4" to="7" dur="1.4s" begin="${phaseBegin(now, 1400)}" repeatCount="indefinite"/>` +
+      `<animate attributeName="stroke-opacity" from="0.7" to="0" dur="1.4s" begin="${phaseBegin(now, 1400)}" repeatCount="indefinite"/></circle>`
     : '') +
   `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
   `</svg>`
@@ -436,34 +436,105 @@ export const CARD_BREATHE_MS = 2400
 export const phaseBegin = (atMs: number, periodMs: number) =>
   `${(-(((atMs % periodMs) + periodMs) % periodMs) / 1000).toFixed(3)}s`
 
+/** SMIL `begin` for a one-shot that started `agoMs` ago: a redraw mid-motion picks it up where
+ * it was (and past its end, shows the end), instead of playing it again from the start. */
+export const sinceBegin = (agoMs = 0) => `${(-Math.max(0, agoMs) / 1000).toFixed(3)}s`
+
 /** Card geometry: the icon tile on the left, label over value beside it. */
 export const CARD = { height: 52, tile: 36, icon: 22, textX: 54, pad: 16 }
 
+/** How long a changed value takes to roll into place, and a clock digit to tick over, in s. */
+export const CARD_ROLL_S = 0.5
+const CLOCK_ROLL_S = 0.35
+
+/**
+ * The clock as an odometer: each digit is a strip of numerals that steps one place per
+ * unit (a second, ten seconds, a minute...) with a short eased roll, started at `elapsedMs`.
+ * A picture drawn at a whole second opens on that second's roll, so a redraw each second
+ * reads as one continuous tick; without SMIL the strips already stand at `elapsedMs`.
+ */
+export const clockOdometer = (elapsedMs: number, x: number, y: number, fs: number, lineH: number) => {
+  const shape = fmtClock(elapsedMs)
+  const digitW = +(fs * 0.62).toFixed(2)
+  const colonW = +(fs * 0.34).toFixed(2)
+  const sec = Math.max(0, Math.floor(elapsedMs / 1000))
+  // From the right: unit in seconds and how many numerals the place cycles through.
+  const places: Array<[number, number]> = [[1, 10], [10, 6], [60, 10], [600, 6], [3600, 10], [36000, 10]]
+  const font = `font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f1ece8" text-anchor="middle"`
+  const parts: string[] = []
+  let cx = x
+  let place = [...shape].filter(c => c !== ':').length - 1
+  for (const ch of shape) {
+    if (ch === ':') {
+      parts.push(`<text x="${(cx + colonW / 2).toFixed(2)}" y="${y}" ${font}>:</text>`)
+      cx += colonW
+      continue
+    }
+    const [unit, base] = places[place--] ?? [36000, 10]
+    const period = unit * base
+    const mid = (cx + digitW / 2).toFixed(2)
+    // Strip index 0 is the numeral before 0, then 0..base-1: the loop wraps seamlessly.
+    const strip = Array.from({ length: base + 1 }, (_, i) => `<text x="${mid}" y="${y + i * lineH}" ${font}>${(i + base - 1) % base}</text>`).join('')
+    const roll = Math.min(CLOCK_ROLL_S, unit * 0.5)
+    const times: number[] = []
+    const values: string[] = []
+    const splines: string[] = []
+    for (let k = 0; k < base; k++) {
+      times.push(k * unit, k * unit + roll)
+      values.push(`0 ${-k * lineH}`, `0 ${-(k + 1) * lineH}`)
+      splines.push('0.3 0 0.2 1', '0 0 1 1')
+    }
+    times.push(period)
+    values.push(`0 ${-base * lineH}`)
+    const keyTimes = times.map(t => +(t / period).toFixed(5)).join(';')
+    const begin = `${(-((elapsedMs / 1000) % period)).toFixed(3)}s`
+    // Where the strip stands now, so a surface that does not play SMIL still shows the right time.
+    const at = Math.floor(sec / unit) % base + 1
+    parts.push(
+      `<g transform="translate(0 ${-at * lineH})">${strip}<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${keyTimes}" calcMode="spline" keySplines="${splines.join(';')}" dur="${period}s" begin="${begin}" repeatCount="indefinite"/></g>`,
+    )
+    cx += digitW
+  }
+  return { markup: parts.join(''), width: Math.ceil(cx - x) }
+}
+
 /**
  * A stat card as SVG: a tinted icon tile on the left, the label over the value beside it.
- * When `changed`, the value rises into place and the border flashes the card's own colour
- * once; an unchanged card is a still picture. With `live` (this card's figure is moving, a
- * turn is running), the icon tile breathes, phase-locked to the clock.
+ * When `changed`, the old value (`from`) rolls up and out as the new one rolls in from below,
+ * and the border glows the card's own colour once; the frame, icon and label never fade, so
+ * an update reads as motion, not a blink. An unchanged card is a still picture.
+ * With `live` (a turn is running), the icon tile breathes; with `clock`, the value is a
+ * self-running odometer started at `clock.elapsedMs`.
  */
 export const cardSvg = (
   label: string,
   value: string,
-  opts: { changed?: boolean; accent?: string; icon?: IconName; iconColor?: string; live?: { now: number } } = {},
+  opts: {
+    changed?: boolean
+    from?: string
+    accent?: string
+    icon?: IconName
+    iconColor?: string
+    live?: { now: number }
+    clock?: { elapsedMs: number }
+    /** How long ago the value changed: a redraw mid-roll carries on from there. */
+    ago?: number
+  } = {},
 ) => {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const iconColor = opts.iconColor ?? '#8f8985'
   const flashColor = opts.iconColor ?? opts.accent ?? '#9b8cf7'
   const textX = opts.icon ? CARD.textX : 14
-  const textW = Math.max(labelWidth(value, 17), labelWidth(label, 11.5))
+  const fs = 17
+  const lineH = 22
+  const odo = opts.clock ? clockOdometer(opts.clock.elapsedMs, textX, 40, fs, lineH) : null
+  const fromW = opts.changed && opts.from !== undefined ? labelWidth(opts.from, fs) : 0
+  const textW = Math.max(odo ? odo.width : labelWidth(value, fs), fromW, labelWidth(label, 11.5))
   const width = Math.max(opts.icon ? 120 : 96, textX + textW + CARD.pad)
   const height = CARD.height
-  const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
+  const spline = `calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" begin="${sinceBegin(opts.ago)}"`
   const border = opts.changed
     ? `<animate attributeName="stroke" from="${flashColor}" to="${PANEL.edge}" dur="1.1s" fill="freeze" ${spline}/>`
-    : ''
-  const rise = opts.changed
-    ? `<animate attributeName="opacity" from="0" to="1" dur="0.45s" fill="freeze" ${spline}/>` +
-      `<animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" dur="0.45s" fill="freeze" ${spline}/>`
     : ''
   const ease = '0.45 0 0.55 1'
   const breathe = opts.live
@@ -475,46 +546,70 @@ export const cardSvg = (
     ? `<rect x="${t}" y="${t}" width="${CARD.tile}" height="${CARD.tile}" rx="10" fill="${iconColor}" fill-opacity="0.14" stroke="${iconColor}" stroke-opacity="0.3">${breathe}</rect>` +
       iconGroup(opts.icon, iconColor, io, io, CARD.icon, 2)
     : ''
+  const valueFont = `font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f1ece8"`
+  const roll = (fromY: number, toY: number, fromO: number, toO: number) =>
+    `<animateTransform attributeName="transform" type="translate" from="0 ${fromY}" to="0 ${toY}" dur="${CARD_ROLL_S}s" fill="freeze" ${spline}/>` +
+    `<animate attributeName="opacity" from="${fromO}" to="${toO}" dur="${CARD_ROLL_S}s" fill="freeze" ${spline}/>`
+  const valueLine = odo
+    ? odo.markup
+    : opts.changed && opts.from !== undefined && opts.from !== value
+      ? `<g opacity="0">${roll(0, -lineH, 1, 0)}<text x="${textX}" y="40" ${valueFont}>${esc(opts.from)}</text></g>` +
+        `<g>${roll(lineH, 0, 0, 1)}<text x="${textX}" y="40" ${valueFont}>${esc(value)}</text></g>`
+      : `<text x="${textX}" y="40" ${valueFont}>${esc(value)}</text>`
+  // The value lives in a window one line tall, so rolling numerals slide in and out of sight.
+  const clipId = `cv${label.replace(/[^A-Za-z0-9]/g, '')}`
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<defs><clipPath id="${clipId}"><rect x="${textX - 2}" y="25" width="${width - textX}" height="${lineH - 1}"/></clipPath></defs>` +
     panelSvg('cardg', width, height, 12, border) +
     // The halftone gathers in the top-right corner and starts past the label, so no dot sits on text.
     halftone(Math.max(Math.round(width * 0.45), Math.ceil(textX + labelWidth(label, 11.5) + 6)), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
     tile +
     `<text x="${textX}" y="21" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#9a938f">${esc(label)}</text>` +
-    `<text x="${textX}" y="40" font-family="ui-sans-serif,system-ui,sans-serif" font-size="17" font-weight="700" fill="#f1ece8">${esc(value)}${rise}</text>` +
+    `<g clip-path="url(#${clipId})">${valueLine}</g>` +
     `</svg>`
   return { svg, width, height }
 }
 
 /**
  * The tool-call counter as a labelled capsule: bolt, the number, and the word it counts.
- * A growing count makes the capsule flash and the number rise once; a hover title says
- * what it is (shown by a surface that plays an interactive Svg).
+ * A growing count makes the capsule flash once and, given `from`, rolls the old number up
+ * and out as the new one comes in from below. The hover title shows only where the surface
+ * draws the Svg as a frame.
  */
-export const countSvg = (count: number, opts: { changed?: boolean; label?: string } = {}) => {
+export const countSvg = (count: number, opts: { changed?: boolean; label?: string; from?: number; ago?: number } = {}) => {
   const height = 24
   const word = opts.label ?? (count === 1 ? 'tool' : 'tools')
   const num = String(count)
   const fs = 12.5
-  const numW = Math.round(num.length * fs * 0.62)
+  const digitsW = (n: string) => Math.round(n.length * fs * 0.62)
+  const numW = digitsW(num)
   const wordW = Math.round(word.length * 11 * 0.56)
   const numX = 28
   const wordX = numX + numW + 5
   const width = wordX + wordW + 11
   const bg = '#33301f'
-  const spline = 'calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"'
-  const flash = opts.changed ? `<animate attributeName="fill" from="#6b5a22" to="${bg}" dur="0.8s" fill="freeze"/>` : ''
-  const rise = opts.changed
-    ? `<animateTransform attributeName="transform" type="translate" from="0 6" to="0 0" dur="0.4s" fill="freeze" ${spline}/>` +
-      `<animate attributeName="opacity" from="0" to="1" dur="0.4s" fill="freeze" ${spline}/>`
-    : ''
+  const begin = `begin="${sinceBegin(opts.ago)}"`
+  const spline = `dur="${CARD_ROLL_S}s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" ${begin}`
+  const flash = opts.changed ? `<animate attributeName="fill" from="#6b5a22" to="${bg}" dur="0.8s" fill="freeze" ${begin}/>` : ''
+  const numAt = (n: string) =>
+    `<text x="${numX}" y="16.3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f6e3a1" textLength="${digitsW(n)}" lengthAdjust="spacingAndGlyphs">${n}</text>`
+  const roll = (y0: number, y1: number, o0: number, o1: number) =>
+    `<animateTransform attributeName="transform" type="translate" from="0 ${y0}" to="0 ${y1}" ${spline}/>` +
+    `<animate attributeName="opacity" from="${o0}" to="${o1}" ${spline}/>`
+  const number =
+    opts.changed && opts.from !== undefined && opts.from !== count
+      ? `<defs><clipPath id="cnum"><rect x="${numX - 1}" y="4" width="${Math.max(numW, digitsW(String(opts.from))) + 2}" height="16"/></clipPath></defs>` +
+        `<g clip-path="url(#cnum)">` +
+        `<g opacity="0">${roll(0, -14, 1, 0)}${numAt(String(opts.from))}</g>` +
+        `<g>${roll(14, 0, 0, 1)}${numAt(num)}</g></g>`
+      : numAt(num)
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     `<title>Tool calls this turn</title>` +
     `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}">${flash}</rect>` +
     iconGroup('bolt', '#ffd166', 9, 5.5, 13, 2.4) +
-    `<text x="${numX}" y="16.3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f6e3a1" textLength="${numW}" lengthAdjust="spacingAndGlyphs">${num}${rise}</text>` +
+    number +
     `<text x="${wordX}" y="16" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#b8a96a" textLength="${wordW}" lengthAdjust="spacingAndGlyphs">${word}</text>` +
     `</svg>`
   return { svg, width, height }

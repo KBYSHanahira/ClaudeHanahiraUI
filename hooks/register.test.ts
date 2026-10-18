@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DANGEROUS, asList, clip, glyph, limitLabel, meter, ringMoves, ringSvg, tone, top } from './register'
+import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, meter, noteChange, ringMoves, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -101,5 +101,28 @@ describe('asList', () => {
 
   test('turns anything else a stored value might be into an empty list', () => {
     for (const bad of [undefined, null, 0, 5, 'x', {}, { length: 2 }, true]) expect(asList(bad)).toEqual([])
+  })
+})
+
+describe('noteChange', () => {
+  test('a figure rolls only in the moment it changes, never again on a later redraw', () => {
+    expect(noteChange('t:a', '$1', 0).from).toBeUndefined() // first sight: still
+    expect(noteChange('t:a', '$1', 500).from).toBeUndefined() // same value: still
+    expect(noteChange('t:a', '$2', 1_000).from).toBe('$1') // changed: rolls from $1
+    expect(noteChange('t:a', '$2', 1_000 + CHANGE_MS - 1).from).toBe('$1') // a redraw inside the window: same picture
+    expect(noteChange('t:a', '$2', 1_000 + CHANGE_MS).from).toBeUndefined() // after it: still for good
+    expect(noteChange('t:a', '$2', 60_000).from).toBeUndefined()
+  })
+
+  test('only the changes that count move: the tool counter rolls when it grows, not when it resets', () => {
+    const grows = { counts: (a: number, b: number) => b > a }
+    noteChange('t:n', 4, 0, grows)
+    expect(noteChange('t:n', 5, 100, grows).from).toBe(4)
+    expect(noteChange('t:n', 0, 5_000, grows).from).toBeUndefined()
+  })
+
+  test('first makes the first sight a change: a ring grows in from 0, once', () => {
+    expect(noteChange('t:r', 40, 0, { first: 0 }).from).toBe(0)
+    expect(noteChange('t:r', 40, CHANGE_MS).from).toBeUndefined()
   })
 })
