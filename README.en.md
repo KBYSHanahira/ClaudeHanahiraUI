@@ -82,6 +82,12 @@ In the Claude Code **terminal** (not the desktop app's chat box):
 claude --plugin-dir /path/to/hanahira-claude-ui
 ```
 
+**Hot reload on an SSH host (Desktop).** Desktop syncs an empty `hanahira-claude-ui` into every session, and it loads before a `--plugin-dir` of the same name, so the repo cannot be loaded as it is. `scripts/dev.ts` keeps a renamed copy, `hanahira-claude-ui-dev`, in `~/.claude/hanahira-dev/` in sync with every save:
+
+1. In `~/.claude/settings.json`, add `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/hanahira-claude-ui-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` (your home in place of `/root`) and set `"hanahira-claude-ui-ssh@hanahira-ssh": false` under `enabledPlugins`, or two bands are drawn.
+2. Run `bun scripts/dev.ts` and leave it running, then start a new session once.
+3. Each save reloads the mod in the open session (an edit Claude makes reloads when its turn ends). To stop, remove the two `env` keys and turn `-ssh` back on.
+
 Or keep it on with an environment variable:
 
 ```bash
@@ -205,6 +211,7 @@ hooks/
 scripts/
   test-preload.ts engine stand-ins for bun test
   preview.ts      draws docs/preview.svg
+  dev.ts          live renamed copy for hot reload
 types/index.d.ts  the shape of the state ($.state)
 ```
 

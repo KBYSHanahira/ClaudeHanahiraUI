@@ -82,6 +82,12 @@ Claude Code の **ターミナル** で次を入力します（デスクトッ�
 claude --plugin-dir /path/to/hanahira-claude-ui
 ```
 
+**SSH ホスト（Desktop）でのホットリロード。** Desktop はすべてのセッションに空の `hanahira-claude-ui` を同期し、それが同名の `--plugin-dir` より先に読み込まれるため、リポジトリをそのままでは読み込めません。`scripts/dev.ts` は名前を変えたコピー `hanahira-claude-ui-dev` を `~/.claude/hanahira-dev/` に置き、保存のたびに同期します。
+
+1. `~/.claude/settings.json` に `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/hanahira-claude-ui-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` を追加し（`/root` は自分のホームに）、`enabledPlugins` の `"hanahira-claude-ui-ssh@hanahira-ssh"` を `false` にします。そうしないとバンドが 2 つ表示されます。
+2. `bun scripts/dev.ts` を起動したままにし、新しいセッションを一度開きます。
+3. 保存するたびに、開いているセッションでモッドが再読み込みされます（Claude による編集はそのターンの終わりに）。やめるときは `env` の 2 つのキーを消し、`-ssh` を有効に戻します。
+
 環境変数で常時有効にすることもできます。
 
 ```bash
@@ -205,6 +211,7 @@ hooks/
 scripts/
   test-preload.ts bun test 用のエンジン代替モジュール
   preview.ts      docs/preview.svg を描く
+  dev.ts          ホットリロード用の名前を変えたコピー
 types/index.d.ts  状態（$.state）の型
 ```
 
