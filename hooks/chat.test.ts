@@ -510,3 +510,21 @@ describe('statSvg icon', () => {
     expect(svg).toContain(`translate(${across} ${down}) scale(${+(STAT.icon / 24).toFixed(4)})`)
   })
 })
+
+describe('statSvg stacked', () => {
+  test('stacked: value and name on top, the rest in smaller lines under it, narrower than one line', () => {
+    const line = statSvg('31%', 'context · 693k left', { detail: '1M window' })
+    const stacked = statSvg('31%', 'context', { stack: ['693k left', '1M window'] })
+    expect(stacked.natural).toBeLessThan(line.natural)
+    expect(stacked.height).toBeGreaterThan(STAT.height)
+    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#857e7a">693k left</text>`)
+    expect(stacked.svg).toContain('>1M window</text>')
+    expect(stacked.svg).not.toContain(' · 1M window')
+  })
+
+  test('cells with as many lines under them are one height, so a line of them keeps one baseline', () => {
+    const a = statSvg('31%', 'context', { stack: ['693k left', '1M window'] })
+    const b = statSvg('57', 'tok/s', { stack: ['peak 1523', ''] })
+    expect(a.height).toBe(b.height)
+  })
+})

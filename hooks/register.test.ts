@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, shortLimitLabel, meter, forgetChanges, noteChange, ringSvg, tone, top } from './register'
+import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, forgetChanges, noteChange, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -72,6 +72,16 @@ describe('rings', () => {
     expect(shortLimitLabel('five_hour')).toBe('5h limit')
     expect(shortLimitLabel('seven_day')).toBe('7d limit')
     expect(shortLimitLabel('spend_limit')).toBe('spend limit')
+  })
+
+  test('what is left: tokens of the context window, a share of a limit', () => {
+    expect(contextLeft(279_000, 1_000_000, 28)).toBe('721k left')
+    expect(contextLeft(null, null, 28)).toBe('72% left')
+    expect(contextLeft(null, null, null)).toBeNull()
+    expect(contextLeft(1_200_000, 1_000_000, 100)).toBe('0 left')
+    expect(limitLeft(12)).toBe('88% left')
+    expect(limitLeft(20.6)).toBe('79% left')
+    expect(limitLeft(130)).toBe('0% left')
   })
 })
 

@@ -632,7 +632,7 @@ export const cardSvg = (
 }
 
 /** A stat on the compact band: one line at a text row's height, glyph then value then label. */
-export const STAT = { height: 32, glyph: 28, icon: 18, gap: 8, fs: 13.5, labelFs: 11.5, lineH: 18, baseline: 21 }
+export const STAT = { height: 32, glyph: 28, icon: 18, gap: 8, fs: 13.5, labelFs: 11.5, lineH: 18, baseline: 21, stackTop: 15, subFs: 10.5, subLine: 12.5 }
 
 /**
  * One stat of the compact band as SVG: a 28px glyph (a ring passed in as `ring`, else a tinted
@@ -657,15 +657,23 @@ export const statSvg = (
     ago?: number
     live?: { now: number }
     clock?: { elapsedMs: number }
+    /**
+     * Stacked: the value and label on the first line and these lines, smaller, under it
+     * (in place of `detail` after the label), so a cell is narrower and keeps every detail.
+     */
+    stack?: string[]
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const S = STAT
   const color = opts.color ?? '#8f8985'
-  const height = S.height
+  const under = opts.stack ?? []
+  const stacked = opts.stack !== undefined
+  // A stacked cell grows a line (STAT.subLine) for each line under the value.
+  const height = stacked ? Math.max(S.height, Math.ceil(S.stackTop + 4 + S.subLine * under.length)) : S.height
   const g0 = (height - S.glyph) / 2
   const x = S.glyph + S.gap
-  const y = S.baseline
+  const y = stacked ? S.stackTop : S.baseline
   const ease = '0.45 0 0.55 1'
   const breathe = opts.live
     ? `<animate attributeName="fill-opacity" values="0.14;0.3;0.14" keyTimes="0;0.5;1" calcMode="spline" keySplines="${ease};${ease}" dur="${CARD_BREATHE_MS / 1000}s" begin="${phaseBegin(opts.live.now, CARD_BREATHE_MS)}" repeatCount="indefinite"/>`
@@ -687,9 +695,12 @@ export const statSvg = (
     : `<tspan font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
   const tail =
     `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#9a938f">${holder}` +
-    `<tspan dx="5">${esc(label)}</tspan>` +
-    (opts.detail ? `<tspan fill="#756e6a"> · ${esc(opts.detail)}</tspan>` : '') +
-    `</text>`
+    (label ? `<tspan dx="5">${esc(label)}</tspan>` : '') +
+    (opts.detail && !stacked ? `<tspan fill="#756e6a"> · ${esc(opts.detail)}</tspan>` : '') +
+    `</text>` +
+    under
+      .map((line, i) => `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" fill="#857e7a">${esc(line)}</text>`)
+      .join('')
   const spline = `calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" begin="${sinceBegin(opts.ago)}"`
   const roll = (fromY: number, toY: number, fromO: number, toO: number) =>
     `<animateTransform attributeName="transform" type="translate" from="0 ${fromY}" to="0 ${toY}" dur="${CARD_ROLL_S}s" fill="freeze" ${spline}/>` +
@@ -703,8 +714,13 @@ export const statSvg = (
   // Sized generously, so the label always fits; `width` only ever widens it to the column.
   // The last 12px are for a face wider than the estimate (bold values run wide), which would
   // otherwise clip the label.
+  const valueW = odo ? odo.width : labelWidth(value, S.fs)
   const natural = Math.ceil(
-    x + (odo ? odo.width : labelWidth(value, S.fs)) + 5 + labelWidth(label + (opts.detail ? ` · ${opts.detail}` : ''), S.labelFs) + 12,
+    x +
+      (stacked
+        ? Math.max(valueW + (label ? 5 + labelWidth(label, S.labelFs) : 0), ...under.map(l => labelWidth(l, S.subFs)))
+        : valueW + 5 + labelWidth(label + (opts.detail ? ` · ${opts.detail}` : ''), S.labelFs)) +
+      12,
   )
   const width = Math.max(natural, opts.width ?? 0)
   // Rolling numerals stay in a window one line tall: the value slides in and out of sight.

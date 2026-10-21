@@ -44,6 +44,10 @@ import type { IconName } from './icons'
 // commands are repeats. Plain module state; a row redraws when its call resolves.
 const durations = new Map<string, number>()
 const reruns = new Set<string>()
+// When each running row began looping. A row draws its spinner from this fixed moment, so
+// every redraw while it runs makes the very same picture: the surface keeps the image it has
+// and the loop runs on unbroken, instead of a new picture starting it over.
+const loopStart = new Map<string, number>()
 const seenCommands = new Set<string>()
 const remember = (m: Map<string, number>, k: string, v: number) => {
   m.set(k, v)
@@ -173,6 +177,17 @@ export const glyph = (percent: number) =>
 export const limitLabel = (kind: string) =>
   kind === 'five_hour' ? '5-hour limit' : kind === 'seven_day' ? '7-day limit' : kind === 'spend_limit' ? 'spend limit' : kind
 
+/** What is left of the context window: the tokens when known, else the share. */
+export const contextLeft = (tokens: number | null, window: number | null, percent: number | null) =>
+  tokens !== null && window !== null
+    ? `${fmtTokens(Math.max(0, window - tokens))} left`
+    : percent !== null
+      ? `${Math.max(0, 100 - Math.round(percent))}% left`
+      : null
+
+/** What is left of a rate limit, as a share. */
+export const limitLeft = (percentUsed: number) => `${Math.max(0, 100 - Math.round(percentUsed))}% left`
+
 /** The limit's name on the compact band, where every character costs room on one line. */
 export const shortLimitLabel = (kind: string) =>
   kind === 'five_hour' ? '5h limit' : kind === 'seven_day' ? '7d limit' : limitLabel(kind)
@@ -242,8 +257,25 @@ const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, siz
   return Svg ? <Svg source={iconSvg(name, color, size)} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
 }
 
+/** The moment a running row began looping (0 once it stops, which also forgets it). */
+const loopSince = async ($: { clock: { now(): Promise<number> } }, id: string, running: boolean) => {
+  if (!running) {
+    loopStart.delete(id)
+    return 0
+  }
+  let at = loopStart.get(id)
+  if (at === undefined) {
+    at = await $.clock.now()
+    loopStart.set(id, at)
+  }
+  return at
+}
+
 export const register: Register = on => {
   let startedAt = 0
+  // The moment the band's loops (bar, dots, pulse) count from while a turn runs, if no
+  // prompt.submit set startedAt (a reload mid-turn).
+  let loopFallback = 0
   let ticker: { cancel: () => void } | null = null
   // A second beat while an agent runs: it can outlive the turn that started it.
   let agentTicker: { cancel: () => void } | null = null
@@ -554,6 +586,13 @@ export const register: Register = on => {
     ])
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
+    // Every loop on the band (the bar, the dots, a ring's pulse) counts from one moment that
+    // holds for the whole turn, never from now: the band redraws every second, and a picture
+    // that differs each time is swapped for a new one, which starts its loops over. Fixed,
+    // the picture stays the same, the surface keeps it, and the loops run on unbroken.
+    if (!e.props.isWorking) loopFallback = 0
+    else if (startedAt === 0 && loopFallback === 0) loopFallback = nowMs
+    const loopAt = e.props.isWorking ? startedAt || loopFallback : 0
     const { Box, Text } = $.ui.resolve(e)
 
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
@@ -608,13 +647,13 @@ export const register: Register = on => {
     const statusChip = (working: boolean) =>
       chipSvg(
         working
-          ? { color: THEME.accent, label: 'working', dots: true, strong: true, now: nowMs }
+          ? { color: THEME.accent, label: 'working', dots: true, strong: true, now: loopAt }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, strong: true },
       )
     const chips = [
       { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
         ...(e.props.isWorking
-          ? { color: THEME.accent, label: 'working', dots: true, now: nowMs }
+          ? { color: THEME.accent, label: 'working', dots: true, now: loopAt }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName }),
         strong: true,
         minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
@@ -637,19 +676,25 @@ export const register: Register = on => {
     // the time gets room for its widest form, so the bar does not twitch as the seconds grow.
     const textPx = (t: string, bold = false) => Math.ceil(t.length * (bold ? 8.2 : 7.6))
     const gapPx = 8
-    const rowPx =
-      14 + 14 + textPx(title, true) +
-      (branch ? 14 + gapPx + textPx(branch) : 0) +
+    // The top line is two groups: who (dot, folder, branch) and how it goes (time, status,
+    // count, version). When both do not fit on one line, the second group takes a line of its
+    // own, whole, instead of running past the frame; the bar goes where there is room for it.
+    const leftPx = 14 + 14 + textPx(title, true) + (branch ? 14 + gapPx + textPx(branch) : 0) + 3 * gapPx
+    const rightPx =
       (14 + gapPx + textPx('59m 59s')) +
       (THEME.compact
-        ? chips.reduce((w, c) => w + c.art.width, 0) + gapPx
-        : pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width + countArt.width) +
-      8 * gapPx + // between the row's items
-      4 * gapPx + // the frame's padding and border
-      24 // slack for font differences
-    const barRoom = Math.min(THEME.barPx, e.props.bodyColumns * 8 - rowPx)
-    // Never less than a short bar: if even that does not fit, its box gives way (clipped).
-    const barPx = Math.max(120, Math.floor(barRoom))
+        ? chips.reduce((w, c) => w + c.art.width, 0) + gapPx * chips.length
+        : pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width + countArt.width + 2 * gapPx) +
+      gapPx
+    const framePx = 4 * gapPx + 24 // the frame's padding and border, and slack for font differences
+    const topRoomPx = e.props.bodyColumns * 8 - framePx
+    const stacked = leftPx + rightPx > topRoomPx
+    // On a line of its own and still too wide: the version chip, the least needed, gives way.
+    const versionChip = chips.find(c => c.key === 'version')
+    const showVersion = !(THEME.compact && stacked && versionChip && rightPx > topRoomPx)
+    // The loading bar: what its line leaves, up to THEME.barPx; under a short bar's worth, none.
+    const barRoom = Math.min(THEME.barPx, topRoomPx - leftPx - (stacked ? 0 : rightPx) - gapPx)
+    const barPx = barRoom >= 120 ? Math.floor(barRoom) : 0
 
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
@@ -694,8 +739,9 @@ export const register: Register = on => {
         percent: use.percent,
         big: use.percent === null ? '—' : `${use.percent}%`,
         caption: use.tokens !== null && use.window !== null ? `context · ${fmtTokens(use.tokens)}/${fmtTokens(use.window)}` : 'context used',
-        short: 'context',
-        detail: use.tokens !== null && use.window !== null ? `${fmtTokens(use.tokens)}/${fmtTokens(use.window)}` : undefined,
+        // What is left stays on every layout; the window's size is the detail given up first.
+        short: ['context', contextLeft(use.tokens, use.window, use.percent)].filter(Boolean).join(' · '),
+        detail: use.window !== null ? `${fmtTokens(use.window)} window` : undefined,
       },
       ...(Array.isArray(use.limits) ? use.limits : []).map(l => ({
         key: l.kind,
@@ -704,7 +750,7 @@ export const register: Register = on => {
         big: `${Math.round(l.percentUsed)}%`,
         caption: `of ${limitLabel(l.kind)}`,
         sub: fmtReset(l.resetsAt, nowMs) ?? undefined,
-        short: shortLimitLabel(l.kind),
+        short: `${shortLimitLabel(l.kind)} · ${limitLeft(l.percentUsed)}`,
         detail: fmtReset(l.resetsAt, nowMs)?.replace(/^resets in /, '') ?? undefined,
       })),
       // Model speed: the ring fills against the best seen this session, and never turns red.
@@ -750,7 +796,7 @@ export const register: Register = on => {
           source={ringSvg(t.percent, t.color ?? ringColor(t.percent), size, {
             from: ringFrom.get(t.key) ?? 0,
             ago: ringAgo.get(t.key),
-            now: nowMs,
+            now: loopAt,
             pulse: !t.calm && t.percent >= 85,
             icon: t.icon,
           })}
@@ -766,15 +812,28 @@ export const register: Register = on => {
     // values). Each column is as wide as its widest cell, so the two rows line up.
     // `bare` leaves the detail out (the reset time, the token count, the peak): the first
     // thing given up when a row would not fit on one line.
-    type Cell = { key: string; alt: string; value: string; label: string; draw: (width?: number, bare?: boolean) => ReturnType<typeof statSvg> }
+    // How a cell spells itself: `line`, everything on one line; `stack`, the value and its name
+    // over the rest in smaller lines (narrower, every detail kept); `tall`, the value alone
+    // over everything else (narrower still); `bare`, one line without the detail.
+    type Mode = 'line' | 'stack' | 'tall' | 'bare'
+    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; draw: (width?: number, mode?: Mode) => ReturnType<typeof statSvg> }
     const gaugeCells: Cell[] = tiles.map(t => ({
       key: `tile-${t.key}`,
       alt: `${t.big} ${t.caption}`,
       value: t.big,
       label: [t.short, t.detail].filter(Boolean).join(' · '),
-      draw: (width, bare) =>
-        statSvg(t.big, t.short, {
-          detail: bare ? undefined : t.detail,
+      bareLabel: t.short,
+      draw: (width, mode = 'line') => {
+        // Stacked: the name beside the value, what is left and the detail on lines under it;
+        // tall: the name under the value too. Every gauge gets as many lines under it (blank
+        // where it has less), so a line of gauges keeps one height and one baseline.
+        const [name = t.short, ...rest] = t.short.split(' · ')
+        const more = [...rest, ...(t.detail ? [t.detail] : [])]
+        const under =
+          mode === 'stack' ? [...more, '', ''].slice(0, 2) : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
+        return statSvg(t.big, mode === 'stack' ? name : mode === 'tall' ? '' : t.short, {
+          detail: mode === 'line' ? t.detail : undefined,
+          ...(under ? { stack: under } : {}),
           width,
           // Speed is no share of a limit: a speedometer whose needle follows the stream.
           ...(t.key === 'speed'
@@ -785,13 +844,14 @@ export const register: Register = on => {
                 ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, {
                   from: ringFrom.get(t.key) ?? 0,
                   ago: ringAgo.get(t.key),
-                  now: nowMs,
+                  now: loopAt,
                   pulse: t.percent >= 85,
                   icon: t.icon,
                   bigIcon: true,
                 }),
               }),
-        }),
+        })
+      },
     }))
     const figureCells: Cell[] = cards.map(c => {
       const label = c.label.toLowerCase()
@@ -803,40 +863,48 @@ export const register: Register = on => {
         alt: `${c.label} ${c.value}`,
         value: c.value,
         label,
-        draw: width => statSvg(c.value, label, { icon: c.icon, color: c.color, width, ...motion }),
+        bareLabel: label,
+        // Stacked, the label goes under the value, so the column is no wider than the value.
+        draw: (width, mode = 'line') => {
+          const under = mode === 'stack' || mode === 'tall'
+          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: c.color, width, ...(under ? { stack: [label] } : {}), ...motion })
+        },
       }
     })
     // The stats sit on a grid: gauges in the first lines, figures under them, k columns to a
     // line, each column as wide as its widest cell, so every line lines up with the others.
-    // The layouts, widest first; the band takes the first that fits its room: all in one line
-    // each; the same without details; two columns (then without details); one column. A
+    // The layouts, widest first; the band takes the first that fits its room: every cell on
+    // one line; every cell stacked, then tall (still two lines of stats, every detail kept,
+    // each line taller); one line without details; two columns (then without details); one column. A
     // narrower or wider band so picks a whole layout, never a cell that wrapped on its own.
     // Room is estimated at 8px a cell, less the frame, its padding and some slack.
     const roomPx = e.props.bodyColumns * 8 - 4 * 8 - 16
     const cellGapPx = 2 * 8
     const across = Math.max(gaugeCells.length, figureCells.length, 1)
-    const layouts = [
-      { k: across, bare: false },
-      { k: across, bare: true },
-      ...(across > 2 ? [{ k: 2, bare: false }, { k: 2, bare: true }] : []),
-      { k: 1, bare: true },
+    const layouts: { k: number; mode: Mode }[] = [
+      { k: across, mode: 'line' },
+      { k: across, mode: 'stack' },
+      { k: across, mode: 'tall' },
+      { k: across, mode: 'bare' },
+      ...(across > 2 ? ([{ k: 2, mode: 'line' }, { k: 2, mode: 'bare' }] as const) : []),
+      { k: 1, mode: 'bare' },
     ]
     const chunk = (row: Cell[], k: number) =>
       Array.from({ length: Math.ceil(row.length / k) }, (_, i) => row.slice(i * k, i * k + k))
-    const widthsFor = (k: number, bare: boolean) => {
+    const widthsFor = (k: number, mode: Mode) => {
       const lines = [...chunk(gaugeCells, k), ...chunk(figureCells, k)]
       return {
         lines,
         colW: Array.from({ length: k }, (_, j) =>
-          Math.max(colMax.get(`${k}:${bare}:${j}`) ?? 0, ...lines.map(l => l[j]?.draw(undefined, bare).natural ?? 0)),
+          Math.max(colMax.get(`${k}:${mode}:${j}`) ?? 0, ...lines.map(l => l[j]?.draw(undefined, mode).natural ?? 0)),
         ),
       }
     }
     const lineW = (ws: number[]) => ws.reduce((a, b) => a + b, 0) + cellGapPx * Math.max(0, ws.length - 1)
     const chosen =
-      layouts.map(l => ({ ...l, ...widthsFor(l.k, l.bare) })).find(l => lineW(l.colW) <= roomPx) ??
-      { k: 1, bare: true, ...widthsFor(1, true) }
-    chosen.colW.forEach((w, j) => colMax.set(`${chosen.k}:${chosen.bare}:${j}`, w))
+      layouts.map(l => ({ ...l, ...widthsFor(l.k, l.mode) })).find(l => lineW(l.colW) <= roomPx) ??
+      { k: 1, mode: 'bare' as Mode, ...widthsFor(1, 'bare') }
+    chosen.colW.forEach((w, j) => colMax.set(`${chosen.k}:${chosen.mode}:${j}`, w))
 
     return (
       <Box flexDirection="column">
@@ -863,62 +931,68 @@ export const register: Register = on => {
         paddingX={1}
         {...(THEME.frame ? { borderStyle: 'round', borderColor: THEME.warm } : {})}
       >
-        <Box gap={1} alignItems="center">
-          {Svg ? (
-            <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, nowMs)} alt="" width={14} height={14} />
-          ) : (
-            <Text color={THEME.accent}>●</Text>
-          )}
-          {iconEl({ Text, Svg }, 'folder', '#a8a29e', 14, '')}
-          <Text bold>{title}</Text>
-          {branch ? (
-            <Box gap={1} alignItems="center">
-              {iconEl({ Text, Svg }, 'branch', '#a8a29e', 14, '⎇')}
-              <Text dimColor>{branch}</Text>
-            </Box>
-          ) : null}
-          {Svg ? (
-            // If the estimate is still too wide, the bar gives way (clipped), never the pill.
-            <Box flexShrink={1} minWidth={0} overflow="hidden">
-            <Svg
-              source={loadingSvg(barPx, THEME.barHeight, THEME.accent, {
-                live: e.props.isWorking,
-                padBottom: THEME.barGap,
-                now: nowMs,
-              })}
-              alt={e.props.isWorking ? 'Working' : 'Idle'}
-              width={barPx}
-              height={THEME.barHeight + THEME.barGap}
-            />
-            </Box>
-          ) : null}
-          {shownSecs !== null ? (
-            // As wide as '59m 59s' from the start, so the pill does not step right as it grows.
-            <Box gap={1} alignItems="center" minWidth={9}>
-              {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
-              <Text dimColor>{fmtElapsed(shownSecs)}</Text>
-            </Box>
-          ) : null}
-          {THEME.compact && Svg ? (
-            chips.map(c => <Svg key={`chip-${c.key}`} source={c.art.svg} alt={c.alt} width={c.art.width} height={c.art.height} />)
-          ) : (
-            <Box gap={1} alignItems="center">
-            {pillEl(
-              { Text, Svg },
-              // Idle is held as wide as working, so nothing after the pill moves when a turn starts.
-              e.props.isWorking
-                ? { text: 'working', running: true, ...PILL.busy }
-                : { text: 'idle', fg: '#8a8480', bg: '#2a2727', minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
-              nowMs,
-            )}
+        <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'flex-start' : 'center'}>
+          <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={countArt.svg} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
+              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, loopAt)} alt="" width={14} height={14} />
             ) : (
-              <Text dimColor>{`⚡ ${st.tools} ${st.tools === 1 ? 'tool' : 'tools'}`}</Text>
+              <Text color={THEME.accent}>●</Text>
             )}
-            {THEME.compact ? <Text dimColor>{`v${VERSION}`}</Text> : null}
-            </Box>
-          )}
+            {iconEl({ Text, Svg }, 'folder', '#a8a29e', 14, '')}
+            <Text bold>{title}</Text>
+            {branch ? (
+              <Box gap={1} alignItems="center">
+                {iconEl({ Text, Svg }, 'branch', '#a8a29e', 14, '⎇')}
+                <Text dimColor>{branch}</Text>
+              </Box>
+            ) : null}
+            {Svg && barPx > 0 ? (
+              // If the estimate is still too wide, the bar gives way (clipped), never the chips.
+              <Box flexShrink={1} minWidth={0} overflow="hidden">
+              <Svg
+                source={loadingSvg(barPx, THEME.barHeight, THEME.accent, {
+                  live: e.props.isWorking,
+                  padBottom: THEME.barGap,
+                  now: loopAt,
+                })}
+                alt={e.props.isWorking ? 'Working' : 'Idle'}
+                width={barPx}
+                height={THEME.barHeight + THEME.barGap}
+              />
+              </Box>
+            ) : null}
+          </Box>
+          <Box gap={1} alignItems="center" flexShrink={0}>
+            {shownSecs !== null ? (
+              // As wide as '59m 59s' from the start, so the pill does not step right as it grows.
+              <Box gap={1} alignItems="center" minWidth={9}>
+                {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
+                <Text dimColor>{fmtElapsed(shownSecs)}</Text>
+              </Box>
+            ) : null}
+            {THEME.compact && Svg ? (
+              chips
+                .filter(c => showVersion || c.key !== 'version')
+                .map(c => <Svg key={`chip-${c.key}`} source={c.art.svg} alt={c.alt} width={c.art.width} height={c.art.height} />)
+            ) : (
+              <Box gap={1} alignItems="center">
+              {pillEl(
+                { Text, Svg },
+                // Idle is held as wide as working, so nothing after the pill moves when a turn starts.
+                e.props.isWorking
+                  ? { text: 'working', running: true, ...PILL.busy }
+                  : { text: 'idle', fg: '#8a8480', bg: '#2a2727', minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
+                loopAt,
+              )}
+              {Svg ? (
+                <Svg source={countArt.svg} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
+              ) : (
+                <Text dimColor>{`⚡ ${st.tools} ${st.tools === 1 ? 'tool' : 'tools'}`}</Text>
+              )}
+              {THEME.compact ? <Text dimColor>{`v${VERSION}`}</Text> : null}
+              </Box>
+            )}
+          </Box>
         </Box>
 
         {THEME.compact ? (
@@ -931,10 +1005,10 @@ export const register: Register = on => {
                     return (
                       <Text key={c.key}>
                         <Text bold>{c.value}</Text>
-                        <Text dimColor>{` ${chosen.bare ? c.label.split(' · ')[0] : c.label}`}</Text>
+                        <Text dimColor>{` ${chosen.mode === 'bare' ? c.bareLabel : c.label}`}</Text>
                       </Text>
                     )
-                  const art = c.draw(chosen.colW[j], chosen.bare)
+                  const art = c.draw(chosen.colW[j], chosen.mode)
                   return <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} />
                 })}
               </Box>
@@ -1011,8 +1085,8 @@ export const register: Register = on => {
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
     const pill = statusPill(p.tool, p)
     const ms = durations.get(p.tool_use_id)
-    // Only a running row loops (spinner, busy pill); it picks up its phase so a redraw carries it on.
-    const now = p.isRunning ? await $.clock.now() : 0
+    // Only a running row loops (spinner, busy pill), from a moment fixed when it started.
+    const now = await loopSince($, p.tool_use_id, p.isRunning)
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
@@ -1102,7 +1176,7 @@ export const register: Register = on => {
       .join(' · ')
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
-    const now = isRunning ? await $.clock.now() : 0
+    const now = await loopSince($, `group:${calls[0]?.tool_use_id ?? ''}`, isRunning)
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored

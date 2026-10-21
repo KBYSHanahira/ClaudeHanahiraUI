@@ -156,10 +156,10 @@ describe('agent card', () => {
     expect(agentStats(mk({ startedAt: 0 }))).toContain('working')
   })
 
-  test('a running card picks its loops up at the phase reached since the agent started', () => {
-    const svg = agentCardSvg(mk({ startedAt: 0 }), 5_000).svg
-    expect(svg).toContain(`begin="${phaseBegin(5_000, SPIN_S * 1000)}"`)
-    expect(svg).toContain(`begin="${phaseBegin(5_000, 1600)}"`)
+  test('a running card is the same picture on every redraw, so its loops are never restarted', () => {
+    const at = (now: number) => agentCardSvg(mk({ startedAt: 0 }), now).svg
+    expect(at(5_000)).toBe(at(6_000))
+    expect(at(5_000)).toContain(`begin="${phaseBegin(0, SPIN_S * 1000)}"`)
   })
 
   test('a changed stats line rolls the old one out and the new one in', () => {

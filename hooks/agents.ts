@@ -155,8 +155,8 @@ export const agentStats = (a: Agent) => {
  * (it just appeared); `flash` washes its border green once (it just finished). A running
  * card wears its accent on the border, turns a small spinner where the check will go, and
  * glides a light along its bar: one direction, eased. Given `fromStats`, the old stats line
- * rolls up and out as the new one rolls in. The loops start at the phase they have reached
- * since the agent started, so a new picture carries on the motion of the one it replaces.
+ * rolls up and out as the new one rolls in. The loops always start from their first frame,
+ * so a redraw with nothing new makes the very same picture and the surface keeps it running.
  */
 export const agentCardSvg = (
   a: Agent,
@@ -177,7 +177,10 @@ export const agentCardSvg = (
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0)) // transparent room under the card, in px
   const accent = accentFor(a.effort, a.model)
   const running = a.status === 'running'
-  const since = Math.max(0, now - a.startedAt)
+  // The spinner and the bar loop from the card's first frame, not from now: the band redraws
+  // every second, and a picture that differs each time is swapped for a new one, which starts
+  // its loops over. The same picture is kept, and its loops run on unbroken.
+  const loopFrom = 0
   const nameFull = clip(a.name, 24)
   const name = esc(nameFull)
   // The name must stop short of the status mark: pin it to the room it has.
@@ -202,7 +205,7 @@ export const agentCardSvg = (
   const mark = running
     ? `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2.2"/>` +
       `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}">` +
-      `<animateTransform attributeName="transform" type="rotate" from="0 ${W - 21} 17" to="360 ${W - 21} 17" dur="${SPIN_S}s" begin="${phaseBegin(since, SPIN_S * 1000)}" repeatCount="indefinite"/></circle>`
+      `<animateTransform attributeName="transform" type="rotate" from="0 ${W - 21} 17" to="360 ${W - 21} 17" dur="${SPIN_S}s" begin="${phaseBegin(loopFrom, SPIN_S * 1000)}" repeatCount="indefinite"/></circle>`
     : a.status === 'done'
       ? iconGroup('check', '#7bd88f', W - 29, 9, 16, 3)
       : a.status === 'error'
@@ -220,7 +223,7 @@ export const agentCardSvg = (
       ? `<defs><clipPath id="${uid}"><rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2"/></clipPath>` +
         `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity="0"/><stop offset="0.75" stop-color="${accent}"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></linearGradient></defs>` +
         `<g clip-path="url(#${uid})"><rect x="${barX - seg}" y="${barY}" width="${seg}" height="4" fill="url(#${uid}g)">` +
-        `<animate attributeName="x" from="${barX - seg}" to="${barX + barW}" dur="1.6s" begin="${phaseBegin(since, 1600)}" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"/></rect></g>`
+        `<animate attributeName="x" from="${barX - seg}" to="${barX + barW}" dur="1.6s" begin="${phaseBegin(loopFrom, 1600)}" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"/></rect></g>`
       : `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="${accent}"/>`)
 
   // The stats line sits in a window one line tall; a changed line rolls through it.
