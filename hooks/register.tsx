@@ -253,14 +253,15 @@ const pillEl = (els: { Text: any; Svg: any }, p: PillSpec, now = 0) => {
 }
 
 /**
- * The busy pill of a running row. Where the surface takes a `Client` (Desktop, the terminal),
- * a spinner it turns on its own clock (spinner.tsx), which no update restarts; elsewhere the
- * drawn pill. `key` names the instance, so each running row keeps its own.
+ * The busy pill of a running row. Where the surface draws SVG, the same capsule as a finished
+ * row's, its dots lighting in turn (phase-locked to `now`, so a redraw carries the wave on). A
+ * `Client` gets only the terminal's elements, no `Svg`, so it cannot draw that capsule: on the
+ * terminal, a spinner it turns on its own clock (spinner.tsx). `key` names that instance.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const runningPill = (els: { Text: any; Svg: any; Client: any }, key: string, now: number) => {
-  const { Client } = els
-  if (Client) return <Client key={key} module="./spinner.tsx" props={{ color: PILL.busy.fg, bg: PILL.busy.bg, label: 'running' }} />
+  const { Svg, Client } = els
+  if (!Svg && Client) return <Client key={key} module="./spinner.tsx" props={{ color: PILL.busy.fg, bg: PILL.busy.bg, label: 'running' }} />
   return pillEl(els, { text: 'running', running: true, ...PILL.busy }, now)
 }
 
@@ -283,6 +284,8 @@ export const register: Register = on => {
   // Characters of streamed text per output token, learned from each finished response, so the
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
+  // DEBUG (temporary): the band's last logged layout facts.
+  let lastBandFacts = ''
 
   on('session.start', async ($, e, next) => {
     const cwd = await $.session.cwd()
@@ -693,6 +696,16 @@ export const register: Register = on => {
     // On a line of its own and still too wide: the version chip, the least needed, gives way.
     const versionChip = chips.find(c => c.key === 'version')
     const showVersion = !(THEME.compact && stacked && versionChip && rightPx > topRoomPx)
+    // DEBUG (temporary): why the top line's Svgs do not show. One line each time the layout
+    // facts change, to the transcript.
+    const bandFacts =
+      `[band debug] surface=${e.surface} svg=${Svg !== null} client=${Client !== null} ` +
+      `bodyColumns=${e.props.bodyColumns} topRoomPx=${topRoomPx} leftPx=${leftPx} rightPx=${rightPx} ` +
+      `stacked=${stacked} showVersion=${showVersion} compact=${THEME.compact} working=${e.props.isWorking}`
+    if (bandFacts !== lastBandFacts) {
+      lastBandFacts = bandFacts
+      $.ui.log(bandFacts)
+    }
 
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
@@ -1113,7 +1126,8 @@ export const register: Register = on => {
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
     const Client = 'Client' in table ? table.Client : null
-    // With a spinner of the surface's own in the pill, the badge stays still: one motion.
+    // Where a `Client` is offered (Desktop, the terminal) the pill carries the motion, so the
+    // badge stays still: one motion.
     const badgeSpins = p.isRunning && !Client
 
     return (
