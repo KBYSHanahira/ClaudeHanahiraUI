@@ -37,7 +37,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 <div align="center">
 
-<img src="docs/preview.png" alt="Hanahira Claude UI status band: rings, cards, agent cards" width="900">
+<img src="docs/preview.png" alt="Hanahira Claude UI compact status band: agent cards, top-line chips, two lines of stats" width="900">
 
 *Drawn by the plugin's own SVG builders with sample numbers. Regenerate: `bun scripts/preview.ts`*
 

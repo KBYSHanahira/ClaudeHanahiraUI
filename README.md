@@ -37,7 +37,7 @@
 
 <div align="center">
 
-<img src="docs/preview.png" alt="Hanahira Claude UI status band: rings, cards, agent cards" width="900">
+<img src="docs/preview.png" alt="Hanahira Claude UI compact status band: agent cards, top-line chips, two lines of stats" width="900">
 
 *プラグイン自身の SVG 描画関数で作った画像です（数値はサンプル）。再生成: `bun scripts/preview.ts`*
 
