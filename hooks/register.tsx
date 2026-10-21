@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Agent, Info, Stats, Tokens, Usage } from '../types'
-import { agentCardSvg, agentStats, prettyModel, visibleAgents } from './agents'
+import { accentFor, agentCardSvg, agentStats, CARD_W, prettyModel, visibleAgents } from './agents'
 import {
   KIND_COLOR,
   KIND_GLYPH,
@@ -44,10 +44,12 @@ import type { IconName } from './icons'
 // commands are repeats. Plain module state; a row redraws when its call resolves.
 const durations = new Map<string, number>()
 const reruns = new Set<string>()
-// When each running row began looping. A row draws its spinner from this fixed moment, so
-// every redraw while it runs makes the very same picture: the surface keeps the image it has
-// and the loop runs on unbroken, instead of a new picture starting it over.
-const loopStart = new Map<string, number>()
+// A picture set again starts its loops over, even the same one (a transcript row is set again
+// as rows around it come and go; the band, every second). So every loop is drawn at the phase
+// it has reached now, read on every redraw, and the new picture carries on where the old one
+// was. LOOP_LEAD_MS covers the time from drawing to the picture showing
+// (over SSH, the round trip), so the loop lands where it should be, not a beat behind.
+const LOOP_LEAD_MS = 120
 const seenCommands = new Set<string>()
 const remember = (m: Map<string, number>, k: string, v: number) => {
   m.set(k, v)
@@ -250,6 +252,18 @@ const pillEl = (els: { Text: any; Svg: any }, p: PillSpec, now = 0) => {
   return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
 }
 
+/**
+ * The busy pill of a running row. Where the surface takes a `Client` (Desktop, the terminal),
+ * a spinner it turns on its own clock (spinner.tsx), which no update restarts; elsewhere the
+ * drawn pill. `key` names the instance, so each running row keeps its own.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const runningPill = (els: { Text: any; Svg: any; Client: any }, key: string, now: number) => {
+  const { Client } = els
+  if (Client) return <Client key={key} module="./spinner.tsx" props={{ color: PILL.busy.fg, bg: PILL.busy.bg, label: 'running' }} />
+  return pillEl(els, { text: 'running', running: true, ...PILL.busy }, now)
+}
+
 /** A small icon where the surface draws SVG, else a plain glyph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, size: number, fallback: string) => {
@@ -257,25 +271,12 @@ const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, siz
   return Svg ? <Svg source={iconSvg(name, color, size)} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
 }
 
-/** The moment a running row began looping (0 once it stops, which also forgets it). */
-const loopSince = async ($: { clock: { now(): Promise<number> } }, id: string, running: boolean) => {
-  if (!running) {
-    loopStart.delete(id)
-    return 0
-  }
-  let at = loopStart.get(id)
-  if (at === undefined) {
-    at = await $.clock.now()
-    loopStart.set(id, at)
-  }
-  return at
-}
+/** The moment a running row's loops are drawn at: now, a little ahead (0 when not running). */
+const loopNow = async ($: { clock: { now(): Promise<number> } }, running: boolean) =>
+  running ? (await $.clock.now()) + LOOP_LEAD_MS : 0
 
 export const register: Register = on => {
   let startedAt = 0
-  // The moment the band's loops (bar, dots, pulse) count from while a turn runs, if no
-  // prompt.submit set startedAt (a reload mid-turn).
-  let loopFallback = 0
   let ticker: { cancel: () => void } | null = null
   // A second beat while an agent runs: it can outlive the turn that started it.
   let agentTicker: { cancel: () => void } | null = null
@@ -586,13 +587,10 @@ export const register: Register = on => {
     ])
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
-    // Every loop on the band (the bar, the dots, a ring's pulse) counts from one moment that
-    // holds for the whole turn, never from now: the band redraws every second, and a picture
-    // that differs each time is swapped for a new one, which starts its loops over. Fixed,
-    // the picture stays the same, the surface keeps it, and the loops run on unbroken.
-    if (!e.props.isWorking) loopFallback = 0
-    else if (startedAt === 0 && loopFallback === 0) loopFallback = nowMs
-    const loopAt = e.props.isWorking ? startedAt || loopFallback : 0
+    // Every loop on the band (the bar, the dots, a ring's pulse) is drawn at the phase it has
+    // reached now, plus LOOP_LEAD_MS: a picture set again starts its loops over, even the same
+    // one, so each redraw's new picture must carry on where the last one was.
+    const loopAt = nowMs + LOOP_LEAD_MS
     const { Box, Text } = $.ui.resolve(e)
 
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
@@ -601,6 +599,11 @@ export const register: Register = on => {
 
     const table = $.ui.resolve(e)
     const Svg = 'Svg' in table ? table.Svg : null
+    // Where the surface takes a `Client`, the band's motion while a turn runs (the spinner by
+    // the title, the bar's light) is turned by the surface itself (spinner.tsx, shimmer.tsx),
+    // so no redraw restarts it; the pictures beside them stand still.
+    const Client = 'Client' in table ? table.Client : null
+    const surfaceMoves = Client !== null && e.props.isWorking
 
 
     // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
@@ -653,7 +656,7 @@ export const register: Register = on => {
     const chips = [
       { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
         ...(e.props.isWorking
-          ? { color: THEME.accent, label: 'working', dots: true, now: loopAt }
+          ? { color: THEME.accent, label: 'working', dots: true, still: surfaceMoves, now: loopAt }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName }),
         strong: true,
         minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
@@ -719,10 +722,12 @@ export const register: Register = on => {
       // the bounce, the flash and the stats roll by time since they began), so a redraw
       // carries each one on instead of starting it over.
       const sc = noteChange(`agent:${a.id}`, agentStats(a), nowMs)
-      const art = agentCardSvg(a, nowMs, {
+      const art = agentCardSvg(a, nowMs + LOOP_LEAD_MS, {
         pop,
         flash,
-        padBottom: THEME.stripGap,
+        // Where the surface takes a `Client`, the bar under the card is its own (see below).
+        barless: Client !== null,
+        padBottom: Client !== null ? 0 : THEME.stripGap,
         fromStats: sc.from,
         statsAgo: sc.ago,
         popAgo: nowMs - (firstSeenAt.get(a.id) ?? nowMs),
@@ -911,7 +916,26 @@ export const register: Register = on => {
           {crewCards.length > 0 ? (
             <Box columnGap={2} rowGap={1} alignItems="center" flexWrap="wrap">
               {crewCards.map(({ a, pop, flash, art }) =>
-                Svg ? (
+                Svg && Client ? (
+                  // The card, still, over its bar: a running agent's light glides along it, moved
+                  // by the surface (shimmer.tsx), so no redraw restarts it; a finished one's bar
+                  // is whole, in the card's accent.
+                  <Box key={`agent-${a.id}`} flexDirection="column" marginBottom={1}>
+                    <Svg source={art.svg} alt={`${a.name}, ${a.status}`} width={art.width} height={art.height} />
+                    {a.status === 'running' ? (
+                      <Client
+                        key={`agent-bar-${a.id}`}
+                        module="./shimmer.tsx"
+                        props={{ cells: Math.floor(CARD_W / 8), color: accentFor(a.effort, a.model), track: '#2b2827' }}
+                        width={Math.floor(CARD_W / 8)}
+                      />
+                    ) : (
+                      <Text mono wrap="truncate-end" color={a.status === 'done' ? accentFor(a.effort, a.model) : '#3a3836'}>
+                        {'━'.repeat(Math.floor(CARD_W / 8))}
+                      </Text>
+                    )}
+                  </Box>
+                ) : Svg ? (
                   <Svg
                     key={`agent-${a.id}`}
                     source={art.svg}
@@ -933,7 +957,9 @@ export const register: Register = on => {
       >
         <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'flex-start' : 'center'}>
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
-            {Svg ? (
+            {surfaceMoves ? (
+              <Client key="band-spinner" module="./spinner.tsx" props={{ color: THEME.accent, bg: '', label: '' }} />
+            ) : Svg ? (
               <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, loopAt)} alt="" width={14} height={14} />
             ) : (
               <Text color={THEME.accent}>●</Text>
@@ -946,7 +972,15 @@ export const register: Register = on => {
                 <Text dimColor>{branch}</Text>
               </Box>
             ) : null}
-            {Svg && barPx > 0 ? (
+            {surfaceMoves && barPx > 0 ? (
+              // A cell of the bar is about 8px: the same room the drawn bar would take.
+              <Client
+                key="band-bar"
+                module="./shimmer.tsx"
+                props={{ cells: Math.floor(barPx / 8), color: THEME.accent, track: '#3a3433' }}
+                width={Math.floor(barPx / 8)}
+              />
+            ) : Svg && barPx > 0 ? (
               // If the estimate is still too wide, the bar gives way (clipped), never the chips.
               <Box flexShrink={1} minWidth={0} overflow="hidden">
               <Svg
@@ -1085,12 +1119,15 @@ export const register: Register = on => {
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
     const pill = statusPill(p.tool, p)
     const ms = durations.get(p.tool_use_id)
-    // Only a running row loops (spinner, busy pill), from a moment fixed when it started.
-    const now = await loopSince($, p.tool_use_id, p.isRunning)
+    // Only a running row loops (spinner, busy pill), at the phase it has reached now.
+    const now = await loopNow($, p.isRunning)
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
+    const Client = 'Client' in table ? table.Client : null
+    // With a spinner of the surface's own in the pill, the badge stays still: one motion.
+    const badgeSpins = p.isRunning && !Client
 
     return (
       <Box justifyContent="space-between" alignItems="center" gap={1}>
@@ -1098,7 +1135,7 @@ export const register: Register = on => {
             pill and the duration on the right never shrink or wrap. */}
         <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
           {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, p.isRunning, now)} alt={d.verb} width={30} height={30} />
+            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, badgeSpins, now)} alt={d.verb} width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH[d.kind]} `}</Text>
           )}
@@ -1108,7 +1145,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box gap={1} alignItems="center" flexShrink={0}>
-          {pillEl({ Text, Svg }, pill, now)}
+          {p.isRunning ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now) : pillEl({ Text, Svg }, pill, now)}
           {ms !== undefined && !p.isRunning ? <Text dimColor>{fmtDuration(ms)}</Text> : null}
         </Box>
       </Box>
@@ -1176,7 +1213,7 @@ export const register: Register = on => {
       .join(' · ')
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
-    const now = await loopSince($, `group:${calls[0]?.tool_use_id ?? ''}`, isRunning)
+    const now = await loopNow($, isRunning)
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored
@@ -1186,6 +1223,7 @@ export const register: Register = on => {
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
+    const Client = 'Client' in table ? table.Client : null
 
     return (
       <Box justifyContent="space-between" alignItems="center" gap={1}>
@@ -1193,7 +1231,7 @@ export const register: Register = on => {
             pill and the duration on the right never shrink or wrap. */}
         <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
           {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning, now)} alt="Explore" width={30} height={30} />
+            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning && !Client, now)} alt="Explore" width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH.search} `}</Text>
           )}
@@ -1202,7 +1240,9 @@ export const register: Register = on => {
             <Text> {summary}</Text>
           </Text>
         </Box>
-        <Box flexShrink={0}>{pillEl({ Text, Svg }, pill, now)}</Box>
+        <Box flexShrink={0}>
+          {isRunning ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now) : pillEl({ Text, Svg }, pill, now)}
+        </Box>
       </Box>
     )
   })

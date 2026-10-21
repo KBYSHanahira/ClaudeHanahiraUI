@@ -209,6 +209,8 @@ hooks/
   chat.ts         表示用の純粋関数（SVG・書式・チャート）
   agents.ts       エージェントカード・価格表
   icons.ts        線アイコン一式
+  spinner.tsx     Desktop が自分で回す実行中スピナー（Client）
+  shimmer.tsx     作業中バーの光、Desktop が動かす（Client）
 scripts/
   test-preload.ts bun test 用のエンジン代替モジュール
   preview.ts      docs/preview.svg を描く

@@ -753,6 +753,8 @@ export const chipSvg = (opts: {
   value?: string
   icon?: IconName
   dots?: boolean
+  /** The dots stand still (where the surface turns a spinner of its own beside them). */
+  still?: boolean
   strong?: boolean
   now?: number
   minWidth?: number
@@ -773,8 +775,11 @@ export const chipSvg = (opts: {
     ? [0, 1, 2]
         .map(
           i =>
-            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${opts.color}" opacity="0.3">` +
-            `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${phaseBegin((opts.now ?? 0) - i * 180, 1200)}" repeatCount="indefinite" ${ease}/></circle>`,
+            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${opts.color}" opacity="${opts.still ? 0.3 + i * 0.35 : 0.3}">` +
+            (opts.still
+              ? ''
+              : `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${phaseBegin((opts.now ?? 0) - i * 180, 1200)}" repeatCount="indefinite" ${ease}/>`) +
+            `</circle>`,
         )
         .join('')
     : opts.icon

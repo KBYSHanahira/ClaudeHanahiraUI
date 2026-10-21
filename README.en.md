@@ -209,6 +209,8 @@ hooks/
   chat.ts         pure display helpers (SVG, formats)
   agents.ts       agent cards, price table
   icons.ts        the line-icon set
+  spinner.tsx     running spinner Desktop turns itself (a Client)
+  shimmer.tsx     the working bar's light, moved by Desktop (a Client)
 scripts/
   test-preload.ts engine stand-ins for bun test
   preview.ts      draws docs/preview.svg

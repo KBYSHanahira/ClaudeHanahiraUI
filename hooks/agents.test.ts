@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
 import { SPIN_S, phaseBegin } from './chat'
-import { CARD_H, CARD_W, accentFor, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { BAR_ROOM, CARD_H, CARD_W, accentFor, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 const mk = (over: Partial<Agent> = {}): Agent => ({
   id: 'a1',
@@ -156,10 +156,17 @@ describe('agent card', () => {
     expect(agentStats(mk({ startedAt: 0 }))).toContain('working')
   })
 
-  test('a running card is the same picture on every redraw, so its loops are never restarted', () => {
-    const at = (now: number) => agentCardSvg(mk({ startedAt: 0 }), now).svg
-    expect(at(5_000)).toBe(at(6_000))
-    expect(at(5_000)).toContain(`begin="${phaseBegin(0, SPIN_S * 1000)}"`)
+  test('a barless card leaves the bar out and holds its spinner still, for the surface to move', () => {
+    const svg = agentCardSvg(mk({ startedAt: 0 }), 5_000, { barless: true })
+    expect(svg.height).toBe(CARD_H - BAR_ROOM)
+    expect(svg.svg).not.toContain('<animate')
+    expect(svg.svg).not.toContain('fill="#2b2827"')
+  })
+
+  test('a running card picks its loops up at the phase reached since the agent started', () => {
+    const svg = agentCardSvg(mk({ startedAt: 0 }), 5_000).svg
+    expect(svg).toContain(`begin="${phaseBegin(5_000, SPIN_S * 1000)}"`)
+    expect(svg).toContain(`begin="${phaseBegin(5_000, 1600)}"`)
   })
 
   test('a changed stats line rolls the old one out and the new one in', () => {
