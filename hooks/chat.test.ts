@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
   fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
 
 describe('describe', () => {
@@ -298,6 +298,50 @@ describe('more motion', () => {
     expect(cardSvg('A<B', '1&2').svg).toContain('A&lt;B')
     expect(cardSvg('Cost', '≈$1,234,567.89').width).toBeGreaterThan(cardSvg('Cost', '1').width)
   })
+
+  test('a stat is one line: glyph, value, then label and detail; width only widens it', () => {
+    const s = statSvg('17%', 'context', { detail: '171k/1M', icon: 'chip' })
+    expect(s.height).toBe(STAT.height)
+    // The label follows an invisible copy of the value, so the renderer places it.
+    expect(s.svg).toMatch(/fill-opacity="0">17%<\/tspan><tspan dx="5">context<\/tspan><tspan[^>]*> · 171k\/1M</)
+    expect(statSvg('17%', 'context', { width: 400 }).width).toBe(400)
+    expect(statSvg('17%', 'context', { width: 10 }).width).toBe(statSvg('17%', 'context').natural)
+  })
+
+  test('live speed is the rate over the recent window, in tokens', () => {
+    // 400 chars a second at 4 chars a token is 100 tokens a second.
+    const s: Array<[number, number]> = [[0, 0], [500, 200], [1000, 400], [1500, 600], [2000, 800]]
+    expect(liveSpeed(s, 2000)).toBeCloseTo(100)
+    // Only the last window counts: a slow start no longer drags it down.
+    expect(liveSpeed([[0, 0], [3000, 10], [3500, 410]], 3500, { windowMs: 600, minMs: 400 })).toBeCloseTo(200)
+    expect(liveSpeed([[0, 0], [100, 400]], 100)).toBeNull()
+    expect(liveSpeed([], 0)).toBeNull()
+    expect(liveSpeed(s, 2000, { charsPerToken: 2 })).toBeCloseTo(200)
+  })
+
+  test('the speedometer scale is a round step clear of the peak', () => {
+    expect(speedScale(0)).toBe(50)
+    expect(speedScale(91)).toBe(150)
+    expect(speedScale(122)).toBe(150)
+    expect(speedScale(140)).toBe(200)
+    expect(speedScale(5000)).toBe(6000)
+  })
+
+  test('the speedometer sweeps its needle from where it was drawn', () => {
+    expect(speedoSvg(0.5, '#9b8cf7', 22)).toContain('rotate(0.0 22 22)')
+    expect(speedoSvg(0.5, '#9b8cf7', 22)).not.toContain('<animate')
+    const moving = speedoSvg(1, '#9b8cf7', 22, { from: 0 })
+    expect(moving).toContain('from="-135.0 22 22" to="135.0 22 22"')
+    expect(moving).toContain('attributeName="stroke-dasharray"')
+    expect(speedoSvg(3, '#fff', 22)).toContain('rotate(135.0 22 22)')
+  })
+
+  test('a stat takes a ring in the glyph slot, and rolls a changed value', () => {
+    const ring = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"></svg>'
+    expect(statSvg('9%', '5-hour limit', { ring }).svg).toContain(`<g transform="translate(0 ${(STAT.height - STAT.glyph) / 2})">${ring}</g>`)
+    expect(statSvg('$2', 'cost', { changed: true, from: '$1' }).svg).toContain('<animateTransform')
+    expect(statSvg('$2', 'cost').svg).not.toContain('<animate')
+  })
 })
 
 describe('icons', () => {
@@ -427,5 +471,42 @@ describe('base', () => {
     expect(base('C:\\Users\\Kobay\\OneDrive\\Desktop\\KikitanTranslator')).toBe('KikitanTranslator')
     expect(base('C:\\work\\app\\')).toBe('app')
     expect(base('app')).toBe('app')
+  })
+})
+
+describe('steady widths', () => {
+  test('a pill and the tool counter hold a minimum width, so what follows them never shifts', () => {
+    const working = pillSvg('working', '#fff', '#000', 24, true).width
+    expect(pillSvg('idle', '#fff', '#000', 24, false, undefined, 0, working).width).toBe(working)
+    expect(pillSvg('idle', '#fff', '#000').width).toBeLessThan(working)
+    const room = countSvg(999).width
+    expect(countSvg(3, { minWidth: room }).width).toBe(room)
+    expect(countSvg(3).width).toBeLessThan(room)
+  })
+})
+
+describe('chipSvg', () => {
+  test('a chip is the stats tile look: tinted fill, thin edge, glyph, value then label', () => {
+    const c = chipSvg({ color: '#f2c94c', icon: 'bolt', value: '10', label: 'tools' })
+    expect(c.height).toBe(CHIP_LINE.height)
+    expect(c.svg).toContain('fill="#f2c94c" fill-opacity="0.14" stroke="#f2c94c" stroke-opacity="0.32"')
+    expect(c.svg).toContain('>10</text>')
+    expect(c.svg).toContain('dx="5">tools</tspan>')
+  })
+
+  test('minWidth holds a chip as wide as another state, and a changed value rolls', () => {
+    const wide = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).natural
+    expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
+    expect(chipSvg({ color: '#fff', value: '3', label: 'tools', changed: true, from: '2' }).svg).toContain('animateTransform')
+    expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('<animate')
+  })
+})
+
+describe('statSvg icon', () => {
+  test('the icon sits in the middle of its tile, across and down', () => {
+    const svg = statSvg('$1', 'cost', { icon: 'coin' }).svg
+    const across = (STAT.glyph - STAT.icon) / 2
+    const down = (STAT.height - STAT.glyph) / 2 + across
+    expect(svg).toContain(`translate(${across} ${down}) scale(${+(STAT.icon / 24).toFixed(4)})`)
   })
 })

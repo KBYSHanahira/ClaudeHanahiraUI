@@ -307,6 +307,61 @@ export const fmtTokens = (n: number) => {
 export const tokensPerSec = (outputTokens: number, ms: number, minTokens = 20) =>
   outputTokens >= minTokens && ms > 0 ? outputTokens / (ms / 1000) : null
 
+/**
+ * Speed right now, from the pieces of a response as they stream: `samples` are
+ * [time in ms, characters so far], oldest first. The rate over the last `windowMs`, turned
+ * into tokens at `charsPerToken`; null until the window spans `minMs`, so the first burst of
+ * a response does not read as a spike.
+ */
+export const liveSpeed = (samples: ReadonlyArray<readonly [number, number]>, now: number, opts: { windowMs?: number; minMs?: number; charsPerToken?: number } = {}) => {
+  const { windowMs = 1500, minMs = 400, charsPerToken = 4 } = opts
+  const last = samples[samples.length - 1]
+  if (!last) return null
+  const first = samples.find(([at]) => now - at <= windowMs) ?? last
+  const ms = now - first[0]
+  if (ms < minMs) return null
+  return (last[1] - first[1]) / charsPerToken / (ms / 1000)
+}
+
+/** The speedometer's full scale: the first round step clear of the best speed seen. */
+export const speedScale = (peak: number) =>
+  [50, 100, 150, 200, 300, 400, 600, 800, 1000, 1500, 2000].find(s => s >= peak * 1.1) ?? Math.ceil((peak * 1.1) / 1000) * 1000
+
+/**
+ * A speedometer as SVG: a 270° track open at the bottom, an arc filled to `fraction`, and a
+ * needle. Given `from` (the fraction it was last drawn at) the arc and needle sweep from there,
+ * so redraws a few times a second read as one needle moving.
+ */
+export const speedoSvg = (fraction: number, color: string, size: number, opts: { from?: number; ago?: number } = {}) => {
+  const f = Math.max(0, Math.min(1, fraction))
+  const from = opts.from === undefined ? f : Math.max(0, Math.min(1, opts.from))
+  const r = 17
+  const c = 2 * Math.PI * r
+  const sweep = 0.75 * c
+  const dash = (v: number) => `${(v * sweep).toFixed(2)} ${c.toFixed(2)}`
+  const angle = (v: number) => (-135 + v * 270).toFixed(1)
+  const moving = from !== f
+  const anim = `dur="0.35s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.2 0.8 0.3 1" begin="${sinceBegin(opts.ago)}"`
+  const arc =
+    f > 0 || moving
+      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(f)}" transform="rotate(135 22 22)">` +
+        (moving ? `<animate attributeName="stroke-dasharray" from="${dash(from)}" to="${dash(f)}" ${anim}/>` : '') +
+        `</circle>`
+      : ''
+  const needle =
+    `<g transform="rotate(${angle(f)} 22 22)">` +
+    (moving ? `<animateTransform attributeName="transform" type="rotate" from="${angle(from)} 22 22" to="${angle(f)} 22 22" ${anim}/>` : '') +
+    `<path d="M22 22 L22 9" stroke="#f1ece8" stroke-width="2.6" stroke-linecap="round"/></g>`
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">` +
+    `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3a3433" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
+    arc +
+    needle +
+    `<circle cx="22" cy="22" r="3.2" fill="${color}"/>` +
+    `</svg>`
+  )
+}
+
 /** Speed for a tile: 42, 8.5 (one decimal under 10). */
 export const fmtSpeed = (tps: number) => (tps < 10 ? String(Math.round(tps * 10) / 10) : String(Math.round(tps)))
 
@@ -325,13 +380,14 @@ const labelWidth = (text: string, fs: number) =>
  * A capsule badge: fully rounded, tinted fill, bold label. `textLength` pins the
  * label to the width measured here, so the capsule fits whatever font draws it.
  */
-export const pillSvg = (text: string, fg: string, bg: string, height = 24, running = false, icon?: PillIcon, now = 0) => {
+export const pillSvg = (text: string, fg: string, bg: string, height = 24, running = false, icon?: PillIcon, now = 0, minWidth = 0) => {
   const fs = +(height * 0.52).toFixed(1)
   const tl = labelWidth(text, fs)
   const dotR = +(height * 0.11).toFixed(2)
   const gap = +(height * 0.3).toFixed(2)
   const lead = running ? Math.round(2 * gap + 2 * dotR + height * 0.3) : icon ? Math.round(height * 0.62) : 0 // room for the dots or the icon
-  const width = tl + lead + Math.round(height * 0.95)
+  // `minWidth` holds a pill as wide as another state's, so what follows it never shifts.
+  const width = Math.max(minWidth, tl + lead + Math.round(height * 0.95))
   const t = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const tx = (width + lead) / 2
   // Three dots that light in turn, a wave left to right, eased. One motion only: the capsule
@@ -575,13 +631,185 @@ export const cardSvg = (
   return { svg, width, height }
 }
 
+/** A stat on the compact band: one line at a text row's height, glyph then value then label. */
+export const STAT = { height: 32, glyph: 28, icon: 18, gap: 8, fs: 13.5, labelFs: 11.5, lineH: 18, baseline: 21 }
+
+/**
+ * One stat of the compact band as SVG: a 28px glyph (a ring passed in as `ring`, else a tinted
+ * tile holding `icon`), the value in bold, then its label and an optional detail, dimmer still.
+ * Every stat shares the glyph slot, size and baseline, so a row of them reads as one line, and
+ * `width` pads each to its column, so two rows line up. The label follows the value as the
+ * renderer sets it (an invisible copy of the value holds its place), never a guessed width.
+ * When `changed`, the old value rolls up and out as in `cardSvg`; with `clock`, the value is
+ * the odometer; with `live`, the tile breathes.
+ */
+export const statSvg = (
+  value: string,
+  label: string,
+  opts: {
+    detail?: string
+    ring?: string
+    icon?: IconName
+    color?: string
+    width?: number
+    changed?: boolean
+    from?: string
+    ago?: number
+    live?: { now: number }
+    clock?: { elapsedMs: number }
+  } = {},
+) => {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const S = STAT
+  const color = opts.color ?? '#8f8985'
+  const height = S.height
+  const g0 = (height - S.glyph) / 2
+  const x = S.glyph + S.gap
+  const y = S.baseline
+  const ease = '0.45 0 0.55 1'
+  const breathe = opts.live
+    ? `<animate attributeName="fill-opacity" values="0.14;0.3;0.14" keyTimes="0;0.5;1" calcMode="spline" keySplines="${ease};${ease}" dur="${CARD_BREATHE_MS / 1000}s" begin="${phaseBegin(opts.live.now, CARD_BREATHE_MS)}" repeatCount="indefinite"/>`
+    : ''
+  const io = g0 + (S.glyph - S.icon) / 2
+  const glyph = opts.ring
+    ? `<g transform="translate(0 ${g0})">${opts.ring}</g>`
+    : opts.icon
+      ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="7" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32">${breathe}</rect>` +
+        // Across, the icon centres in the tile alone; down, past the row's top margin too.
+        iconGroup(opts.icon, color, (S.glyph - S.icon) / 2, io, S.icon, 2)
+      : ''
+  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const valueFont = `${font} font-size="${S.fs}" font-weight="700" fill="#f1ece8"`
+  const odo = opts.clock ? clockOdometer(opts.clock.elapsedMs, x, y, S.fs, S.lineH) : null
+  // The odometer sets its own digit widths; the invisible copy is stretched to match.
+  const holder = odo
+    ? `<tspan ${valueFont.replace('fill="#f1ece8"', 'fill-opacity="0"')} textLength="${odo.width}" lengthAdjust="spacingAndGlyphs">${esc(value)}</tspan>`
+    : `<tspan font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
+  const tail =
+    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#9a938f">${holder}` +
+    `<tspan dx="5">${esc(label)}</tspan>` +
+    (opts.detail ? `<tspan fill="#756e6a"> · ${esc(opts.detail)}</tspan>` : '') +
+    `</text>`
+  const spline = `calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" begin="${sinceBegin(opts.ago)}"`
+  const roll = (fromY: number, toY: number, fromO: number, toO: number) =>
+    `<animateTransform attributeName="transform" type="translate" from="0 ${fromY}" to="0 ${toY}" dur="${CARD_ROLL_S}s" fill="freeze" ${spline}/>` +
+    `<animate attributeName="opacity" from="${fromO}" to="${toO}" dur="${CARD_ROLL_S}s" fill="freeze" ${spline}/>`
+  const valueLine = odo
+    ? odo.markup
+    : opts.changed && opts.from !== undefined && opts.from !== value
+      ? `<g opacity="0">${roll(0, -S.lineH, 1, 0)}<text x="${x}" y="${y}" ${valueFont}>${esc(opts.from)}</text></g>` +
+        `<g>${roll(S.lineH, 0, 0, 1)}<text x="${x}" y="${y}" ${valueFont}>${esc(value)}</text></g>`
+      : `<text x="${x}" y="${y}" ${valueFont}>${esc(value)}</text>`
+  // Sized generously, so the label always fits; `width` only ever widens it to the column.
+  // The last 12px are for a face wider than the estimate (bold values run wide), which would
+  // otherwise clip the label.
+  const natural = Math.ceil(
+    x + (odo ? odo.width : labelWidth(value, S.fs)) + 5 + labelWidth(label + (opts.detail ? ` · ${opts.detail}` : ''), S.labelFs) + 12,
+  )
+  const width = Math.max(natural, opts.width ?? 0)
+  // Rolling numerals stay in a window one line tall: the value slides in and out of sight.
+  const clipId = `sv${label.replace(/[^A-Za-z0-9]/g, '')}`
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<defs><clipPath id="${clipId}"><rect x="${x - 2}" y="${y - S.fs - 1}" width="${width - x + 2}" height="${S.lineH + 1}"/></clipPath></defs>` +
+    glyph +
+    tail +
+    `<g clip-path="url(#${clipId})">${valueLine}</g>` +
+    `</svg>`
+  return { svg, width, height, natural }
+}
+
+/** A chip on the compact band's top line: the stats' tile look at a smaller size. */
+export const CHIP_LINE = { height: 24, fs: 12.5, labelFs: 11.5, icon: 14, lead: 7, baseline: 16.5 }
+
+/**
+ * A chip for the compact band's top line (status, tool count, version), drawn in the same
+ * language as the stats beneath it: a tile tinted `color` with a thin edge of it, a glyph (an
+ * icon, or with `dots` three dots that light in turn), a bold `value` and a dim `label`.
+ * With `strong`, a chip without a value shows its label bold in `color` (the status word).
+ * The label follows the value as the renderer sets it (an invisible copy holds its place).
+ * When `changed`, the old value rolls up and out; `minWidth` holds the chip as wide as
+ * another state's, so what follows it never shifts.
+ */
+export const chipSvg = (opts: {
+  color: string
+  label: string
+  value?: string
+  icon?: IconName
+  dots?: boolean
+  strong?: boolean
+  now?: number
+  minWidth?: number
+  changed?: boolean
+  from?: string
+  ago?: number
+}) => {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const C = CHIP_LINE
+  const h = C.height
+  const glyphW = opts.dots ? 16 : opts.icon ? C.icon : 0
+  const x = C.lead + glyphW + (glyphW ? 6 : 0)
+  const y = C.baseline
+  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const valueFont = `${font} font-size="${C.fs}" font-weight="700" fill="#f1ece8"`
+  const ease = 'calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1"'
+  const glyph = opts.dots
+    ? [0, 1, 2]
+        .map(
+          i =>
+            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${opts.color}" opacity="0.3">` +
+            `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${phaseBegin((opts.now ?? 0) - i * 180, 1200)}" repeatCount="indefinite" ${ease}/></circle>`,
+        )
+        .join('')
+    : opts.icon
+      ? iconGroup(opts.icon, opts.color, C.lead, (h - C.icon) / 2, C.icon, 2.2)
+      : ''
+  const holder = opts.value ? `<tspan font-size="${C.fs}" font-weight="700" fill-opacity="0">${esc(opts.value)}</tspan>` : ''
+  const labelStyle = opts.strong && !opts.value ? `font-weight="700" fill="${opts.color}"` : 'fill="#9a938f"'
+  const tail =
+    `<text x="${x}" y="${y}" ${font} font-size="${opts.strong && !opts.value ? C.fs : C.labelFs}">${holder}` +
+    `<tspan ${labelStyle}${opts.value ? ' dx="5"' : ''}>${esc(opts.label)}</tspan></text>`
+  const spline = `dur="${CARD_ROLL_S}s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" begin="${sinceBegin(opts.ago)}"`
+  const roll = (y0: number, y1: number, o0: number, o1: number) =>
+    `<animateTransform attributeName="transform" type="translate" from="0 ${y0}" to="0 ${y1}" ${spline}/>` +
+    `<animate attributeName="opacity" from="${o0}" to="${o1}" ${spline}/>`
+  const valueAt = (v: string) => `<text x="${x}" y="${y}" ${valueFont}>${esc(v)}</text>`
+  const value = !opts.value
+    ? ''
+    : opts.changed && opts.from !== undefined && opts.from !== opts.value
+      ? `<g opacity="0">${roll(0, -14, 1, 0)}${valueAt(opts.from)}</g><g>${roll(14, 0, 0, 1)}${valueAt(opts.value)}</g>`
+      : valueAt(opts.value)
+  const flash = opts.changed
+    ? `<animate attributeName="fill-opacity" from="0.4" to="0.14" dur="0.8s" fill="freeze" begin="${sinceBegin(opts.ago)}"/>`
+    : ''
+  // Sized generously (bold values run wide), so the label always fits.
+  const natural = Math.ceil(
+    x +
+      (opts.value ? labelWidth(opts.value, C.fs) + 5 : 0) +
+      labelWidth(opts.label, opts.strong && !opts.value ? C.fs : C.labelFs) +
+      // A bold status word runs wider than the estimate: more room at the end for it.
+      (opts.strong && !opts.value ? 16 : 10),
+  )
+  const width = Math.max(natural, opts.minWidth ?? 0)
+  const clipId = `ch${opts.label.replace(/[^A-Za-z0-9]/g, '')}`
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
+    `<defs><clipPath id="${clipId}"><rect x="0" y="3" width="${width}" height="${h - 6}"/></clipPath></defs>` +
+    `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="7" fill="${opts.color}" fill-opacity="0.14" stroke="${opts.color}" stroke-opacity="0.32">${flash}</rect>` +
+    glyph +
+    tail +
+    `<g clip-path="url(#${clipId})">${value}</g>` +
+    `</svg>`
+  return { svg, width, height: h, natural }
+}
+
 /**
  * The tool-call counter as a labelled capsule: bolt, the number, and the word it counts.
  * A growing count makes the capsule flash once and, given `from`, rolls the old number up
  * and out as the new one comes in from below. The hover title shows only where the surface
  * draws the Svg as a frame.
  */
-export const countSvg = (count: number, opts: { changed?: boolean; label?: string; from?: number; ago?: number } = {}) => {
+export const countSvg = (count: number, opts: { changed?: boolean; label?: string; from?: number; ago?: number; minWidth?: number } = {}) => {
   const height = 24
   const word = opts.label ?? (count === 1 ? 'tool' : 'tools')
   const num = String(count)
@@ -591,7 +819,8 @@ export const countSvg = (count: number, opts: { changed?: boolean; label?: strin
   const wordW = Math.round(word.length * 11 * 0.56)
   const numX = 28
   const wordX = numX + numW + 5
-  const width = wordX + wordW + 11
+  // `minWidth` keeps room for more digits, so a growing count never shifts what follows it.
+  const width = Math.max(opts.minWidth ?? 0, wordX + wordW + 11)
   const bg = '#33301f'
   const begin = `begin="${sinceBegin(opts.ago)}"`
   const spline = `dur="${CARD_ROLL_S}s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" ${begin}`

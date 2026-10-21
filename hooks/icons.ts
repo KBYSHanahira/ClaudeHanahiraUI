@@ -25,6 +25,7 @@ export type IconName =
   | 'check'
   | 'cross'
   | 'ban'
+  | 'pause'
 
 /** The strokes of each icon, in a 24x24 box. */
 export const ICONS: Record<IconName, string> = {
@@ -65,6 +66,7 @@ export const ICONS: Record<IconName, string> = {
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   cross: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
+  pause: '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>',
 }
 
 /**

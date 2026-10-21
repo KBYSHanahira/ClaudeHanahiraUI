@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, meter, forgetChanges, noteChange, ringSvg, tone, top } from './register'
+import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, shortLimitLabel, meter, forgetChanges, noteChange, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -69,6 +69,9 @@ describe('rings', () => {
     expect(limitLabel('five_hour')).toBe('5-hour limit')
     expect(limitLabel('seven_day')).toBe('7-day limit')
     expect(limitLabel('other')).toBe('other')
+    expect(shortLimitLabel('five_hour')).toBe('5h limit')
+    expect(shortLimitLabel('seven_day')).toBe('7d limit')
+    expect(shortLimitLabel('spend_limit')).toBe('spend limit')
   })
 })
 
