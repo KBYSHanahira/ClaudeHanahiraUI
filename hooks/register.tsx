@@ -284,8 +284,6 @@ export const register: Register = on => {
   // Characters of streamed text per output token, learned from each finished response, so the
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
-  // DEBUG (temporary): the band's last logged layout facts.
-  let lastBandFacts = ''
 
   on('session.start', async ($, e, next) => {
     const cwd = await $.session.cwd()
@@ -696,16 +694,6 @@ export const register: Register = on => {
     // On a line of its own and still too wide: the version chip, the least needed, gives way.
     const versionChip = chips.find(c => c.key === 'version')
     const showVersion = !(THEME.compact && stacked && versionChip && rightPx > topRoomPx)
-    // DEBUG (temporary): why the top line's Svgs do not show. One line each time the layout
-    // facts change, to the transcript.
-    const bandFacts =
-      `[band debug] surface=${e.surface} svg=${Svg !== null} client=${Client !== null} ` +
-      `bodyColumns=${e.props.bodyColumns} topRoomPx=${topRoomPx} leftPx=${leftPx} rightPx=${rightPx} ` +
-      `stacked=${stacked} showVersion=${showVersion} compact=${THEME.compact} working=${e.props.isWorking}`
-    if (bandFacts !== lastBandFacts) {
-      lastBandFacts = bandFacts
-      $.ui.log(bandFacts)
-    }
 
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
