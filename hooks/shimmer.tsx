@@ -35,11 +35,11 @@ const Shimmer: ClientModule<ShimmerProps, ShimmerState> = (props, s) => {
     s.state.bar.cells = cells
   }
   const run = shimmerRuns(cells, s.state?.at ?? -SHIMMER_LIGHT)
-  // One line of the monospaced face, cut rather than wrapped: in a proportional face `━` runs
-  // wider than a cell, and the bar would spill onto a second line.
+  // One line, cut rather than wrapped: in a proportional face `━` runs wider than a cell, and
+  // the bar would spill onto a second line. (Text takes no `mono` prop.)
   return (
     <Box flexDirection="row" flexWrap="nowrap" overflow="hidden">
-      <Text mono wrap="truncate-end">
+      <Text wrap="truncate-end">
         <Text color={props.track}>{'━'.repeat(run.before)}</Text>
         <Text color={props.color}>{'━'.repeat(run.lit)}</Text>
         <Text color={props.track}>{'━'.repeat(run.after)}</Text>

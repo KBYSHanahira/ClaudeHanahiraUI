@@ -451,11 +451,14 @@ export const loadingSvg = (
   }
 
   const gw = Math.round(w * 0.4)
+  // The glow starts where its loop has reached by `now`, not off the left edge: a surface that
+  // does not play the SMIL still shows it, stepping on with each redraw.
+  const gx = Math.round(-gw + ((((opts.now ?? 0) % 1900) + 1900) % 1900 / 1900) * (w + gw))
   const sweep = opts.live
     ? `<defs>` +
       `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
       `<mask id="${uid}m" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}">` +
-      `<rect x="${-gw}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" begin="${phaseBegin(opts.now ?? 0, 1900)}" repeatCount="indefinite"/></rect>` +
+      `<rect x="${gx}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" begin="${phaseBegin(opts.now ?? 0, 1900)}" repeatCount="indefinite"/></rect>` +
       `</mask></defs>` +
       `<g mask="url(#${uid}m)">` +
       `<rect width="${w}" height="${h}" rx="${h / 2}" fill="${color}" fill-opacity="0.2"/>` +

@@ -599,11 +599,9 @@ export const register: Register = on => {
 
     const table = $.ui.resolve(e)
     const Svg = 'Svg' in table ? table.Svg : null
-    // Where the surface takes a `Client`, the band's motion while a turn runs (the spinner by
-    // the title, the bar's light) is turned by the surface itself (spinner.tsx, shimmer.tsx),
-    // so no redraw restarts it; the pictures beside them stand still.
+    // Where the surface takes a `Client`, the bar under each running agent card is moved by
+    // the surface itself (shimmer.tsx), so no redraw restarts it.
     const Client = 'Client' in table ? table.Client : null
-    const surfaceMoves = Client !== null && e.props.isWorking
 
 
     // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
@@ -656,7 +654,7 @@ export const register: Register = on => {
     const chips = [
       { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
         ...(e.props.isWorking
-          ? { color: THEME.accent, label: 'working', dots: true, still: surfaceMoves, now: loopAt }
+          ? { color: THEME.accent, label: 'working', dots: true, now: loopAt }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName }),
         strong: true,
         minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
@@ -695,9 +693,6 @@ export const register: Register = on => {
     // On a line of its own and still too wide: the version chip, the least needed, gives way.
     const versionChip = chips.find(c => c.key === 'version')
     const showVersion = !(THEME.compact && stacked && versionChip && rightPx > topRoomPx)
-    // The loading bar: what its line leaves, up to THEME.barPx; under a short bar's worth, none.
-    const barRoom = Math.min(THEME.barPx, topRoomPx - leftPx - (stacked ? 0 : rightPx) - gapPx)
-    const barPx = barRoom >= 120 ? Math.floor(barRoom) : 0
 
     // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
     // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
@@ -930,7 +925,7 @@ export const register: Register = on => {
                         width={Math.floor(CARD_W / 8)}
                       />
                     ) : (
-                      <Text mono wrap="truncate-end" color={a.status === 'done' ? accentFor(a.effort, a.model) : '#3a3836'}>
+                      <Text wrap="truncate-end" color={a.status === 'done' ? accentFor(a.effort, a.model) : '#3a3836'}>
                         {'━'.repeat(Math.floor(CARD_W / 8))}
                       </Text>
                     )}
@@ -955,11 +950,9 @@ export const register: Register = on => {
         paddingX={1}
         {...(THEME.frame ? { borderStyle: 'round', borderColor: THEME.warm } : {})}
       >
-        <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'flex-start' : 'center'}>
+        <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'stretch' : 'center'}>
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
-            {surfaceMoves ? (
-              <Client key="band-spinner" module="./spinner.tsx" props={{ color: THEME.accent, bg: '', label: '' }} />
-            ) : Svg ? (
+            {Svg ? (
               <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, loopAt)} alt="" width={14} height={14} />
             ) : (
               <Text color={THEME.accent}>●</Text>
@@ -972,25 +965,19 @@ export const register: Register = on => {
                 <Text dimColor>{branch}</Text>
               </Box>
             ) : null}
-            {surfaceMoves && barPx > 0 ? (
-              // A cell of the bar is about 8px: the same room the drawn bar would take.
-              <Client
-                key="band-bar"
-                module="./shimmer.tsx"
-                props={{ cells: Math.floor(barPx / 8), color: THEME.accent, track: '#3a3433' }}
-                width={Math.floor(barPx / 8)}
-              />
-            ) : Svg && barPx > 0 ? (
-              // If the estimate is still too wide, the bar gives way (clipped), never the chips.
-              <Box flexShrink={1} minWidth={0} overflow="hidden">
+            {Svg ? (
+              // The bar takes what its line leaves, as the surface lays it out (from no width,
+              // growing): bodyColumns * 8 undercounts Desktop's row, and a bar sized from it
+              // came out under the cut-off and was dropped. Drawn THEME.barPx wide, clipped to fit.
+              <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
               <Svg
-                source={loadingSvg(barPx, THEME.barHeight, THEME.accent, {
+                source={loadingSvg(THEME.barPx, THEME.barHeight, THEME.accent, {
                   live: e.props.isWorking,
                   padBottom: THEME.barGap,
                   now: loopAt,
                 })}
                 alt={e.props.isWorking ? 'Working' : 'Idle'}
-                width={barPx}
+                width={THEME.barPx}
                 height={THEME.barHeight + THEME.barGap}
               />
               </Box>
@@ -1245,6 +1232,12 @@ export const register: Register = on => {
         </Box>
       </Box>
     )
+  })
+
+  // A `Client` that failed on a surface says why in the log; the engine draws the site again.
+  on('ui.fault', ($, e, next) => {
+    $.ui.log(`${e.surface} ${e.component} ${e.module} [${e.element}] ${e.phase}: ${e.reason}`)
+    return next(e)
   })
 
   // The end-of-turn line: a pill instead of a dim word.

@@ -26,7 +26,7 @@ const Spinner: ClientModule<SpinnerProps, { frame: number }> = (props, s) => {
   }
   const glyph = SPINNER_FRAMES[s.state?.frame ?? 0]
   return (
-    <Text color={props.color} backgroundColor={props.bg || undefined} bold mono>
+    <Text color={props.color} backgroundColor={props.bg || undefined} bold>
       {props.label ? ` ${glyph} ${props.label} ` : glyph}
     </Text>
   )
