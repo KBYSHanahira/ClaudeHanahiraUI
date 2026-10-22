@@ -42,6 +42,7 @@ declare module 'claude-code' {
       runMs: number
       speed: { tps: number | null; peak: number }
       tick: number
+      settle: number
       agents: Agent[]
       code: { net: number; candles: { o: number; h: number; l: number; c: number; v: number }[]; cur: { o: number; h: number; l: number; c: number; v: number } | null }
       seconds: number | null

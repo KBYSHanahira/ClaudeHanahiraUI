@@ -95,6 +95,10 @@ const statusAt = new Map<string, { status: string; at: number }>()
 const efforts = new Map<string, string>()
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
+// Read by a transcript row only while its finish plays; bumped once that motion ends, so the row
+// is drawn once more as a still picture. Left on its animated picture, a row replays the pop
+// (and its fade from nothing) every time the surface mounts it again, long after it finished.
+const settle = atom({ plugin: 'hanahira-claude-ui', key: 'settle' } as const, 0)
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
 const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
 const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
@@ -294,6 +298,25 @@ const loopNow = async ($: { clock: { now(): Promise<number> } }, running: boolea
 const finishes = finishClock()
 const finishAgo = (ids: ReadonlyArray<string>, isRunning: boolean, now: number) =>
   finishes.ago(ids, isRunning, now, id => endedAt.get(id))
+
+// When the booked settle redraw fires: one timer covers every row finishing before it.
+let settleRowsAt = -Infinity
+
+/**
+ * While a row's finish plays (`ago` ms in), ties the row to `settle` and books its bump for when
+ * the motion ends, so the row's last picture is the still one.
+ */
+const settleRow = async ($: EngineInterface, ago: number | undefined, now: number) => {
+  if (ago === undefined) return
+  await read($, settle)
+  const at = now - ago + ENTER_MS + 60
+  if (at <= settleRowsAt) return
+  settleRowsAt = at
+  $.clock.after(at - now, () => {
+    if (settleRowsAt === at) settleRowsAt = -Infinity
+    void update($, settle, n => (n ?? 0) + 1)
+  })
+}
 
 // The main turn that ended last, and when the latest prompt went in: a closing line pops in once,
 // for a turn of this process, and the older ones (and history) stay still.
@@ -1169,7 +1192,9 @@ export const register: Register = on => {
     // Only a running row loops (spinner, busy pill), at the phase it has reached now.
     const now = await loopNow($, p.isRunning)
     // Just finished: the pill pops in and the badge sends out one ripple.
-    const done = finishAgo([p.tool_use_id], p.isRunning, await $.clock.now())
+    const clock = await $.clock.now()
+    const done = finishAgo([p.tool_use_id], p.isRunning, clock)
+    await settleRow($, done, clock)
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
@@ -1217,7 +1242,9 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
     const took = durations.get(p.tool_use_id)
     // Just written: the counts rise from 0 as their pills pop in.
-    const fresh = finishAgo([p.tool_use_id], false, await $.clock.now())
+    const clock = await $.clock.now()
+    const fresh = finishAgo([p.tool_use_id], false, clock)
+    await settleRow($, fresh, clock)
     const gutter = String(Math.max(...rows.map(r => r.n ?? 0))).length
 
     return (
@@ -1266,7 +1293,9 @@ export const register: Register = on => {
     const isErrored = calls.some(c => c.isErrored)
     const now = await loopNow($, isRunning)
     // The run's last call just ended: the group's pill pops in, its badge ripples.
-    const done = finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), isRunning, await $.clock.now())
+    const clock = await $.clock.now()
+    const done = finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), isRunning, clock)
+    await settleRow($, done, clock)
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored
@@ -1328,6 +1357,7 @@ export const register: Register = on => {
     ].filter((v): v is number => v !== undefined)
     const ago = at.length > 0 ? now - Math.min(...at) : Infinity
     const enter = ago >= 0 && ago < ENTER_MS ? ago : undefined
+    await settleRow($, enter, now)
     return (
       <Box gap={1} alignItems="center">
         {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok, fx: { enter } })}
