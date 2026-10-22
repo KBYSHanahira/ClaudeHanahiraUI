@@ -1220,7 +1220,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box gap={1} alignItems="center" flexShrink={0}>
-          {p.isRunning ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done } }, now)}
+          {p.isRunning ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done, alive: true } }, now)}
           {ms !== undefined && !p.isRunning ? <Text dimColor>{fmtDuration(ms)}</Text> : null}
         </Box>
       </Box>
@@ -1323,7 +1323,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box flexShrink={0}>
-          {isRunning ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done } }, now)}
+          {isRunning ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done, alive: true } }, now)}
         </Box>
       </Box>
     )

@@ -443,7 +443,12 @@ export type PillFx = {
   enter?: number
   /** Its number counts up from 0 to `n` (the text is `${n} ${word}`). */
   count?: { n: number; word: string }
+  /** It keeps going after it settles: the icon breathes, slowly, for as long as the pill is shown. */
+  alive?: boolean
 }
+
+/** One breath of a settled pill's icon, in s: slow enough to read as calm, not as busy. */
+export const BREATH_S = 3.5
 
 /**
  * Text that counts up from 0 to `n` over `durS` from `begin`, eased out: a few frames, each
@@ -502,7 +507,15 @@ export const pillSvg = (
   const begin = sinceBegin(fx.enter)
   // Entering, the icon traces itself once the capsule has popped: a check written, not stamped.
   const draw = entering ? { begin, dur: 0.6, delay: 0.3 } : undefined
-  const mark = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3, undefined, draw) : ''
+  const glyph = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3, undefined, draw) : ''
+  // Alive, the icon breathes once the finish has played. Each breath starts and ends at full
+  // strength, so a surface that mounts the row again starts it over with no visible jump, and a
+  // surface without SMIL shows the icon whole.
+  const breathe =
+    glyph && fx.alive && !running && icon !== 'ban'
+      ? `<animate attributeName="opacity" values="1;0.4;1" dur="${BREATH_S}s" begin="${(entering ? (ENTER_MS - (fx.enter ?? 0)) / 1000 : 0).toFixed(3)}s" repeatCount="indefinite" ${ease}/>`
+      : ''
+  const mark = breathe ? `<g>${breathe}${glyph}</g>` : glyph
   const ty = (height / 2 + fs * 0.35).toFixed(1)
   const label = (s: string, pinned: boolean) =>
     `<text x="${tx}" y="${ty}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}"${pinned ? ` textLength="${tl}" lengthAdjust="spacingAndGlyphs"` : ''}>${s}</text>`

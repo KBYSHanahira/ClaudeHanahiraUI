@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock, BREATH_S } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -211,6 +211,33 @@ describe('finish motion', () => {
     expect(enter.svg).toContain('attributeName="stroke-dashoffset"')
     expect(enter.svg).toContain('begin="-0.100s"') // carried on from where a redraw finds it
     for (const still of [pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { enter: ENTER_MS }), pillSvg('done', '#fff', '#000', 24, false, 'check')])
+      expect(still.svg).not.toContain('<animate')
+  })
+
+  test('an alive done/error pill keeps breathing after its finish, and only then', () => {
+    for (const icon of ['check', 'cross'] as const) {
+      const settled = pillSvg('done', '#fff', '#000', 24, false, icon, 0, 0, { alive: true })
+      expect(settled.svg).toContain(`dur="${BREATH_S}s" begin="0.000s" repeatCount="indefinite"`)
+      expect(settled.svg).toContain('values="1;0.4;1"') // starts and rests at full: a remount does not jump
+      expect(settled.svg).not.toContain('type="scale"')
+    }
+    // Entering, the breath waits for the pop and the trace to finish.
+    const entering = pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { enter: 300, alive: true })
+    expect(entering.svg).toContain('type="scale"')
+    expect(entering.svg).toContain(`begin="${((ENTER_MS - 300) / 1000).toFixed(3)}s" repeatCount="indefinite"`)
+    // A tag that repeats an attribute is not XML: the surface shows a broken image instead.
+    for (const svg of [pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { alive: true }).svg, entering.svg]) {
+      for (const tag of svg.match(/<[a-zA-Z][^>]*>/g) ?? []) {
+        const names = [...tag.matchAll(/\s([\w:-]+)=/g)].map(m => m[1])
+        expect(names.length).toBe(new Set(names).size)
+      }
+    }
+    // Not alive, interrupted, or no icon: still.
+    for (const still of [
+      pillSvg('done', '#fff', '#000', 24, false, 'check'),
+      pillSvg('interrupted', '#fff', '#000', 24, false, 'ban', 0, 0, { alive: true }),
+      pillSvg('3 added', '#fff', '#000', 24, false, undefined, 0, 0, { alive: true }),
+    ])
       expect(still.svg).not.toContain('<animate')
   })
 
