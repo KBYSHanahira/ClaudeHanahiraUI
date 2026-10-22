@@ -15,6 +15,7 @@ import {
   dotSvg,
   describe,
   ENTER_MS,
+  finishClock,
   diffRows,
   fmtClock,
   fmtCost,
@@ -289,15 +290,18 @@ const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, siz
 const loopNow = async ($: { clock: { now(): Promise<number> } }, running: boolean) =>
   running ? (await $.clock.now()) + LOOP_LEAD_MS : 0
 
-/** How long ago a finished call ended, while its finish is still playing; else undefined (still). */
-const finishAgo = (ids: ReadonlyArray<string>, now: number) => {
-  const at = Math.max(...ids.map(id => endedAt.get(id) ?? -Infinity))
-  const ago = now - at
-  return ago >= 0 && ago < ENTER_MS ? ago : undefined
-}
+/** How long ago a row's finish began, while it still plays; else undefined (still). */
+const finishes = finishClock()
+const finishAgo = (ids: ReadonlyArray<string>, isRunning: boolean, now: number) =>
+  finishes.ago(ids, isRunning, now, id => endedAt.get(id))
 
-// The main turn that ended last, so its closing line pops in once and the older ones stay still.
+// The main turn that ended last, and when the latest prompt went in: a closing line pops in once,
+// for a turn of this process, and the older ones (and history) stay still.
 let lastTurn = { at: -Infinity, durationMs: -1 }
+let lastSubmitAt = -Infinity
+// When each closing line (by its duration) was first drawn: its pop is timed from then when it
+// is drawn before turn.complete has noted the turn.
+const turnLineSeen = new Map<string, number>()
 
 // A second beat while an agent runs: it can outlive the turn that started it.
 let agentTicker: { cancel: () => void } | null = null
@@ -385,6 +389,7 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     startedAt = await $.clock.now()
+    lastSubmitAt = startedAt
     // A beat every second while the turn runs, so the clock and figures move live.
     ticker?.cancel()
     let beats = 0
@@ -1164,7 +1169,7 @@ export const register: Register = on => {
     // Only a running row loops (spinner, busy pill), at the phase it has reached now.
     const now = await loopNow($, p.isRunning)
     // Just finished: the pill pops in and the badge sends out one ripple.
-    const done = p.isRunning ? undefined : finishAgo([p.tool_use_id], await $.clock.now())
+    const done = finishAgo([p.tool_use_id], p.isRunning, await $.clock.now())
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
@@ -1212,7 +1217,7 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
     const took = durations.get(p.tool_use_id)
     // Just written: the counts rise from 0 as their pills pop in.
-    const fresh = finishAgo([p.tool_use_id], await $.clock.now())
+    const fresh = finishAgo([p.tool_use_id], false, await $.clock.now())
     const gutter = String(Math.max(...rows.map(r => r.n ?? 0))).length
 
     return (
@@ -1261,7 +1266,7 @@ export const register: Register = on => {
     const isErrored = calls.some(c => c.isErrored)
     const now = await loopNow($, isRunning)
     // The run's last call just ended: the group's pill pops in, its badge ripples.
-    const done = isRunning ? undefined : finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), await $.clock.now())
+    const done = finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), isRunning, await $.clock.now())
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored
@@ -1312,8 +1317,17 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
     // The turn that just ended pops its pill in and writes its check; older lines stay still.
     // The line's duration is the turn's, give or take its rounding.
-    const ago = (await $.clock.now()) - lastTurn.at
-    const enter = ago < ENTER_MS && Math.abs(e.props.durationMs - lastTurn.durationMs) < 1000 ? ago : undefined
+    const now = await $.clock.now()
+    const key = String(e.props.durationMs)
+    // A line of a turn this process ran (its prompt went in no longer ago than the turn took).
+    const ours = now - lastSubmitAt <= e.props.durationMs + 5000
+    if (ours && !turnLineSeen.has(key)) remember(turnLineSeen, key, now)
+    const at = [
+      ours ? turnLineSeen.get(key) : undefined,
+      Math.abs(e.props.durationMs - lastTurn.durationMs) < 1000 ? lastTurn.at : undefined,
+    ].filter((v): v is number => v !== undefined)
+    const ago = at.length > 0 ? now - Math.min(...at) : Infinity
+    const enter = ago >= 0 && ago < ENTER_MS ? ago : undefined
     return (
       <Box gap={1} alignItems="center">
         {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok, fx: { enter } })}

@@ -399,6 +399,44 @@ const labelWidth = (text: string, fs: number) =>
 /** How long a row's finish takes to play: the pill's pop, its icon tracing in, a count rising. */
 export const ENTER_MS = 900
 
+/**
+ * When each row's finish began, for its one-time motion. A call's end time (`ended`, noted by
+ * the tool hook) counts when known; a row drawn running is also timed from the first draw that
+ * shows it finished, so the motion plays even when that draw comes before the end time is noted
+ * (and nothing redraws the row after). The earlier of the two wins. A row never drawn running
+ * and with no end time (history, a resume) stays still.
+ */
+export const finishClock = (limit = 400) => {
+  const running = new Set<string>()
+  const firstDone = new Map<string, number>()
+  const trim = (c: Set<string> | Map<string, number>) => {
+    if (c.size > limit) c.delete(c.keys().next().value as string)
+  }
+  return {
+    /** ms since the finish began while it is still playing (ENTER_MS), else undefined. */
+    ago(ids: ReadonlyArray<string>, isRunning: boolean, now: number, ended: (id: string) => number | undefined) {
+      if (isRunning) {
+        for (const id of ids) {
+          running.add(id)
+          trim(running)
+        }
+        return undefined
+      }
+      const origins = ids.flatMap(id => {
+        if (running.has(id) && !firstDone.has(id)) {
+          firstDone.set(id, now)
+          trim(firstDone)
+        }
+        const at = [ended(id), running.has(id) ? firstDone.get(id) : undefined].filter((v): v is number => v !== undefined)
+        return at.length > 0 ? [Math.min(...at)] : []
+      })
+      if (origins.length === 0) return undefined
+      const ago = now - Math.max(...origins)
+      return ago >= 0 && ago < ENTER_MS ? ago : undefined
+    },
+  }
+}
+
 /** What a pill does in the moment it appears; each is a ms-ago, so a redraw carries it on. */
 export type PillFx = {
   /** It just appeared: the capsule pops in and its icon traces itself. */

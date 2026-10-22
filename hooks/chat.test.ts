@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -239,6 +239,34 @@ describe('finish motion', () => {
     expect(badgeSvg("#7cb7ff", "file", 30, false, 0, 50)).toContain('attributeName="r"')
     expect(badgeSvg('#7cb7ff', 'file', 30, false, 0, ENTER_MS)).not.toContain('attributeName="r"')
     expect(badgeSvg('#7cb7ff', 'file', 30, true, 0, 50)).not.toContain('attributeName="r"')
+  })
+})
+
+describe('finishClock', () => {
+  const none = () => undefined
+
+  test('a row drawn finished before its end time is noted still plays, from that draw', () => {
+    const f = finishClock()
+    expect(f.ago(['a'], true, 1000, none)).toBeUndefined()
+    expect(f.ago(['a'], false, 2000, none)).toBe(0)
+    expect(f.ago(['a'], false, 2300, none)).toBe(300)
+    // The end time arrives later: the earlier origin still wins, so the motion does not jump.
+    expect(f.ago(['a'], false, 2400, () => 2100)).toBe(400)
+  })
+
+  test('history (never drawn running, no end time) stays still', () => {
+    expect(finishClock().ago(['h'], false, 5000, none)).toBeUndefined()
+  })
+
+  test('an end time alone is enough, and the motion stops after ENTER_MS', () => {
+    const f = finishClock()
+    expect(f.ago(['b'], false, 1100, () => 1000)).toBe(100)
+    expect(f.ago(['b'], false, 1000 + ENTER_MS, () => 1000)).toBeUndefined()
+  })
+
+  test('a group plays from its last call to finish', () => {
+    const f = finishClock()
+    expect(f.ago(['x', 'y'], false, 3000, id => (id === 'x' ? 2000 : 2900))).toBe(100)
   })
 })
 
