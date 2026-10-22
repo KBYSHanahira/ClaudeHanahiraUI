@@ -360,20 +360,6 @@ export const register: Register = on => {
     return r
   })
 
-  // A backstop: the subagent's loop ended without a turn.complete of its own.
-  on('classic.SubagentStop', async ($, e, next) => {
-    const now = await $.clock.now()
-    await update($, agents, list =>
-      asList(list).map(a => (a.id === e.agent_id && a.status === 'running' ? { ...a, status: 'done' as const, endedAt: now } : a)),
-    )
-    $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
-    if (!asList(await read($, agents)).some(a => a.status === 'running')) {
-      agentTicker?.cancel()
-      agentTicker = null
-    }
-    return next(e)
-  })
-
   on('tool.call', { tool: 'Bash' }, ($, e, next) => {
     if (DANGEROUS.test(e.command)) {
       return { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }
