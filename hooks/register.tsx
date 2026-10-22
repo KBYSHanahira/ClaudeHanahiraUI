@@ -299,60 +299,61 @@ const finishAgo = (ids: ReadonlyArray<string>, now: number) => {
 // The main turn that ended last, so its closing line pops in once and the older ones stay still.
 let lastTurn = { at: -Infinity, durationMs: -1 }
 
+// A second beat while an agent runs: it can outlive the turn that started it.
+let agentTicker: { cancel: () => void } | null = null
+
+// The folder and its branch. Read again after every turn: a turn can switch the branch.
+const locate = async ($: EngineInterface) => {
+  const cwd = await $.session.cwd()
+  const git = await $.process
+    .run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd })
+    .catch(() => null)
+  const branch = git !== null && git.exitCode === 0 ? git.stdout.trim() : null
+  const value: Info = { name: base(cwd), branch }
+  await update($, info, old => (old?.name === value.name && old?.branch === value.branch ? old : value))
+}
+
+// A card whose agent ended without a turn.complete of its own (stopped from the tasks list,
+// say) would read "running" for good and keep the beat going: the engine's list settles it.
+const reconcileAgents = async ($: EngineInterface) => {
+  const list = asList(await read($, agents))
+  if (!list.some(a => a.status === 'running')) return
+  const live = await $.agent.list().catch(() => null)
+  if (!live) return
+  const byId = new Map(live.map(a => [a.id, a.status]))
+  const now = await $.clock.now()
+  const settled = (s: string | undefined): Agent['status'] | null =>
+    s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
+  await update($, agents, l =>
+    asList(l).map(a => {
+      const status = a.status === 'running' ? settled(byId.get(a.id)) : null
+      return status ? { ...a, status, endedAt: now } : a
+    }),
+  )
+  if (!asList(await read($, agents)).some(a => a.status === 'running')) {
+    agentTicker?.cancel()
+    agentTicker = null
+  }
+}
+
+// The beat while an agent runs: a redraw a second, and every few seconds a look at the
+// engine's list, so an agent that ends while the session is idle still settles its card.
+const agentBeat = ($: EngineInterface) => {
+  if (agentTicker) return
+  let beats = 0
+  agentTicker = $.clock.every(1000, () => {
+    beats += 1
+    if (beats % 5 === 0) void reconcileAgents($).catch(() => undefined)
+    void update($, tick, n => (n ?? 0) + 1)
+  })
+}
+
 export const register: Register = on => {
   let startedAt = 0
   let ticker: { cancel: () => void } | null = null
-  // A second beat while an agent runs: it can outlive the turn that started it.
-  let agentTicker: { cancel: () => void } | null = null
   // Characters of streamed text per output token, learned from each finished response, so the
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
-
-  // The folder and its branch. Read again after every turn: a turn can switch the branch.
-  const locate = async ($: EngineInterface) => {
-    const cwd = await $.session.cwd()
-    const git = await $.process
-      .run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd })
-      .catch(() => null)
-    const branch = git !== null && git.exitCode === 0 ? git.stdout.trim() : null
-    const value: Info = { name: base(cwd), branch }
-    await update($, info, old => (old?.name === value.name && old?.branch === value.branch ? old : value))
-  }
-
-  // A card whose agent ended without a turn.complete of its own (stopped from the tasks list,
-  // say) would read "running" for good and keep the beat going: the engine's list settles it.
-  const reconcileAgents = async ($: EngineInterface) => {
-    const list = asList(await read($, agents))
-    if (!list.some(a => a.status === 'running')) return
-    const live = await $.agent.list().catch(() => null)
-    if (!live) return
-    const byId = new Map(live.map(a => [a.id, a.status]))
-    const now = await $.clock.now()
-    const settled = (s: string | undefined): Agent['status'] | null =>
-      s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
-    await update($, agents, l =>
-      asList(l).map(a => {
-        const status = a.status === 'running' ? settled(byId.get(a.id)) : null
-        return status ? { ...a, status, endedAt: now } : a
-      }),
-    )
-    if (!asList(await read($, agents)).some(a => a.status === 'running')) {
-      agentTicker?.cancel()
-      agentTicker = null
-    }
-  }
-
-  // The beat while an agent runs: a redraw a second, and every few seconds a look at the
-  // engine's list, so an agent that ends while the session is idle still settles its card.
-  const agentBeat = ($: EngineInterface) => {
-    if (agentTicker) return
-    let beats = 0
-    agentTicker = $.clock.every(1000, () => {
-      beats += 1
-      if (beats % 5 === 0) void reconcileAgents($).catch(() => undefined)
-      void update($, tick, n => (n ?? 0) + 1)
-    })
-  }
 
   on('session.start', async ($, e, next) => {
     await locate($)
