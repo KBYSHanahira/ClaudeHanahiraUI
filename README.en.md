@@ -28,8 +28,8 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 | 💰 | **Total cards** | Cost, Tokens and Time as cards; a value animates only at the moment it changes. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
 | 🧾 | **Transcript styling** | Your message as a card; tool rows with a round icon, coloured verb, status and duration; numbered diff cards. |
-| 🎞️ | **Motion** | Only where a value really changes or work is running. Unchanged figures stay still. |
-| 🛡️ | **Safety guard** | Blocks the Bash commands `docker compose down -v` and `ufw enable`. |
+| 🎞️ | **Motion** | Only where a value really changes or work is running. Unchanged figures stay still. When a tool call finishes, its pill pops in and its check traces itself, the badge ripples once, a diff's added/removed counts rise from 0, and the turn's closing pill pops in. Rows from history stay still. |
+| 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
 

@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS } from './chat'
+
+/** Rounded to cents: the engine's test kit has no toBeCloseTo. */
+const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
 
 describe('describe', () => {
   test('Bash runs, then reruns', () => {
@@ -69,6 +72,21 @@ describe('diffRows', () => {
       { n: 2, sign: '+', text: 'b' },
     ])
     expect(more).toBe(1)
+  })
+
+  test('counts every change, not only the rows it shows', () => {
+    const { rows, added, removed } = diffRows([], Array.from({ length: 30 }, (_, i) => `l${i}`).join('\n'))
+    expect(rows.length).toBe(14)
+    expect({ added, removed }).toEqual({ added: 30, removed: 0 })
+  })
+
+  test('skips the no-newline marker: it is no line of the file', () => {
+    const { rows } = diffRows([{ oldStart: 1, newStart: 1, lines: ['-a', '\\ No newline at end of file', '+a', ' b'] }])
+    expect(rows.map(r => [r.n, r.sign, r.text])).toEqual([
+      [1, '-', 'a'],
+      [1, '+', 'a'],
+      [2, ' ', 'b'],
+    ])
   })
 })
 
@@ -183,6 +201,44 @@ describe('pillSvg', () => {
 
   test('escapes markup characters in the label', () => {
     expect(pillSvg('a<b&c', '#fff', '#000').svg).toContain('a&lt;b&amp;c')
+  })
+})
+
+describe('finish motion', () => {
+  test('an entering pill pops and traces its icon; past ENTER_MS, or never entered, it is still', () => {
+    const enter = pillSvg('done', '#a9e6b4', '#2d4232', 24, false, 'check', 0, 0, { enter: 100 })
+    expect(enter.svg).toContain('type="scale"')
+    expect(enter.svg).toContain('attributeName="stroke-dashoffset"')
+    expect(enter.svg).toContain('begin="-0.100s"') // carried on from where a redraw finds it
+    for (const still of [pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { enter: ENTER_MS }), pillSvg('done', '#fff', '#000', 24, false, 'check')])
+      expect(still.svg).not.toContain('<animate')
+  })
+
+  test('entering does not change the pill\'s size', () => {
+    const a = pillSvg('12 added', '#fff', '#000', 24, false, undefined, 0, 0, { enter: 0, count: { n: 12, word: 'added' } })
+    const b = pillSvg('12 added', '#fff', '#000')
+    expect([a.width, a.height]).toEqual([b.width, b.height])
+  })
+
+  test('a count rises from 0 to n, eased, and rests on n', () => {
+    const out = countUp(12, v => `<t>${v}</t>`, 0.5, '0s')
+    const seen = [...out.matchAll(/<t>(\d+)<\/t>/g)].map(m => Number(m[1]))
+    expect(seen[0]).toBe(0)
+    expect(seen[seen.length - 1]).toBe(12)
+    expect(seen).toEqual([...seen].sort((x, y) => x - y))
+    // Only the last frame rests visible: a surface without SMIL shows the true count.
+    expect(out.match(/<g opacity="0">/g)?.length).toBe(seen.length - 1)
+  })
+
+  test('a count of one has nothing to rise through', () => {
+    expect(countUp(1, v => `<t>${v}</t>`, 0.5, '0s')).toContain('<t>')
+    expect(countUp(0, v => `<t>${v}</t>`, 0.5, '0s')).toBe('<t>0</t>')
+  })
+
+  test('a badge that just finished ripples once; a running or settled one does not', () => {
+    expect(badgeSvg("#7cb7ff", "file", 30, false, 0, 50)).toContain('attributeName="r"')
+    expect(badgeSvg('#7cb7ff', 'file', 30, false, 0, ENTER_MS)).not.toContain('attributeName="r"')
+    expect(badgeSvg('#7cb7ff', 'file', 30, true, 0, 50)).not.toContain('attributeName="r"')
   })
 })
 
@@ -311,12 +367,12 @@ describe('more motion', () => {
   test('live speed is the rate over the recent window, in tokens', () => {
     // 400 chars a second at 4 chars a token is 100 tokens a second.
     const s: Array<[number, number]> = [[0, 0], [500, 200], [1000, 400], [1500, 600], [2000, 800]]
-    expect(liveSpeed(s, 2000)).toBeCloseTo(100)
+    expect(cents(liveSpeed(s, 2000))).toBe(100)
     // Only the last window counts: a slow start no longer drags it down.
-    expect(liveSpeed([[0, 0], [3000, 10], [3500, 410]], 3500, { windowMs: 600, minMs: 400 })).toBeCloseTo(200)
+    expect(cents(liveSpeed([[0, 0], [3000, 10], [3500, 410]], 3500, { windowMs: 600, minMs: 400 }))).toBe(200)
     expect(liveSpeed([[0, 0], [100, 400]], 100)).toBeNull()
     expect(liveSpeed([], 0)).toBeNull()
-    expect(liveSpeed(s, 2000, { charsPerToken: 2 })).toBeCloseTo(200)
+    expect(cents(liveSpeed(s, 2000, { charsPerToken: 2 }))).toBe(200)
   })
 
   test('the speedometer scale is a round step clear of the peak', () => {

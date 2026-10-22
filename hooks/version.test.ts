@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, test } from 'claude-code/testing'
 import pkg from '../.claude-plugin/plugin.json'
 import { VERSION } from './version'
 

@@ -157,7 +157,7 @@ export const fmtDuration = (ms: number) =>
 export const SPIN_S = 1.1
 
 /** A round badge: tinted disc, ring, glyph. While running, a short arc turns around the ring. */
-export const badgeSvg = (color: string, icon: string, size: number, running = false, now = 0) => {
+export const badgeSvg = (color: string, icon: string, size: number, running = false, now = 0, doneAgo?: number) => {
   const g = icon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const fs = icon.length > 1 ? 12 : 14
   const mark = hasIcon(icon)
@@ -170,9 +170,22 @@ export const badgeSvg = (color: string, icon: string, size: number, running = fa
     ? `<circle cx="16" cy="16" r="${r}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${(c * 0.26).toFixed(2)} ${c.toFixed(2)}">` +
       `<animateTransform attributeName="transform" type="rotate" from="0 16 16" to="360 16 16" dur="${SPIN_S}s" begin="${phaseBegin(now, SPIN_S * 1000)}" repeatCount="indefinite"/></circle>`
     : ''
+  // Just finished: one ring of the badge's colour spreads out and fades, and the disc glows
+  // once, so the eye catches the row that just ended. It rests gone (opacity 0), so a surface
+  // without SMIL shows the plain badge.
+  const done = !running && doneAgo !== undefined && doneAgo < ENTER_MS
+  const b = `begin="${sinceBegin(doneAgo)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"`
+  const ripple = done
+    ? `<circle cx="16" cy="16" r="11" fill="none" stroke="${color}" stroke-width="2" opacity="0">` +
+      `<animate attributeName="r" from="11" to="15.5" dur="0.7s" ${b}/>` +
+      `<animate attributeName="opacity" values="0.9;0" keyTimes="0;1" dur="0.7s" begin="${sinceBegin(doneAgo)}" fill="freeze"/>` +
+      `<animate attributeName="stroke-width" from="2.4" to="0.4" dur="0.7s" ${b}/></circle>`
+    : ''
+  const glow = done ? `<animate attributeName="fill-opacity" from="0.42" to="0.16" dur="0.8s" ${b}/>` : ''
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">` +
-    `<circle cx="16" cy="16" r="15" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-opacity="${running ? 0.22 : 0.45}"/>` +
+    `<circle cx="16" cy="16" r="15" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-opacity="${running ? 0.22 : 0.45}">${glow}</circle>` +
+    ripple +
     spin +
     mark +
     `</svg>`
@@ -189,6 +202,8 @@ export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
       let oldLine = h.oldStart
       let newLine = h.newStart
       for (const line of h.lines ?? []) {
+        // `\ No newline at end of file` notes the line before it; it is no line of the file.
+        if (line[0] === '\\') continue
         const sign = line[0] === '+' ? '+' : line[0] === '-' ? '-' : ' '
         const text = line.slice(1)
         if (sign === '+') rows.push({ n: newLine++, sign, text })
@@ -204,7 +219,8 @@ export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
     fallback.split('\n').forEach((text, i) => rows.push({ n: i + 1, sign: '+', text }))
   }
   const total = rows.length
-  return { rows: rows.slice(0, max), more: Math.max(0, total - max) }
+  // Counted over every row, so the header's "added" and "removed" do not stop at the rows shown.
+  return { rows: rows.slice(0, max), more: Math.max(0, total - max), ...countChanges(rows) }
 }
 
 export const countChanges = (rows: DiffRow[]) => ({
@@ -380,7 +396,49 @@ const labelWidth = (text: string, fs: number) =>
  * A capsule badge: fully rounded, tinted fill, bold label. `textLength` pins the
  * label to the width measured here, so the capsule fits whatever font draws it.
  */
-export const pillSvg = (text: string, fg: string, bg: string, height = 24, running = false, icon?: PillIcon, now = 0, minWidth = 0) => {
+/** How long a row's finish takes to play: the pill's pop, its icon tracing in, a count rising. */
+export const ENTER_MS = 900
+
+/** What a pill does in the moment it appears; each is a ms-ago, so a redraw carries it on. */
+export type PillFx = {
+  /** It just appeared: the capsule pops in and its icon traces itself. */
+  enter?: number
+  /** Its number counts up from 0 to `n` (the text is `${n} ${word}`). */
+  count?: { n: number; word: string }
+}
+
+/**
+ * Text that counts up from 0 to `n` over `durS` from `begin`, eased out: a few frames, each
+ * shown in its own slot. The last frame rests visible, so a surface without SMIL shows `n`.
+ */
+export const countUp = (n: number, render: (v: number) => string, durS: number, begin: string, frames = 8) => {
+  const at = (k: number) => Math.round(n * (1 - Math.pow(1 - k / frames, 3)))
+  const values = [...new Set(Array.from({ length: frames + 1 }, (_, k) => at(k)))]
+  if (values.length < 2) return render(n)
+  const slot = durS / (values.length - 1)
+  const t0 = parseFloat(begin)
+  return values
+    .map((v, k) => {
+      const last = k === values.length - 1
+      const on = (t0 + k * slot).toFixed(3)
+      return last
+        ? `<g><set attributeName="opacity" to="0" begin="${t0.toFixed(3)}s" end="${on}s"/>${render(v)}</g>`
+        : `<g opacity="0"><set attributeName="opacity" to="1" begin="${on}s" end="${(t0 + (k + 1) * slot).toFixed(3)}s"/>${render(v)}</g>`
+    })
+    .join('')
+}
+
+export const pillSvg = (
+  text: string,
+  fg: string,
+  bg: string,
+  height = 24,
+  running = false,
+  icon?: PillIcon,
+  now = 0,
+  minWidth = 0,
+  fx: PillFx = {},
+) => {
   const fs = +(height * 0.52).toFixed(1)
   const tl = labelWidth(text, fs)
   const dotR = +(height * 0.11).toFixed(2)
@@ -402,14 +460,31 @@ export const pillSvg = (text: string, fg: string, bg: string, height = 24, runni
         )
         .join('')
     : ''
-  const mark = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3) : ''
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}"/>` +
-    dots +
-    mark +
-    `<text x="${tx}" y="${(height / 2 + fs * 0.35).toFixed(1)}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}" textLength="${tl}" lengthAdjust="spacingAndGlyphs">${t}</text>` +
-    `</svg>`
+  const entering = fx.enter !== undefined && fx.enter < ENTER_MS
+  const begin = sinceBegin(fx.enter)
+  // Entering, the icon traces itself once the capsule has popped: a check written, not stamped.
+  const draw = entering ? { begin, dur: 0.6, delay: 0.3 } : undefined
+  const mark = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3, undefined, draw) : ''
+  const ty = (height / 2 + fs * 0.35).toFixed(1)
+  const label = (s: string, pinned: boolean) =>
+    `<text x="${tx}" y="${ty}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}"${pinned ? ` textLength="${tl}" lengthAdjust="spacingAndGlyphs"` : ''}>${s}</text>`
+  const word = fx.count ? fx.count.word.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''
+  const words =
+    entering && fx.count && fx.count.n > 1
+      ? countUp(fx.count.n, v => label(`${v} ${word}`, v === fx.count!.n), 0.55, begin)
+      : label(t, true)
+  const inner = `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}"/>` + dots + mark + words
+  // The pop: in about the centre, past full size and back, fading up; the same ease as the
+  // agent cards' bounce, so everything that arrives on screen arrives one way.
+  const cx = width / 2
+  const cy = height / 2
+  const body = entering
+    ? `<g transform="translate(${cx} ${cy})"><g>` +
+      `<animateTransform attributeName="transform" type="scale" values="0.78;1.03;1" keyTimes="0;0.6;1" dur="0.45s" begin="${begin}" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>` +
+      `<animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="${begin}" fill="freeze"/>` +
+      `<g transform="translate(${-cx} ${-cy})">${inner}</g></g></g>`
+    : inner
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${body}</svg>`
   return { svg, width, height }
 }
 

@@ -104,11 +104,33 @@ export const hasIcon = (name: string): name is IconName => Object.prototype.hasO
  * The stroke is set in icon units, so a small icon keeps a sturdy line. `fill` is the strength
  * of the soft fill under the line (0 for line only).
  */
-export const iconGroup = (name: IconName, color: string, x: number, y: number, size: number, width = 2, fill = ICON_FILL_OPACITY) => {
+export const iconGroup = (
+  name: IconName,
+  color: string,
+  x: number,
+  y: number,
+  size: number,
+  width = 2,
+  fill = ICON_FILL_OPACITY,
+  draw?: IconDraw,
+) => {
   const body = ICON_FILL[name]
   const under = body && fill > 0 ? `<g fill="${color}" fill-opacity="${fill}" stroke="none">${body}</g>` : ''
-  return `<g transform="translate(${+x.toFixed(2)} ${+y.toFixed(2)}) scale(${+(size / 24).toFixed(4)})" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${under}${ICONS[name]}</g>`
+  // Drawn in: one dash as long as the whole line, its offset run down to 0, so the strokes
+  // trace themselves. The resting offset is 0, so a surface without SMIL shows the icon whole.
+  const L = DRAW_LENGTH[name] ?? 64
+  const dash = draw ? ` stroke-dasharray="${L} ${L}" stroke-dashoffset="0"` : ''
+  const trace = draw
+    ? `<animate attributeName="stroke-dashoffset" values="${L};${L};0" keyTimes="0;${draw.delay};1" dur="${draw.dur}s" begin="${draw.begin}" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.3 0 0.2 1"/>`
+    : ''
+  return `<g transform="translate(${+x.toFixed(2)} ${+y.toFixed(2)}) scale(${+(size / 24).toFixed(4)})" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash}>${trace}${under}${ICONS[name]}</g>`
 }
+
+/** How an icon traces itself in: over `dur` s from `begin` (SMIL), holding still for the first `delay` share. */
+export type IconDraw = { begin: string; dur: number; delay: number }
+
+/** The length of each icon's line, in its 24-unit box, rounded up: a draw-in dash covers it all. */
+const DRAW_LENGTH: Partial<Record<IconName, number>> = { check: 22, cross: 32, ban: 72 }
 
 /** An icon as a standalone SVG. */
 export const iconSvg = (name: IconName, color: string, size = 16, width = 2, fill = ICON_FILL_OPACITY) =>

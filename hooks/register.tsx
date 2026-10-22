@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { Agent, Info, Stats, Tokens, Usage } from '../types'
 import { accentFor, agentCardSvg, agentStats, CARD_W, prettyModel, visibleAgents } from './agents'
@@ -13,8 +13,8 @@ import {
   cardSvg,
   countSvg,
   dotSvg,
-  countChanges,
   describe,
+  ENTER_MS,
   diffRows,
   fmtClock,
   fmtCost,
@@ -39,10 +39,14 @@ import {
 import { iconGroup, iconSvg } from './icons'
 import { VERSION } from './version'
 import type { IconName } from './icons'
+import type { PillFx } from './chat'
 
 // Per-call facts the transcript rows read: how long a call took, which Bash
 // commands are repeats. Plain module state; a row redraws when its call resolves.
 const durations = new Map<string, number>()
+// When each call this process ran ended: a row's finish (pill pop, badge ripple, a count rising)
+// plays from that moment, once. A row from history has no entry, so it draws still.
+const endedAt = new Map<string, number>()
 const reruns = new Set<string>()
 // A picture set again starts its loops over, even the same one (a transcript row is set again
 // as rows around it come and go; the band, every second). So every loop is drawn at the phase
@@ -51,9 +55,15 @@ const reruns = new Set<string>()
 // (over SSH, the round trip), so the loop lands where it should be, not a beat behind.
 const LOOP_LEAD_MS = 120
 const seenCommands = new Set<string>()
-const remember = (m: Map<string, number>, k: string, v: number) => {
+const remember = <V,>(m: Map<string, V>, k: string, v: V) => {
   m.set(k, v)
   if (m.size > 400) m.delete(m.keys().next().value as string)
+}
+/** Adds to a set that keeps only its latest 400, so a long session does not grow it for good. */
+const keep = (s: Set<string>, k: string) => {
+  s.delete(k)
+  s.add(k)
+  if (s.size > 400) s.delete(s.values().next().value as string)
 }
 
 const NO_TOKENS: Tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
@@ -112,7 +122,10 @@ const THEME = {
   // Icons in front of each label: swap for any glyph or emoji.
 }
 
-export const DANGEROUS = /docker\s+compose\s+down\s+.*-v|ufw\s+enable/
+// `down` removing volumes in any spelling (-v, a short-flag bundle with v, --volumes), within the
+// one command: a `;`, `&` or `|` ends it, so a later `ls -v` is not read as its flag.
+export const DANGEROUS =
+  /\bdocker(?:\s+|-)compose\b[^;&|\n]*?\sdown\b[^;&|\n]*?\s(?:--volumes\b|-[a-zA-Z]*v[a-zA-Z]*\b)|\bufw\s+(?:--force\s+)?enable\b/
 
 export const top = (byTool: Record<string, number>, n: number) =>
   Object.entries(byTool)
@@ -235,7 +248,7 @@ export const forgetChanges = (prefix: string, keep: Set<string>) => {
   for (const key of changes.keys()) if (key.startsWith(prefix) && !keep.has(key.slice(prefix.length))) changes.delete(key)
 }
 
-type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban'; minWidth?: number }
+type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban'; minWidth?: number; fx?: PillFx }
 
 const PILL_GLYPH = { check: '✓', cross: '✕', ban: '⊘' }
 
@@ -247,7 +260,7 @@ const pillEl = (els: { Text: any; Svg: any }, p: PillSpec, now = 0) => {
     const label = p.icon ? `${PILL_GLYPH[p.icon]} ${p.text}` : p.text
     return <Text backgroundColor={p.bg} color={p.fg} bold>{` ${label} `}</Text>
   }
-  const b = pillSvg(p.text, p.fg, p.bg, 24, p.running === true, p.icon, now, p.minWidth)
+  const b = pillSvg(p.text, p.fg, p.bg, 24, p.running === true, p.icon, now, p.minWidth, p.fx)
   // An image, never a frame: a frame reloads (and blanks) whenever its picture changes.
   return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
 }
@@ -276,6 +289,16 @@ const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, siz
 const loopNow = async ($: { clock: { now(): Promise<number> } }, running: boolean) =>
   running ? (await $.clock.now()) + LOOP_LEAD_MS : 0
 
+/** How long ago a finished call ended, while its finish is still playing; else undefined (still). */
+const finishAgo = (ids: ReadonlyArray<string>, now: number) => {
+  const at = Math.max(...ids.map(id => endedAt.get(id) ?? -Infinity))
+  const ago = now - at
+  return ago >= 0 && ago < ENTER_MS ? ago : undefined
+}
+
+// The main turn that ended last, so its closing line pops in once and the older ones stay still.
+let lastTurn = { at: -Infinity, durationMs: -1 }
+
 export const register: Register = on => {
   let startedAt = 0
   let ticker: { cancel: () => void } | null = null
@@ -285,14 +308,54 @@ export const register: Register = on => {
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
 
-  on('session.start', async ($, e, next) => {
+  // The folder and its branch. Read again after every turn: a turn can switch the branch.
+  const locate = async ($: EngineInterface) => {
     const cwd = await $.session.cwd()
     const git = await $.process
       .run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd })
       .catch(() => null)
     const branch = git !== null && git.exitCode === 0 ? git.stdout.trim() : null
     const value: Info = { name: base(cwd), branch }
-    await update($, info, () => value)
+    await update($, info, old => (old?.name === value.name && old?.branch === value.branch ? old : value))
+  }
+
+  // A card whose agent ended without a turn.complete of its own (stopped from the tasks list,
+  // say) would read "running" for good and keep the beat going: the engine's list settles it.
+  const reconcileAgents = async ($: EngineInterface) => {
+    const list = asList(await read($, agents))
+    if (!list.some(a => a.status === 'running')) return
+    const live = await $.agent.list().catch(() => null)
+    if (!live) return
+    const byId = new Map(live.map(a => [a.id, a.status]))
+    const now = await $.clock.now()
+    const settled = (s: string | undefined): Agent['status'] | null =>
+      s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
+    await update($, agents, l =>
+      asList(l).map(a => {
+        const status = a.status === 'running' ? settled(byId.get(a.id)) : null
+        return status ? { ...a, status, endedAt: now } : a
+      }),
+    )
+    if (!asList(await read($, agents)).some(a => a.status === 'running')) {
+      agentTicker?.cancel()
+      agentTicker = null
+    }
+  }
+
+  // The beat while an agent runs: a redraw a second, and every few seconds a look at the
+  // engine's list, so an agent that ends while the session is idle still settles its card.
+  const agentBeat = ($: EngineInterface) => {
+    if (agentTicker) return
+    let beats = 0
+    agentTicker = $.clock.every(1000, () => {
+      beats += 1
+      if (beats % 5 === 0) void reconcileAgents($).catch(() => undefined)
+      void update($, tick, n => (n ?? 0) + 1)
+    })
+  }
+
+  on('session.start', async ($, e, next) => {
+    await locate($)
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
     const fresh = await $.session.usage().catch(() => null)
     if (fresh) {
@@ -356,7 +419,7 @@ export const register: Register = on => {
       cacheWrite: 0,
     }
     await update($, agents, list => [...asList(list).filter(x => x.id !== agentId), a].slice(-12))
-    if (!agentTicker) agentTicker = $.clock.every(1000, () => void update($, tick, n => (n ?? 0) + 1))
+    agentBeat($)
     return r
   })
 
@@ -365,8 +428,8 @@ export const register: Register = on => {
       return { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }
     }
     const key = e.command.trim()
-    if (seenCommands.has(key)) reruns.add(e.tool_use_id)
-    seenCommands.add(key)
+    if (seenCommands.has(key)) keep(reruns, e.tool_use_id)
+    keep(seenCommands, key)
     return next(e)
   })
 
@@ -384,7 +447,7 @@ export const register: Register = on => {
     }
     if (name === 'Agent' || name === 'Task') {
       const effort = (e as unknown as { effort?: string }).effort
-      if (effort) efforts.set(e.tool_use_id, effort)
+      if (effort) remember(efforts, e.tool_use_id, effort)
     }
 
     const args = e as unknown as { file_path?: string; command?: string; pattern?: string }
@@ -403,6 +466,7 @@ export const register: Register = on => {
     const result = await next(e)
     const t1 = await $.clock.now()
     remember(durations, e.tool_use_id, t1 - t0)
+    remember(endedAt, e.tool_use_id, t1)
 
     // The Agent tool's own record carries the id and the model (a launch the spawn hook missed
     // is caught here), and, for a foreground agent, that it is already done.
@@ -435,7 +499,7 @@ export const register: Register = on => {
           }
           return [...rest, rec].slice(-12)
         })
-        if (!agentTicker && !finished) agentTicker = $.clock.every(1000, () => void update($, tick, n => (n ?? 0) + 1))
+        if (!finished) agentBeat($)
         if (finished) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
       }
     }
@@ -545,6 +609,7 @@ export const register: Register = on => {
     ticker?.cancel()
     ticker = null
     const nowMs = await $.clock.now()
+    lastTurn = { at: nowMs, durationMs: (e as unknown as { durationMs?: number }).durationMs ?? -1 }
     if (startedAt > 0) {
       // No prompt.submit seen (e.g. a reload mid-turn): startedAt is 0 and the span would be epoch seconds.
       const s = Math.round((nowMs - startedAt) / 1000)
@@ -552,6 +617,8 @@ export const register: Register = on => {
       await update($, runMs, t => (t ?? 0) + (nowMs - startedAt))
     }
     startedAt = 0
+    await locate($).catch(() => undefined)
+    await reconcileAgents($)
     await update($, tick, n => (n ?? 0) + 1)
     return next(e)
   })
@@ -1043,7 +1110,7 @@ export const register: Register = on => {
               new picture, an image swaps in place. Their roll and tick still play where the
               surface animates images; elsewhere each picture already shows the right value. */}
           {cards.map((c, i) =>
-            Svg ? (
+            Svg && cardArt[i] ? (
               <Svg
                 key={`card-${c.label}`}
                 source={cardArt[i].svg}
@@ -1095,6 +1162,8 @@ export const register: Register = on => {
     const ms = durations.get(p.tool_use_id)
     // Only a running row loops (spinner, busy pill), at the phase it has reached now.
     const now = await loopNow($, p.isRunning)
+    // Just finished: the pill pops in and the badge sends out one ripple.
+    const done = p.isRunning ? undefined : finishAgo([p.tool_use_id], await $.clock.now())
     const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
@@ -1110,7 +1179,7 @@ export const register: Register = on => {
             pill and the duration on the right never shrink or wrap. */}
         <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
           {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, badgeSpins, now)} alt={d.verb} width={30} height={30} />
+            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, badgeSpins, now, done)} alt={d.verb} width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH[d.kind]} `}</Text>
           )}
@@ -1120,7 +1189,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box gap={1} alignItems="center" flexShrink={0}>
-          {p.isRunning ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now) : pillEl({ Text, Svg }, pill, now)}
+          {p.isRunning ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done } }, now)}
           {ms !== undefined && !p.isRunning ? <Text dimColor>{fmtDuration(ms)}</Text> : null}
         </Box>
       </Box>
@@ -1134,14 +1203,15 @@ export const register: Register = on => {
     if (!isFile || p.isErrored) return next(e)
 
     const out = (p.output ?? {}) as { filePath?: string; structuredPatch?: unknown; content?: string; type?: string }
-    const { rows, more } = diffRows(out.structuredPatch, out.type === 'create' ? out.content : undefined)
+    const { rows, more, added, removed } = diffRows(out.structuredPatch, out.type === 'create' ? out.content : undefined)
     if (rows.length === 0) return next(e)
 
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
-    const { added, removed } = countChanges(rows)
     const took = durations.get(p.tool_use_id)
+    // Just written: the counts rise from 0 as their pills pop in.
+    const fresh = finishAgo([p.tool_use_id], await $.clock.now())
     const gutter = String(Math.max(...rows.map(r => r.n ?? 0))).length
 
     return (
@@ -1149,8 +1219,8 @@ export const register: Register = on => {
         <Box paddingX={1} gap={1} alignItems="center">
           {iconEl({ Text, Svg }, 'file', '#8f8985', 14, '')}
           <Text bold dimColor>{base(out.filePath ?? '')}</Text>
-          {added > 0 ? pillEl({ Text, Svg }, { text: `${added} added`, ...PILL.ok }) : null}
-          {removed > 0 ? pillEl({ Text, Svg }, { text: `${removed} removed`, ...PILL.bad }) : null}
+          {added > 0 ? pillEl({ Text, Svg }, { text: `${added} added`, ...PILL.ok, fx: { enter: fresh, count: { n: added, word: 'added' } } }) : null}
+          {removed > 0 ? pillEl({ Text, Svg }, { text: `${removed} removed`, ...PILL.bad, fx: { enter: fresh, count: { n: removed, word: 'removed' } } }) : null}
           {took !== undefined ? <Text dimColor>{fmtDuration(took)}</Text> : null}
         </Box>
         {rows.map((r, i) => (
@@ -1189,6 +1259,8 @@ export const register: Register = on => {
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
     const now = await loopNow($, isRunning)
+    // The run's last call just ended: the group's pill pops in, its badge ripples.
+    const done = isRunning ? undefined : finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), await $.clock.now())
     const pill = isRunning
       ? { text: 'running', running: true, ...PILL.busy }
       : isErrored
@@ -1206,7 +1278,7 @@ export const register: Register = on => {
             pill and the duration on the right never shrink or wrap. */}
         <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
           {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning && !Client, now)} alt="Explore" width={30} height={30} />
+            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning && !Client, now, done)} alt="Explore" width={30} height={30} />
           ) : (
             <Text color={color} bold>{` ${KIND_GLYPH.search} `}</Text>
           )}
@@ -1216,7 +1288,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box flexShrink={0}>
-          {isRunning ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now) : pillEl({ Text, Svg }, pill, now)}
+          {isRunning ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done } }, now)}
         </Box>
       </Box>
     )
@@ -1230,12 +1302,20 @@ export const register: Register = on => {
 
   // The end-of-turn line: a pill instead of a dim word.
   on('ui.render', { component: 'TurnDuration' }, async ($, e, next) => {
+    // While the line waits on background agents it says so, not "done"; ctrl+o shows the engine's own.
+    // (Read loosely: older engines' props have neither field.)
+    const extra = e.props as { waitingFor?: unknown; isExpanded?: boolean }
+    if (extra.waitingFor || extra.isExpanded) return next(e)
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
+    // The turn that just ended pops its pill in and writes its check; older lines stay still.
+    // The line's duration is the turn's, give or take its rounding.
+    const ago = (await $.clock.now()) - lastTurn.at
+    const enter = ago < ENTER_MS && Math.abs(e.props.durationMs - lastTurn.durationMs) < 1000 ? ago : undefined
     return (
       <Box gap={1} alignItems="center">
-        {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok })}
+        {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok, fx: { enter } })}
         <Text dimColor>{fmtDuration(e.props.durationMs)}</Text>
       </Box>
     )

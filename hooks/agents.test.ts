@@ -4,6 +4,9 @@ import type { Agent } from '../types'
 import { SPIN_S, phaseBegin } from './chat'
 import { BAR_ROOM, CARD_H, CARD_W, accentFor, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
+/** Rounded to cents: the engine's test kit has no toBeCloseTo. */
+const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
+
 const mk = (over: Partial<Agent> = {}): Agent => ({
   id: 'a1',
   name: 'Build the landing page',
@@ -61,23 +64,23 @@ describe('cost', () => {
   })
 
   test('prices by version, as the pricing page lists them', () => {
-    expect(agentUsd('claude-sonnet-5-5', c)).toBeCloseTo(12)
-    expect(agentUsd('claude-haiku-5-5', c)).toBeCloseTo(0.6)
-    expect(agentUsd('claude-opus-5-5', c)).toBeCloseTo(24)
-    expect(agentUsd('claude-opus-4-5', c)).toBeCloseTo(30)
-    expect(agentUsd('claude-opus-4-1', c)).toBeCloseTo(90)
-    expect(agentUsd('claude-fable-5-1', c)).toBeCloseTo(60)
-    expect(agentUsd('claude-3-5-haiku-20241022', c)).toBeCloseTo(4.8)
-    expect(agentUsd('claude-mythos-5-1', c)).toBeCloseTo(60)
+    expect(cents(agentUsd('claude-sonnet-5-5', c))).toBe(12)
+    expect(cents(agentUsd('claude-haiku-5-5', c))).toBe(0.6)
+    expect(cents(agentUsd('claude-opus-5-5', c))).toBe(24)
+    expect(cents(agentUsd('claude-opus-4-5', c))).toBe(30)
+    expect(cents(agentUsd('claude-opus-4-1', c))).toBe(90)
+    expect(cents(agentUsd('claude-fable-5-1', c))).toBe(60)
+    expect(cents(agentUsd('claude-3-5-haiku-20241022', c))).toBe(4.8)
+    expect(cents(agentUsd('claude-mythos-5-1', c))).toBe(60)
   })
 
   test('a bare alias is the newest version; a version the table lacks is null', () => {
-    expect(agentUsd('opus', c)).toBeCloseTo(24)
+    expect(cents(agentUsd('opus', c))).toBe(24)
     expect(agentUsd('claude-opus-9-9', c)).toBeNull()
   })
 
   test('cache tokens use their own rates, and totals add up', () => {
-    expect(agentUsd('claude-fable-5-1', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 1_000_000 })).toBeCloseTo(12.75)
+    expect(cents(agentUsd('claude-fable-5-1', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 1_000_000 }))).toBe(12.75)
     expect(totalTokens({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 })).toBe(10)
     expect(usd(0.29)).toBe('$0.29')
     expect(usd(0.001)).toBe('$0.00')

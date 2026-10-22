@@ -14,6 +14,19 @@ describe('guard pattern', () => {
     expect(DANGEROUS.test('docker compose ps')).toBe(false)
     expect(DANGEROUS.test('sudo ufw allow 9020/tcp')).toBe(false)
   })
+
+  test('catches the other spellings of removing volumes', () => {
+    expect(DANGEROUS.test('docker-compose down -v')).toBe(true)
+    expect(DANGEROUS.test('docker compose down --volumes')).toBe(true)
+    expect(DANGEROUS.test('docker compose -f prod.yml down --rmi all -v')).toBe(true)
+    expect(DANGEROUS.test('sudo ufw --force enable')).toBe(true)
+  })
+
+  test('a flag that only contains v, or a later command, is not a volume removal', () => {
+    expect(DANGEROUS.test('docker compose down --verbose')).toBe(false)
+    expect(DANGEROUS.test('docker compose down && git log -v')).toBe(false)
+    expect(DANGEROUS.test('docker compose down; ls -v')).toBe(false)
+  })
 })
 
 describe('stats helpers', () => {

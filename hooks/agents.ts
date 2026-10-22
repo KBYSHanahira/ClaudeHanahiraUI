@@ -24,7 +24,7 @@ export const accentFor = (effort: string | null, model: string) => {
 }
 
 const FAMILY = '(haiku|sonnet|opus|fable|mythos)'
-const cap = (s: string) => s[0].toUpperCase() + s.slice(1).toLowerCase()
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
 
 /**
  * `claude-opus-5-5` -> `Opus 5.5`, in either naming order, ignoring a date suffix
@@ -33,11 +33,11 @@ const cap = (s: string) => s[0].toUpperCase() + s.slice(1).toLowerCase()
  */
 export const prettyModel = (id: string) => {
   let m = new RegExp(`claude-${FAMILY}-(\\d{1,2})(?:-(\\d{1,2}))?(?!\\d)`, 'i').exec(id)
-  if (m) return `${cap(m[1])} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
+  if (m) return `${cap(m[1]!)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
   m = new RegExp(`claude-(\\d{1,2})(?:-(\\d{1,2}))?-${FAMILY}`, 'i').exec(id)
-  if (m) return `${cap(m[3])} ${m[1]}${m[2] ? `.${m[2]}` : ''}`
+  if (m) return `${cap(m[3]!)} ${m[1]}${m[2] ? `.${m[2]}` : ''}`
   m = new RegExp(`^${FAMILY}$`, 'i').exec(id.trim())
-  if (m) return cap(m[1])
+  if (m) return cap(m[1]!)
   return id
 }
 
