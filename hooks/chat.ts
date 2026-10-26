@@ -3,12 +3,13 @@
 import { hasIcon, iconGroup } from './icons'
 import type { IconName } from './icons'
 
-export type Kind = 'read' | 'edit' | 'write' | 'run' | 'search' | 'agent' | 'web' | 'plan' | 'other'
+export type Kind = 'read' | 'edit' | 'write' | 'delete' | 'run' | 'search' | 'agent' | 'web' | 'plan' | 'other'
 
 export const KIND_COLOR: Record<Kind, string> = {
   read: '#7cb7ff',
   edit: '#ffb86b',
   write: '#ff7ab6',
+  delete: '#f2736b',
   run: '#ffd166',
   search: '#5fd3c4',
   agent: '#9b8cf7',
@@ -21,6 +22,7 @@ export const KIND_GLYPH: Record<Kind, string> = {
   read: '▤',
   edit: '✎',
   write: '✚',
+  delete: '✕',
   run: '>_',
   search: '⌕',
   agent: '◈',
@@ -33,6 +35,7 @@ export const KIND_ICON: Record<Kind, IconName> = {
   read: 'file',
   edit: 'pencil',
   write: 'filePlus',
+  delete: 'trash',
   run: 'terminal',
   search: 'search',
   agent: 'bot',
@@ -40,6 +43,44 @@ export const KIND_ICON: Record<Kind, IconName> = {
   plan: 'checklist',
   other: 'cube',
 }
+
+/**
+ * The transcript's motion, in one place: every row arrives, finishes and loops the same way.
+ * `out` eases an arrival (quick, then a long settle); `inOut` eases a loop (a breath, a wave).
+ * Times in seconds.
+ */
+export const MOTION = {
+  out: '0.22 1 0.36 1',
+  inOut: '0.45 0 0.55 1',
+  /** Running to finished: the capsule's colour turns and the dots gather where the icon goes. */
+  morphS: 0.45,
+  /** The icon writing itself, after `traceDelay` of the finish. */
+  traceS: 0.6,
+  traceDelay: 0.3,
+  /** One ring leaving the tile as a row finishes. */
+  rippleS: 0.7,
+  /** An error's short shake, after the morph has turned the capsule red. */
+  shakeS: 0.42,
+}
+
+/**
+ * The transcript row's measures, in px: the kind tile's picture (the tile itself is 25 of its
+ * 32 units, so a finishing ripple has room to grow inside it), and the status pill's height.
+ */
+export const ROW = { tile: 32, pill: 22 }
+
+/** `rm`, `git rm`, `unlink`, `rmdir` at the head of a command, after an optional sudo. */
+const DELETE_CMD = /^\s*(?:sudo\s+)?(?:git\s+rm|rm|unlink|rmdir)\s+/
+
+/** The paths a delete command names: its words after the command, less the flags. */
+const deleted = (command: string) =>
+  command
+    .replace(DELETE_CMD, '')
+    .split(/[;&|]/)[0]!
+    .split(/\s+/)
+    .filter(w => w && !w.startsWith('-'))
+    .map(base)
+    .join(' ')
 
 export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 /** The last part of a path, for POSIX and Windows paths alike (C:\\work\\app → app). */
@@ -56,6 +97,13 @@ export const describe = (tool: string, raw: unknown, isRerun = false) => {
   const path = str(i.file_path) || str(i.path) || str(i.notebook_path)
   switch (name) {
     case 'Bash':
+      // Removing files is a change to the code as much as an edit: it reads as one.
+      if (DELETE_CMD.test(str(i.command)))
+        return {
+          kind: 'delete' as Kind,
+          verb: 'Delete',
+          target: clip(str(i.description) || deleted(str(i.command)), 64),
+        }
       return {
         kind: 'run' as Kind,
         verb: isRerun ? 'Rerun' : 'Run',
@@ -156,35 +204,43 @@ export const fmtDuration = (ms: number) =>
 /** One turn of a running spinner, in seconds: steady and unhurried, so it reads as "busy", not "alarm". */
 export const SPIN_S = 1.1
 
-/** A round badge: tinted disc, ring, glyph. While running, a short arc turns around the ring. */
+/**
+ * A tool row's kind tile: a rounded square tinted in the kind's colour, its icon in the middle,
+ * the same tile the band's cards carry. While running, a short light runs round its edge.
+ * Just finished, the edge flashes and one outline leaves the tile, growing and fading.
+ */
 export const badgeSvg = (color: string, icon: string, size: number, running = false, now = 0, doneAgo?: number) => {
   const g = icon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const fs = icon.length > 1 ? 12 : 14
   const mark = hasIcon(icon)
-    ? iconGroup(icon, color, 7, 7, 18, 2)
+    ? iconGroup(icon, color, 8, 8, 16, 2.1)
     : `<text x="16" y="${icon.length > 1 ? 20.5 : 21}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="${fs}" font-weight="700" fill="${color}">${g}</text>`
-  // A quarter of the ring, turning: one clear sign of work in place of a ripple that fights the icon.
-  const r = 14.5
-  const c = 2 * Math.PI * r
+  // The tile, 25 units square in the 32 box: the ripple grows into the margin, which a picture
+  // never draws outside of.
+  const rx = 8
+  const edge = (extra: string) => `x="3.5" y="3.5" width="25" height="25" rx="${rx}" ${extra}`
+  // A fifth of the edge, running round it: measured with pathLength, so the dash needs no geometry.
   const spin = running
-    ? `<circle cx="16" cy="16" r="${r}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${(c * 0.26).toFixed(2)} ${c.toFixed(2)}">` +
-      `<animateTransform attributeName="transform" type="rotate" from="0 16 16" to="360 16 16" dur="${SPIN_S}s" begin="${phaseBegin(now, SPIN_S * 1000)}" repeatCount="indefinite"/></circle>`
+    ? `<rect ${edge(`fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" pathLength="100" stroke-dasharray="20 80"`)}>` +
+      `<animate attributeName="stroke-dashoffset" from="0" to="-100" dur="${SPIN_S}s" begin="${phaseBegin(now, SPIN_S * 1000)}" repeatCount="indefinite"/></rect>`
     : ''
-  // Just finished: one ring of the badge's colour spreads out and fades, and the disc glows
-  // once, so the eye catches the row that just ended. It rests gone (opacity 0), so a surface
-  // without SMIL shows the plain badge.
+  // Just finished: one outline of the tile grows out and fades, and the tint glows once, so the
+  // eye catches the row that just ended. It rests gone (opacity 0), so a surface without SMIL
+  // shows the plain tile.
   const done = !running && doneAgo !== undefined && doneAgo < ENTER_MS
-  const b = `begin="${sinceBegin(doneAgo)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"`
+  const begin = sinceBegin(doneAgo)
+  const b = `begin="${begin}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="${MOTION.out}"`
   const ripple = done
-    ? `<circle cx="16" cy="16" r="11" fill="none" stroke="${color}" stroke-width="2" opacity="0">` +
-      `<animate attributeName="r" from="11" to="15.5" dur="0.7s" ${b}/>` +
-      `<animate attributeName="opacity" values="0.9;0" keyTimes="0;1" dur="0.7s" begin="${sinceBegin(doneAgo)}" fill="freeze"/>` +
-      `<animate attributeName="stroke-width" from="2.4" to="0.4" dur="0.7s" ${b}/></circle>`
+    ? `<g transform="translate(16 16)"><g opacity="0">` +
+      `<animateTransform attributeName="transform" type="scale" from="0.9" to="1.18" dur="${MOTION.rippleS}s" ${b}/>` +
+      `<animate attributeName="opacity" values="0.85;0" keyTimes="0;1" dur="${MOTION.rippleS}s" begin="${begin}" fill="freeze"/>` +
+      `<rect x="-12.5" y="-12.5" width="25" height="25" rx="${rx}" fill="none" stroke="${color}" stroke-width="1.6"/></g></g>`
     : ''
-  const glow = done ? `<animate attributeName="fill-opacity" from="0.42" to="0.16" dur="0.8s" ${b}/>` : ''
+  const glow = done ? `<animate attributeName="fill-opacity" from="0.42" to="0.15" dur="0.8s" ${b}/>` : ''
+  const flash = done ? `<animate attributeName="stroke-opacity" from="1" to="0.4" dur="0.8s" ${b}/>` : ''
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">` +
-    `<circle cx="16" cy="16" r="15" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-opacity="${running ? 0.22 : 0.45}">${glow}</circle>` +
+    `<rect ${edge(`fill="${color}" fill-opacity="0.15" stroke="${color}" stroke-opacity="${running ? 0.2 : 0.4}" stroke-width="1.5"`)}>${glow}${flash}</rect>` +
     ripple +
     spin +
     mark +
@@ -192,13 +248,18 @@ export const badgeSvg = (color: string, icon: string, size: number, running = fa
   )
 }
 
-export type DiffRow = { n: number | null; sign: '+' | '-' | ' '; text: string }
+/** One line of a diff card; `@` is the gap between two hunks, the lines the patch skipped. */
+export type DiffRow = { n: number | null; sign: '+' | '-' | ' ' | '@'; text: string }
 
-/** Rows of a unified patch, numbered like an editor: new-file lines, old lines for removals. */
+/**
+ * Rows of a unified patch, numbered like an editor: new-file lines, old lines for removals.
+ * Between two hunks, a gap row, so a jump in the numbers never reads as adjacent lines.
+ */
 export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
   const rows: DiffRow[] = []
   if (Array.isArray(hunks) && hunks.length > 0) {
-    for (const h of hunks as { oldStart: number; newStart: number; lines: string[] }[]) {
+    for (const [k, h] of (hunks as { oldStart: number; newStart: number; lines: string[] }[]).entries()) {
+      if (k > 0) rows.push({ n: null, sign: '@', text: '' })
       let oldLine = h.oldStart
       let newLine = h.newStart
       for (const line of h.lines ?? []) {
@@ -223,6 +284,42 @@ export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
   return { rows: rows.slice(0, max), more: Math.max(0, total - max), ...countChanges(rows) }
 }
 
+/**
+ * What an Edit or Write call changed, from its result: the diff card's rows and the counts.
+ * Null for any other tool; no rows for a result with no patch (an error's text, a no-op).
+ */
+export const fileChange = (tool: string, output: unknown) => {
+  const name = short(tool)
+  if (name !== 'Edit' && name !== 'Write') return null
+  const out = (output !== null && typeof output === 'object' ? output : {}) as { structuredPatch?: unknown; content?: unknown; type?: unknown }
+  return diffRows(out.structuredPatch, out.type === 'create' && typeof out.content === 'string' ? out.content : undefined)
+}
+
+/** A background task's kind, from its notification: a shell command runs, anything else is an agent. */
+export const taskKind = (type: string | undefined): Kind => (/bash|shell|command|monitor/i.test(type ?? '') ? 'run' : 'agent')
+
+/**
+ * What a notification row says, from its summary: the first line, less what the row already
+ * says, the verb in front (`Agent`) and the ending behind (`completed`, which the pill shows),
+ * and the quotes round a name left on its own.
+ */
+export const taskSummary = (text: string, verb: string) => {
+  let s = (text.split('\n').find(l => l.trim()) ?? '').trim()
+  if (s.toLowerCase().startsWith(`${verb.toLowerCase()} `)) s = s.slice(verb.length + 1).trim()
+  s = s.replace(/\s+(?:has\s+|was\s+)?(?:completed|finished|failed|stopped|killed|cancell?ed|done)\.?$/i, '').trim()
+  const quoted = /^"([^"]+)"$/.exec(s)
+  return quoted ? quoted[1]! : s
+}
+
+/** A background task's ending as a pill: done, failed or stopped; a status not known reads as itself. */
+export const taskPill = (status: string | undefined): Pill => {
+  const s = (status ?? '').toLowerCase()
+  if (s === 'completed' || s === 'done' || s === 'success') return { text: 'done', icon: 'check', ...PILL.ok }
+  if (s === 'failed' || s === 'error') return { text: 'failed', icon: 'cross', ...PILL.bad }
+  if (s === 'killed' || s === 'stopped' || s === 'cancelled' || s === 'canceled') return { text: 'stopped', icon: 'ban', ...PILL.warn }
+  return { text: s || 'update', ...PILL.busy }
+}
+
 export const countChanges = (rows: DiffRow[]) => ({
   added: rows.filter(r => r.sign === '+').length,
   removed: rows.filter(r => r.sign === '-').length,
@@ -237,6 +334,9 @@ const noise = (x: number, y: number) => {
 
 /** The surface every card and chart sits on: a soft top-lit gradient and a hairline edge. */
 export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow: '#ffffff' }
+
+/** The band's text and line colours: ink for values, label and detail for words (each at least 4.5:1 on the band), quiet for lines and muted icons. */
+export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line: '#3a3634', track: '#332f2d' }
 
 /**
  * A panel's background: gradient fill, hairline edge, a one-pixel highlight along the top.
@@ -386,6 +486,7 @@ const labelWidth = (text: string, fs: number) =>
   Math.round(
     [...text].reduce((w, ch) => {
       if (ch === ' ') return w + fs * 0.3
+      if (ch === '−') return w + fs * 0.66
       if (ch.charCodeAt(0) > 0x2000) return w + fs * 1.0
       if (/[A-Z0-9mwMW%…]/.test(ch)) return w + fs * 0.66
       return w + fs * 0.56
@@ -441,14 +542,22 @@ export const finishClock = (limit = 400) => {
 export type PillFx = {
   /** It just appeared: the capsule pops in and its icon traces itself. */
   enter?: number
-  /** Its number counts up from 0 to `n` (the text is `${n} ${word}`). */
-  count?: { n: number; word: string }
+  /** Its number counts up from 0 to `n` (the text is `${prefix}${n} ${word}`, the word optional). */
+  count?: { n: number; word: string; prefix?: string }
   /** It keeps going after it settles: the icon breathes, slowly, for as long as the pill is shown. */
   alive?: boolean
+  /**
+   * It finishes a running pill of these colours: in place of popping in, the capsule turns from
+   * them to its own and the running dots gather where the icon writes itself. A cross also
+   * shakes once, so a failure is felt as well as seen.
+   */
+  morph?: { fg: string; bg: string }
 }
 
 /** One breath of a settled pill's icon, in s: slow enough to read as calm, not as busy. */
 export const BREATH_S = 3.5
+/** How far a breath fades the icon: enough to see, never enough to read as gone. */
+const BREATH_LOW = 0.5
 
 /**
  * Text that counts up from 0 to `n` over `durS` from `begin`, eased out: a few frames, each
@@ -505,34 +614,70 @@ export const pillSvg = (
     : ''
   const entering = fx.enter !== undefined && fx.enter < ENTER_MS
   const begin = sinceBegin(fx.enter)
-  // Entering, the icon traces itself once the capsule has popped: a check written, not stamped.
-  const draw = entering ? { begin, dur: 0.6, delay: 0.3 } : undefined
-  const glyph = icon ? iconGroup(icon, fg, height * 0.42, (height - height * 0.46) / 2, height * 0.46, 3, undefined, draw) : ''
+  // A one-shot `delay` s into the finish, as a SMIL begin.
+  const after = (delay: number) => `${(delay - Math.max(0, fx.enter ?? 0) / 1000).toFixed(3)}s`
+  const morph = entering && !running ? fx.morph : undefined
+  // Entering, the icon traces itself once the capsule has popped (or turned): a check written,
+  // not stamped.
+  const draw = entering ? { begin, dur: MOTION.traceS, delay: MOTION.traceDelay } : undefined
+  const iconSize = height * 0.46
+  const iconX = height * 0.42
+  const glyph = icon ? iconGroup(icon, fg, iconX, (height - iconSize) / 2, iconSize, 3, undefined, draw) : ''
   // Alive, the icon breathes once the finish has played. Each breath starts and ends at full
   // strength, so a surface that mounts the row again starts it over with no visible jump, and a
   // surface without SMIL shows the icon whole.
   const breathe =
     glyph && fx.alive && !running && icon !== 'ban'
-      ? `<animate attributeName="opacity" values="1;0.4;1" dur="${BREATH_S}s" begin="${(entering ? (ENTER_MS - (fx.enter ?? 0)) / 1000 : 0).toFixed(3)}s" repeatCount="indefinite" ${ease}/>`
+      ? `<animate attributeName="opacity" values="1;${BREATH_LOW};1" dur="${BREATH_S}s" begin="${(entering ? (ENTER_MS - (fx.enter ?? 0)) / 1000 : 0).toFixed(3)}s" repeatCount="indefinite" ${ease}/>`
       : ''
-  const mark = breathe ? `<g>${breathe}${glyph}</g>` : glyph
+  // A cross that turns shakes once after, a short shudder inside the capsule that rests where it
+  // began: a failure felt as well as seen.
+  const shake =
+    entering && !running && fx.morph && icon === 'cross'
+      ? `<animateTransform attributeName="transform" type="translate" values="0 0;-1.6 0;1.6 0;-1 0;0.6 0;0 0" dur="${MOTION.shakeS}s" begin="${after(MOTION.morphS)}" fill="freeze"/>`
+      : ''
+  const breathing = breathe ? `<g>${breathe}${glyph}</g>` : glyph
+  const mark = shake ? `<g>${shake}${breathing}</g>` : breathing
   const ty = (height / 2 + fs * 0.35).toFixed(1)
   const label = (s: string, pinned: boolean) =>
     `<text x="${tx}" y="${ty}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}"${pinned ? ` textLength="${tl}" lengthAdjust="spacingAndGlyphs"` : ''}>${s}</text>`
-  const word = fx.count ? fx.count.word.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const count = fx.count
+  const counted = (v: number) => `${esc(count?.prefix ?? '')}${v}${count?.word ? ` ${esc(count.word)}` : ''}`
   const words =
-    entering && fx.count && fx.count.n > 1
-      ? countUp(fx.count.n, v => label(`${v} ${word}`, v === fx.count!.n), 0.55, begin)
-      : label(t, true)
-  const inner = `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}"/>` + dots + mark + words
-  // The pop: in about the centre, past full size and back, fading up; the same ease as the
-  // agent cards' bounce, so everything that arrives on screen arrives one way.
+    entering && count && count.n > 1
+      ? countUp(count.n, v => label(counted(v), v === count.n), 0.55, begin)
+      : morph
+        ? // The new word fades up as the capsule turns, so "running" never reads beside "done".
+          `<g opacity="0"><animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="${after(0.12)}" fill="freeze"/>${label(t, true)}</g>`
+        : label(t, true)
+  // Morphing, the capsule starts in the running pill's colour and turns to its own, and the
+  // three running dots (where the running pill had them) slide into the icon's place and fade.
+  const turn = morph
+    ? `<animate attributeName="fill" from="${morph.bg}" to="${bg}" dur="${MOTION.morphS}s" begin="${begin}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="${MOTION.out}"/>`
+    : ''
+  const gather = morph
+    ? [0, 1, 2]
+        .map(
+          i =>
+            `<circle cx="${(iconX + iconSize / 2).toFixed(2)}" cy="${height / 2}" r="${dotR}" fill="${morph.fg}" opacity="0">` +
+            `<animate attributeName="cx" from="${(height * 0.5 + i * gap).toFixed(2)}" to="${(iconX + iconSize / 2).toFixed(2)}" dur="0.3s" begin="${begin}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="${MOTION.out}"/>` +
+            `<animate attributeName="opacity" values="1;1;0" keyTimes="0;0.6;1" dur="${MOTION.traceDelay + 0.05}s" begin="${begin}" fill="freeze"/></circle>`,
+        )
+        .join('')
+    : ''
+  const inner = `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}">${turn}</rect>` + dots + gather + mark + words
   const cx = width / 2
   const cy = height / 2
+  // The pop: in about the centre, past full size and back, fading up; the same ease as the
+  // agent cards' bounce, so everything that arrives on screen arrives one way. A morph has
+  // already arrived: it only settles, a breath past full size and back, as it turns.
+  const scale = morph
+    ? `<animateTransform attributeName="transform" type="scale" values="1;1.06;1" keyTimes="0;0.4;1" dur="0.5s" begin="${after(0.1)}" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>`
+    : `<animateTransform attributeName="transform" type="scale" values="0.78;1.03;1" keyTimes="0;0.6;1" dur="0.45s" begin="${begin}" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>` +
+      `<animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="${begin}" fill="freeze"/>`
   const body = entering
-    ? `<g transform="translate(${cx} ${cy})"><g>` +
-      `<animateTransform attributeName="transform" type="scale" values="0.78;1.03;1" keyTimes="0;0.6;1" dur="0.45s" begin="${begin}" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>` +
-      `<animate attributeName="opacity" from="0" to="1" dur="0.2s" begin="${begin}" fill="freeze"/>` +
+    ? `<g transform="translate(${cx} ${cy})"><g>${scale}` +
       `<g transform="translate(${-cx} ${-cy})">${inner}</g></g></g>`
     : inner
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${body}</svg>`
@@ -546,17 +691,25 @@ export const pillSvg = (
  *
  * The sweep is SMIL, phase-locked to `now`, so a redraw carries it on.
  * `padBottom` adds transparent room under the bar, in px.
+ *
+ * Drawn wider than its slot, it keeps its height and is cut at the right (`slice`): with the
+ * default `meet`, a surface that narrows the box shrinks the whole bar to a hairline.
+ * With `open`, the right end is left square for that cut, and `barCapSvg` drawn after the
+ * slot rounds it off: a bar that fits a slot of any width with both ends round.
  */
 export const loadingSvg = (
   width: number,
   height: number,
   color: string,
-  opts: { live?: boolean; padBottom?: number; now?: number } = {},
+  opts: { live?: boolean; padBottom?: number; now?: number; open?: boolean } = {},
 ) => {
   const w = Math.max(120, Math.round(width))
   const h = height
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
   const uid = `l${w}_${h}` // ids stay unique if two bars ever share a document
+  // The track: a capsule, or with `open` one rounded at the left alone.
+  const r = h / 2
+  const track = opts.open ? `<path d="M${r} 0H${w}V${h}H${r}A${r} ${r} 0 0 1 ${r} 0z"` : `<rect width="${w}" height="${h}" rx="${r}"`
   const step = Math.max(3, Math.round(h / 6.5))
   const size = +(step * 0.55).toFixed(2)
   const rows = Math.max(1, Math.floor((h - 4) / step))
@@ -587,20 +740,134 @@ export const loadingSvg = (
       `<rect x="${gx}" y="0" width="${gw}" height="${h}" fill="url(#${uid}g)"><animate attributeName="x" from="${-gw}" to="${w}" dur="1.9s" begin="${phaseBegin(opts.now ?? 0, 1900)}" repeatCount="indefinite"/></rect>` +
       `</mask></defs>` +
       `<g mask="url(#${uid}m)">` +
-      `<rect width="${w}" height="${h}" rx="${h / 2}" fill="${color}" fill-opacity="0.2"/>` +
+      `${track} fill="${color}" fill-opacity="0.2"/>` +
       `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
       `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
       `</g>`
     : ''
 
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}">` +
-    `<rect width="${w}" height="${h}" rx="${h / 2}" fill="#262323"/>` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice">` +
+    `${track} fill="${INK.track}"/>` +
     `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.12"/>` +
     `<path d="${faint.join('')}" fill="#8a8480" fill-opacity="0.3"/>` +
     sweep +
     `</svg>`
   )
+}
+
+/** The context meter's blocks: how many across, each one's size, and the gap between them. */
+export const METER = { segs: 30, w: 6, h: 12, gap: 2 }
+
+/**
+ * A segmented meter as SVG: METER.segs blocks across, the first `percent` of them lit in
+ * `color`, the rest the track. Drawn crisp, no anti-aliasing: the same language as the agent
+ * sprites. Given `from` (the percent it was last drawn at) the lit edge moves from there, so
+ * blocks light one by one as it passes; `pulse` breathes the lit blocks (near the limit).
+ * Any use at all lights the first block, so a session that has begun never reads as empty.
+ */
+export const meterSvg = (
+  percent: number | null,
+  color: string,
+  opts: { from?: number; ago?: number; pulse?: boolean; now?: number } = {},
+) => {
+  const M = METER
+  const pitch = M.w + M.gap
+  const width = M.segs * pitch - M.gap
+  const height = M.h
+  // The lit edge, in px, for a share of the window.
+  const edge = (v: number | null | undefined) => {
+    if (v === null || v === undefined) return 0
+    const share = Math.max(0, Math.min(100, v)) / 100
+    const lit = share > 0 ? Math.max(1, Math.round(share * M.segs)) : 0
+    return lit === 0 ? 0 : lit * pitch - M.gap
+  }
+  const to = edge(percent)
+  const fromW = opts.from === undefined ? to : edge(opts.from)
+  const blocks = Array.from({ length: M.segs }, (_, i) => `M${i * pitch} 0h${M.w}v${M.h}h-${M.w}z`).join('')
+  const grow =
+    Math.abs(to - fromW) >= 1
+      ? `<animate attributeName="width" from="${fromW}" to="${to}" dur="0.9s" begin="${sinceBegin(opts.ago)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"/>`
+      : ''
+  const pulse = opts.pulse
+    ? `<animate attributeName="fill-opacity" values="1;0.55;1" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" dur="2s" begin="${phaseBegin(opts.now ?? 0, 2000)}" repeatCount="indefinite"/>`
+    : ''
+  // The lit blocks are the track's blocks seen through a window `to` wide: the window's edge
+  // moving is what lights or darkens them one by one.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" shape-rendering="crispEdges">` +
+    `<defs><clipPath id="meterlit"><rect x="0" y="0" width="${to}" height="${height}">${grow}</rect></clipPath></defs>` +
+    `<path d="${blocks}" fill="${INK.track}"/>` +
+    (to > 0 || grow ? `<path d="${blocks}" fill="${color}" clip-path="url(#meterlit)">${pulse}</path>` : '') +
+    `</svg>`
+  return { svg, width, height }
+}
+
+/** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
+export const CONTEXT = { height: 36, fs: 20, labelFs: 11.5, icon: 18, gap: 10, afterValue: 16, baseline: 24, meterGap: 6 }
+
+/**
+ * The band's hero line, as one picture: the context figure at CONTEXT.fs, the meter beside it,
+ * then its name and what is left (the window's size as detail). With `stack`, the meter goes
+ * on a line of its own under the figure, for a band too narrow for one line. The figure turns
+ * the meter's colour when `pulse` (near the limit); otherwise it is ink and the meter alone
+ * carries the colour. `width` pads the picture to a column.
+ */
+export const contextSvg = (
+  percent: number | null,
+  color: string,
+  opts: {
+    left?: string | null
+    window?: string | null
+    stack?: boolean
+    width?: number
+    from?: number
+    ago?: number
+    pulse?: boolean
+    now?: number
+  } = {},
+) => {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const C = CONTEXT
+  const meter = meterSvg(percent, color, opts)
+  const value = percent === null ? '—' : `${Math.round(percent)}%`
+  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const valueX = C.icon + 8
+  const valueW = labelWidth(value, C.fs)
+  const words =
+    `<tspan fill="${INK.label}">context</tspan>` +
+    (opts.left ? `<tspan fill="${INK.detail}"> · ${esc(opts.left)}</tspan>` : '') +
+    (opts.window ? `<tspan fill="${INK.detail}"> · ${esc(opts.window)}</tspan>` : '')
+  const wordsW = labelWidth(['context', opts.left, opts.window].filter(Boolean).join(' · '), C.labelFs)
+  const y = C.baseline
+  const meterY = opts.stack ? C.height + C.meterGap : (C.height - meter.height) / 2
+  // The bold figure runs wider than the estimate: more room after it than between the rest.
+  const meterX = opts.stack ? valueX : valueX + valueW + C.afterValue
+  const wordsX = opts.stack ? valueX + valueW + C.afterValue : meterX + meter.width + C.gap
+  const height = opts.stack ? C.height + C.meterGap + meter.height + 4 : C.height
+  const natural = Math.ceil(Math.max(wordsX + wordsW + 12, opts.stack ? meterX + meter.width : 0))
+  const width = Math.max(natural, opts.width ?? 0)
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    iconGroup('chip', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
+    `<text x="${valueX}" y="${y}" ${font} font-size="${C.fs}" font-weight="700" fill="${opts.pulse ? color : INK.value}">${esc(value)}</text>` +
+    `<text x="${wordsX}" y="${y}" ${font} font-size="${C.labelFs}">${words}</text>` +
+    `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
+    `</svg>`
+  return { svg, width, height, natural }
+}
+
+/** The right end of an `open` loading bar: a half disc in the track's colour, drawn after the slot that cuts the bar. */
+export const barCapSvg = (height: number, padBottom = 0) => {
+  const r = height / 2
+  const w = Math.ceil(r)
+  return {
+    svg:
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${height + padBottom}" width="${w}" height="${height + padBottom}">` +
+      `<path d="M0 0A${r} ${r} 0 0 1 0 ${height}z" fill="${INK.track}"/></svg>`,
+    width: w,
+    height: height + padBottom,
+  }
 }
 
 /** The little status dot of the band: still when idle, with a ripple while Claude works. */
@@ -619,6 +886,15 @@ export const CARD_BREATHE_MS = 2400
 
 /** SMIL `begin` that puts a looping animation at the phase it would have reached at `atMs`,
  * so a redraw (the band redraws every second) continues the motion instead of restarting it. */
+/**
+ * SMIL `begin` for a loop drawn at `atMs`: the loop opens at the phase it has reached by then.
+ *
+ * When to pass the clock, and when 0: a surface blinks only when it swaps a picture, never
+ * while a picture's own loops run. So a picture that would change for nothing but its phase
+ * is drawn with `atMs` 0, the same string every redraw, and the surface leaves it alone; the
+ * loop runs on untouched. The clock goes in only where the picture changes anyway (an agent
+ * card's stats), so the loop in the new picture carries on near where the old one was.
+ */
 export const phaseBegin = (atMs: number, periodMs: number) =>
   `${(-(((atMs % periodMs) + periodMs) % periodMs) / 1000).toFixed(3)}s`
 
@@ -754,14 +1030,14 @@ export const cardSvg = (
     // The halftone gathers in the top-right corner and starts past the label, so no dot sits on text.
     halftone(Math.max(Math.round(width * 0.45), Math.ceil(textX + labelWidth(label, 11.5) + 6)), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
     tile +
-    `<text x="${textX}" y="21" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#9a938f">${esc(label)}</text>` +
+    `<text x="${textX}" y="21" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#a39b96">${esc(label)}</text>` +
     `<g clip-path="url(#${clipId})">${valueLine}</g>` +
     `</svg>`
   return { svg, width, height }
 }
 
 /** A stat on the compact band: one line at a text row's height, glyph then value then label. */
-export const STAT = { height: 32, glyph: 28, icon: 18, gap: 8, fs: 13.5, labelFs: 11.5, lineH: 18, baseline: 21, stackTop: 15, subFs: 10.5, subLine: 12.5 }
+export const STAT = { height: 32, glyph: 28, icon: 18, plainIcon: 17, gap: 8, fs: 13.5, labelFs: 11.5, lineH: 18, baseline: 21, stackTop: 15, subFs: 10.5, subLine: 12.5 }
 
 /**
  * One stat of the compact band as SVG: a 28px glyph (a ring passed in as `ring`, else a tinted
@@ -791,6 +1067,8 @@ export const statSvg = (
      * (in place of `detail` after the label), so a cell is narrower and keeps every detail.
      */
     stack?: string[]
+    /** The icon alone, no tile, centred in the glyph slot: the quiet look of a figure. */
+    plain?: boolean
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -810,6 +1088,8 @@ export const statSvg = (
   const io = g0 + (S.glyph - S.icon) / 2
   const glyph = opts.ring
     ? `<g transform="translate(0 ${g0})">${opts.ring}</g>`
+    : opts.icon && opts.plain
+      ? iconGroup(opts.icon, color, (S.glyph - S.plainIcon) / 2, g0 + (S.glyph - S.plainIcon) / 2, S.plainIcon, 2)
     : opts.icon
       ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="7" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32">${breathe}</rect>` +
         // Across, the icon centres in the tile alone; down, past the row's top margin too.
@@ -823,12 +1103,12 @@ export const statSvg = (
     ? `<tspan ${valueFont.replace('fill="#f1ece8"', 'fill-opacity="0"')} textLength="${odo.width}" lengthAdjust="spacingAndGlyphs">${esc(value)}</tspan>`
     : `<tspan font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
   const tail =
-    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#9a938f">${holder}` +
+    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#a39b96">${holder}` +
     (label ? `<tspan dx="5">${esc(label)}</tspan>` : '') +
-    (opts.detail && !stacked ? `<tspan fill="#756e6a"> · ${esc(opts.detail)}</tspan>` : '') +
+    (opts.detail && !stacked ? `<tspan fill="#8f8782"> · ${esc(opts.detail)}</tspan>` : '') +
     `</text>` +
     under
-      .map((line, i) => `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" fill="#857e7a">${esc(line)}</text>`)
+      .map((line, i) => `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" fill="#8f8782">${esc(line)}</text>`)
       .join('')
   const spline = `calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" begin="${sinceBegin(opts.ago)}"`
   const roll = (fromY: number, toY: number, fromO: number, toO: number) =>
@@ -890,9 +1170,14 @@ export const chipSvg = (opts: {
   changed?: boolean
   from?: string
   ago?: number
+  /** Outlined in the band's line colour, no tint, muted glyph and words: a chip that is not state. */
+  quiet?: boolean
 }) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CHIP_LINE
+  const quiet = opts.quiet === true
+  const glyphColor = quiet ? INK.detail : opts.color
+  const restOpacity = quiet ? 0 : 0.14
   const h = C.height
   const glyphW = opts.dots ? 16 : opts.icon ? C.icon : 0
   const x = C.lead + glyphW + (glyphW ? 6 : 0)
@@ -904,7 +1189,7 @@ export const chipSvg = (opts: {
     ? [0, 1, 2]
         .map(
           i =>
-            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${opts.color}" opacity="${opts.still ? 0.3 + i * 0.35 : 0.3}">` +
+            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${glyphColor}" opacity="${opts.still ? 0.3 + i * 0.35 : 0.3}">` +
             (opts.still
               ? ''
               : `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${phaseBegin((opts.now ?? 0) - i * 180, 1200)}" repeatCount="indefinite" ${ease}/>`) +
@@ -912,10 +1197,10 @@ export const chipSvg = (opts: {
         )
         .join('')
     : opts.icon
-      ? iconGroup(opts.icon, opts.color, C.lead, (h - C.icon) / 2, C.icon, 2.2)
+      ? iconGroup(opts.icon, glyphColor, C.lead, (h - C.icon) / 2, C.icon, 2.2)
       : ''
   const holder = opts.value ? `<tspan font-size="${C.fs}" font-weight="700" fill-opacity="0">${esc(opts.value)}</tspan>` : ''
-  const labelStyle = opts.strong && !opts.value ? `font-weight="700" fill="${opts.color}"` : 'fill="#9a938f"'
+  const labelStyle = opts.strong && !opts.value ? `font-weight="700" fill="${quiet ? INK.label : opts.color}"` : `fill="${INK.label}"`
   const tail =
     `<text x="${x}" y="${y}" ${font} font-size="${opts.strong && !opts.value ? C.fs : C.labelFs}">${holder}` +
     `<tspan ${labelStyle}${opts.value ? ' dx="5"' : ''}>${esc(opts.label)}</tspan></text>`
@@ -930,7 +1215,7 @@ export const chipSvg = (opts: {
       ? `<g opacity="0">${roll(0, -14, 1, 0)}${valueAt(opts.from)}</g><g>${roll(14, 0, 0, 1)}${valueAt(opts.value)}</g>`
       : valueAt(opts.value)
   const flash = opts.changed
-    ? `<animate attributeName="fill-opacity" from="0.4" to="0.14" dur="0.8s" fill="freeze" begin="${sinceBegin(opts.ago)}"/>`
+    ? `<animate attributeName="fill-opacity" from="0.4" to="${restOpacity}" dur="0.8s" fill="freeze" begin="${sinceBegin(opts.ago)}"/>`
     : ''
   // Sized generously (bold values run wide), so the label always fits.
   const natural = Math.ceil(
@@ -945,7 +1230,7 @@ export const chipSvg = (opts: {
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
     `<defs><clipPath id="${clipId}"><rect x="0" y="3" width="${width}" height="${h - 6}"/></clipPath></defs>` +
-    `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="7" fill="${opts.color}" fill-opacity="0.14" stroke="${opts.color}" stroke-opacity="0.32">${flash}</rect>` +
+    `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="7" fill="${opts.color}" fill-opacity="${restOpacity}" stroke="${quiet ? INK.line : opts.color}" stroke-opacity="${quiet ? 1 : 0.32}">${flash}</rect>` +
     glyph +
     tail +
     `<g clip-path="url(#${clipId})">${value}</g>` +

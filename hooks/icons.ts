@@ -26,6 +26,7 @@ export type IconName =
   | 'cross'
   | 'ban'
   | 'pause'
+  | 'trash'
 
 /** The strokes of each icon, in a 24x24 box. */
 export const ICONS: Record<IconName, string> = {
@@ -67,6 +68,7 @@ export const ICONS: Record<IconName, string> = {
   cross: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   pause: '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>',
+  trash: '<path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.1A1.5 1.5 0 0 0 8.9 20.5h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/><path d="M10 11v5.5M14 11v5.5"/>',
 }
 
 /**
@@ -91,6 +93,7 @@ export const ICON_FILL: Partial<Record<IconName, string>> = {
   stopwatch: '<circle cx="12" cy="13.5" r="7.5"/>',
   bolt: '<path d="M13.5 3L5.5 13.5h6L10.5 21l8-10.5h-6z"/>',
   folder: '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.7l2 2.3h7.3A2.5 2.5 0 0 1 21 9.8v7.7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/>',
+  trash: '<path d="M6.5 7l.9 12.1A1.5 1.5 0 0 0 8.9 20.5h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7z"/>',
   ban: '<circle cx="12" cy="12" r="8.5"/>',
 }
 

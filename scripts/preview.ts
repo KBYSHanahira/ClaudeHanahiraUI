@@ -2,7 +2,7 @@
 // builders (chat.ts, agents.ts, icons.ts) with sample numbers. Run: bun scripts/preview.ts
 import { writeFileSync } from 'node:fs'
 import { agentCardSvg, CARD_H, CARD_W, prettyModel } from '../hooks/agents'
-import { chipSvg, dotSvg, fmtClock, fmtElapsed, loadingSvg, speedoSvg, STAT, statSvg } from '../hooks/chat'
+import { chipSvg, contextSvg, CONTEXT, dotSvg, fmtClock, fmtElapsed, INK, loadingSvg, speedoSvg, STAT, statSvg } from '../hooks/chat'
 import { iconGroup, iconSvg } from '../hooks/icons'
 import { VERSION } from '../hooks/version'
 import type { Agent } from '../types'
@@ -29,9 +29,9 @@ const agents: Agent[] = [
 ]
 
 const W = 1000
-// Agent strip, then the band: a top line and two lines of stats, then room for the footnote.
+// Agent strip, then the band: a top line, the context line, two lines of stats, then room for the footnote.
 const top = 24 + CARD_H + 14
-const frameH = 14 + 36 + 2 * (STAT.height + 4) + 14
+const frameH = 14 + 36 + CONTEXT.height + 2 * (STAT.height + 4) + 14
 const H = top + frameH + 36
 const parts: string[] = []
 parts.push(`<rect width="${W}" height="${H}" rx="18" fill="#171515"/>`)
@@ -49,33 +49,34 @@ parts.push(nest(iconSvg('folder', '#a8a29e', 14), 58, y0 + 5))
 parts.push(`<text x="78" y="${y0 + 17}" ${font} font-size="15" font-weight="600" fill="#ece7e3">spa</text><text x="116" y="${y0 + 17}" ${font} font-size="14" fill="#a8a29e">⎇ main</text>`)
 const chips = [
   chipSvg({ color: ACCENT, label: 'working', dots: true, strong: true }),
-  chipSvg({ color: '#f2c94c', icon: 'bolt', value: '8', label: 'tools', minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural }),
-  chipSvg({ color: '#8f8985', icon: 'cube', label: `v${VERSION}` }),
+  chipSvg({ color: '#f2c94c', icon: 'bolt', value: '8', label: 'tools', minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural, quiet: true }),
+  chipSvg({ color: '#8f8985', icon: 'cube', label: `v${VERSION}`, quiet: true }),
 ]
 const chipsW = chips.reduce((w, c) => w + c.width, 0) + 8 * (chips.length - 1)
 let chipX = W - 36 - chipsW
 const timeX = chipX - 92
-parts.push(nest(loadingSvg(timeX - 200 - 16, 14, ACCENT, { live: true }), 190, y0 + 3))
+parts.push(nest(loadingSvg(timeX - 200 - 16, 12, ACCENT, { live: true }), 190, y0 + 4))
 parts.push(nest(iconSvg('clock', '#a8a29e', 14), timeX, y0 + 5))
 parts.push(`<text x="${timeX + 20}" y="${y0 + 17}" ${font} font-size="14" fill="#a8a29e">${fmtElapsed(134)}</text>`)
 for (const c of chips) {
   parts.push(nest(c, chipX, y0))
   chipX += c.width + 8
 }
+// the context line: the one figure drawn big, its meter beside it
+parts.push(nest(contextSvg(15, WARM, { left: '849k left', window: '1M window' }), 36, y0 + 36))
 // the stats: gauges over figures, on one grid so the columns line up
 const gauges = [
-  statSvg('15%', 'context', { detail: '151k/1M', ring: ring(15, WARM, STAT.glyph, 'chip') }),
   statSvg('4%', '5h limit', { detail: '3h 59m', ring: ring(4, WARM, STAT.glyph, 'clock') }),
   statSvg('22%', '7d limit', { detail: '2d 8h', ring: ring(22, WARM, STAT.glyph, 'calendar') }),
   statSvg('58', 'tok/s', { detail: 'peak 81', ring: speedoSvg(58 / 81, ACCENT, STAT.glyph) }),
 ]
 const figures: [string, string, never, string][] = [['≈$46.22', 'cost', 'coin' as never, '#f2c94c'], ['172M', 'tokens', 'layers' as never, '#9b8cf7'], [fmtClock(2_730_000), 'time', 'stopwatch' as never, '#7bd88f'], [prettyModel('claude-opus-5-5'), 'model', 'bot' as never, '#5eb5f7']]
-const figureArt = figures.map(([v, l, ic, col]) => statSvg(v, l, { icon: ic, color: col }))
+const figureArt = figures.map(([v, l, ic]) => statSvg(v, l, { icon: ic, color: INK.detail, plain: true }))
 const colW = gauges.map((g, i) => Math.max(g.natural, figureArt[i]!.natural))
 ;[gauges, figureArt].forEach((line, r) => {
   let x = 36
   line.forEach((cell, i) => {
-    parts.push(nest(cell, x, y0 + 36 + r * (STAT.height + 4)))
+    parts.push(nest(cell, x, y0 + 36 + CONTEXT.height + r * (STAT.height + 4)))
     x += colW[i]! + 16
   })
 })

@@ -24,11 +24,13 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 | | Feature | What it does |
 | :-: | :-- | :-- |
 | 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar that sweeps while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
-| ⭕ | **Ring gauges** | Context, 5-hour limit and 7-day limit as rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
-| 💰 | **Total cards** | Cost, Tokens and Time as cards; a value animates only at the moment it changes. |
+| ▮▮▮ | **Context meter** | Context used as one big figure with a 30-block meter beside it, the one thing drawn large; what is left and the window's size follow. It turns red and breathes past 85%. |
+| ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed as small rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
+| 💰 | **Totals** | Cost, tokens, time and model as a quiet row of figures; a value animates only at the moment it changes. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
-| 🧾 | **Transcript styling** | Your message as a card; tool rows with a round icon, coloured verb, status and duration; numbered diff cards. |
-| 🎞️ | **Motion** | Only where a value really changes or work is running. Unchanged figures stay still, except the slow breath of a finished tool row's done or error icon. When a tool call finishes, its pill pops in and its check traces itself, the badge ripples once, a diff's added/removed counts rise from 0, and the turn's closing pill pops in. |
+| 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), a status pill and the time. Deleting files with `rm` shows as a red **Delete** row. |
+| ✏️ | **Code changes inline** | An Edit or Write shows its change right under its row: numbered lines, added ones on green, removed ones on red, a `⋯` where the patch skips lines, and `+N` / `−N` pills in place of `saved`. The full view (ctrl+o) keeps the engine's own. |
+| 🎞️ | **Motion** | Only where work runs or something just changed. While a call runs, the pill's dots wave (or a light runs round the tile). When it finishes, the pill turns from running to its state with no pop: its colour changes, the dots gather where the check then writes itself, and an error's cross gives one short shake. The tile sends out one ripple, and a change's `+N` / `−N` count up from 0. A finished pill's icon keeps a slow breath. |
 | 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
@@ -37,9 +39,13 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 <div align="center">
 
-<img src="docs/preview.png" alt="Hanahira Claude UI compact status band: agent cards, top-line chips, two lines of stats" width="900">
+<img src="docs/preview.png" alt="Hanahira Claude UI compact status band: agent cards, top-line chips, the context meter, two lines of stats" width="900">
 
 *Drawn by the plugin's own SVG builders with sample numbers. Regenerate: `bun scripts/preview.ts`*
+
+<img src="docs/preview-chat.svg" alt="Hanahira Claude UI transcript rows: your card, tool rows with kind tiles and status pills, an edit with its inline diff, a delete, a folded run, a running call, a task notification, an error" width="780">
+
+*The transcript rows, the same way. Regenerate: `bun scripts/preview-chat.ts`*
 
 </div>
 
@@ -166,7 +172,7 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 | :-- | :-- |
 | **Loading bar** | A glow sweeps while Claude works; a quiet line when idle. |
 | **`⚡ N tools`** | Tool calls made in this prompt. Flashes when it grows. |
-| **Context ring** | Context used, and tokens / window (e.g. `151k/1M`). |
+| **Context meter** | Context used, what is left and the window (e.g. `11% ▮▮▮▯▯ context · 889k left · 1M window`). |
 | **5-hour / 7-day rings** | Share of each usage limit used, and the time until it resets. Shown only when the account reports rate limits. |
 | **Cost** | The session total the engine reports (marked `≈`). |
 | **Tokens** | Total tokens counted since the plugin loaded, subagents included, with cache reads and writes. |
@@ -206,7 +212,7 @@ Pure functions live in `hooks/chat.ts` and friends and have tests (`hooks/*.test
 hooks/
   hooks.json      module registration
   register.tsx    the hooks (band, transcript, agents)
-  chat.ts         pure display helpers (SVG, formats)
+  chat.ts         pure display helpers (SVG, formats, the transcript's MOTION)
   agents.ts       agent cards, price table
   icons.ts        the line-icon set
   spinner.tsx     running spinner Desktop turns itself (a Client)
@@ -214,6 +220,7 @@ hooks/
 scripts/
   test-preload.ts engine stand-ins for bun test
   preview.ts      draws docs/preview.svg
+  preview-chat.ts draws docs/preview-chat.svg
   dev.ts          live renamed copy for hot reload
 types/index.d.ts  the shape of the state ($.state)
 ```

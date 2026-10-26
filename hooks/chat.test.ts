@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock, BREATH_S } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock, BREATH_S, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -15,6 +15,14 @@ describe('describe', () => {
   test('file tools show the file name', () => {
     expect(describeCall('Edit', { file_path: '/a/b/register.tsx' })).toEqual({ kind: 'edit', verb: 'Edit', target: 'register.tsx' })
     expect(describeCall('Read', { file_path: '/x/y.ts' }).target).toBe('y.ts')
+  })
+
+  test('removing files reads as a delete, named by the files', () => {
+    expect(describeCall('Bash', { command: 'rm -rf dist/old.js build' })).toEqual({ kind: 'delete', verb: 'Delete', target: 'old.js build' })
+    expect(describeCall('Bash', { command: 'git rm hooks/x.ts', description: 'Drop x' }).target).toBe('Drop x')
+    expect(describeCall('Bash', { command: 'sudo rm /tmp/a; ls' }).target).toBe('a')
+    expect(describeCall('Bash', { command: 'npm run rm-cache' }).kind).toBe('run')
+    expect(describeCall('Bash', { command: 'echo rm x' }).kind).toBe('run')
   })
 
   test('mcp tools fall back to their short name', () => {
@@ -80,6 +88,16 @@ describe('diffRows', () => {
     expect({ added, removed }).toEqual({ added: 30, removed: 0 })
   })
 
+  test('a gap row sits between hunks, and counts nothing', () => {
+    const { rows, added, removed } = diffRows([
+      { oldStart: 3, newStart: 3, lines: ['-a', '+b'] },
+      { oldStart: 40, newStart: 40, lines: [' c', '+d'] },
+    ])
+    expect(rows.map(r => r.sign)).toEqual(['-', '+', '@', ' ', '+'])
+    expect(rows[2]).toEqual({ n: null, sign: '@', text: '' })
+    expect({ added, removed }).toEqual({ added: 2, removed: 1 })
+  })
+
   test('skips the no-newline marker: it is no line of the file', () => {
     const { rows } = diffRows([{ oldStart: 1, newStart: 1, lines: ['-a', '\\ No newline at end of file', '+a', ' b'] }])
     expect(rows.map(r => [r.n, r.sign, r.text])).toEqual([
@@ -87,6 +105,39 @@ describe('diffRows', () => {
       [1, '+', 'a'],
       [2, ' ', 'b'],
     ])
+  })
+})
+
+describe('fileChange', () => {
+  test('an Edit gives its patch, a new file its content, anything else nothing', () => {
+    expect(fileChange('Edit', { structuredPatch: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }] })).toMatchObject({ added: 1, removed: 1 })
+    expect(fileChange('Write', { type: 'create', content: 'x\ny', structuredPatch: [] })).toMatchObject({ added: 2, removed: 0 })
+    expect(fileChange('Write', { type: 'update', content: 'x', structuredPatch: [] })?.rows).toEqual([])
+    expect(fileChange('Edit', 'Error: file not found')?.rows).toEqual([])
+    expect(fileChange('Read', { file: {} })).toBeNull()
+  })
+})
+
+describe('task rows', () => {
+  test('a shell task runs; anything else is an agent', () => {
+    expect(taskKind('local_bash')).toBe('run')
+    expect(taskKind('local_agent')).toBe('agent')
+    expect(taskKind(undefined)).toBe('agent')
+  })
+
+  test('the summary drops what the row already says: the verb, the ending, the quotes', () => {
+    expect(taskSummary('Agent "Agent smoke test" completed', 'Agent')).toBe('Agent smoke test')
+    expect(taskSummary('Background command "bun test" failed\nmore', 'Task')).toBe('Background command "bun test"')
+    expect(taskSummary('\n  "lint" was stopped.', 'Task')).toBe('lint')
+    expect(taskSummary('Done reading', 'Agent')).toBe('Done reading')
+  })
+
+  test('the ending reads as done, failed or stopped; anything else as itself', () => {
+    expect(taskPill('completed')).toMatchObject({ text: 'done', icon: 'check' })
+    expect(taskPill('failed')).toMatchObject({ text: 'failed', icon: 'cross' })
+    expect(taskPill('killed')).toMatchObject({ text: 'stopped', icon: 'ban' })
+    expect(taskPill('paused').text).toBe('paused')
+    expect(taskPill(undefined).text).toBe('update')
   })
 })
 
@@ -218,7 +269,7 @@ describe('finish motion', () => {
     for (const icon of ['check', 'cross'] as const) {
       const settled = pillSvg('done', '#fff', '#000', 24, false, icon, 0, 0, { alive: true })
       expect(settled.svg).toContain(`dur="${BREATH_S}s" begin="0.000s" repeatCount="indefinite"`)
-      expect(settled.svg).toContain('values="1;0.4;1"') // starts and rests at full: a remount does not jump
+      expect(settled.svg).toContain('values="1;0.5;1"') // starts and rests at full: a remount does not jump
       expect(settled.svg).not.toContain('type="scale"')
     }
     // Entering, the breath waits for the pop and the trace to finish.
@@ -262,10 +313,56 @@ describe('finish motion', () => {
     expect(countUp(0, v => `<t>${v}</t>`, 0.5, '0s')).toBe('<t>0</t>')
   })
 
-  test('a badge that just finished ripples once; a running or settled one does not', () => {
-    expect(badgeSvg("#7cb7ff", "file", 30, false, 0, 50)).toContain('attributeName="r"')
-    expect(badgeSvg('#7cb7ff', 'file', 30, false, 0, ENTER_MS)).not.toContain('attributeName="r"')
-    expect(badgeSvg('#7cb7ff', 'file', 30, true, 0, 50)).not.toContain('attributeName="r"')
+  test('a tile that just finished ripples once; a running or settled one does not', () => {
+    expect(badgeSvg('#7cb7ff', 'file', 32, false, 0, 50)).toContain('type="scale"')
+    expect(badgeSvg('#7cb7ff', 'file', 32, false, 0, ENTER_MS)).not.toContain('type="scale"')
+    expect(badgeSvg('#7cb7ff', 'file', 32, true, 0, 50)).not.toContain('type="scale"')
+  })
+
+  test('the ripple stays inside the picture: the tile leaves it room to grow', () => {
+    const svg = badgeSvg('#7cb7ff', 'file', 32, false, 0, 50)
+    const to = Number(/type="scale" from="[\d.]+" to="([\d.]+)"/.exec(svg)?.[1])
+    expect((12.5 + 0.8) * to).toBeLessThanOrEqual(16) // half the tile and half its stroke, both scaled
+  })
+
+  test('a finishing pill turns from the running colours: no pop, the dots gather, the word fades up', () => {
+    const m = pillSvg('done', PILL.ok.fg, PILL.ok.bg, 22, false, 'check', 0, 0, { enter: 0, morph: PILL.busy })
+    expect(m.svg).toContain(`attributeName="fill" from="${PILL.busy.bg}" to="${PILL.ok.bg}"`)
+    expect(m.svg).toContain('attributeName="cx"')
+    expect(m.svg).toContain('values="1;1.06;1"')
+    expect(m.svg).not.toContain('values="0.78;1.03;1"')
+    expect(m.svg).toContain('attributeName="stroke-dashoffset"') // the check still writes itself
+    // Settled, the same pill is still: the morph is a one-shot.
+    expect(pillSvg('done', PILL.ok.fg, PILL.ok.bg, 22, false, 'check', 0, 0, { enter: ENTER_MS, morph: PILL.busy }).svg).not.toContain('<animate')
+  })
+
+  test('only a failure shakes, once, inside the capsule, after the morph', () => {
+    const bad = pillSvg('error', PILL.bad.fg, PILL.bad.bg, 22, false, 'cross', 0, 0, { enter: 0, morph: PILL.busy }).svg
+    expect(bad).toContain(`type="translate" values="0 0;-1.6 0`)
+    expect(bad).toContain(`begin="${MOTION.morphS.toFixed(3)}s"`)
+    expect(pillSvg('done', '#fff', '#000', 22, false, 'check', 0, 0, { enter: 0, morph: PILL.busy }).svg).not.toContain('type="translate" values')
+    expect(pillSvg('error', '#fff', '#000', 22, false, 'cross', 0, 0, { enter: 0 }).svg).not.toContain('type="translate" values')
+  })
+
+  test('a count with a prefix rises as +n and rests on its text', () => {
+    const p = pillSvg('+12', '#fff', '#000', 22, false, undefined, 0, 0, { enter: 0, count: { n: 12, word: '', prefix: '+' } }).svg
+    expect(p).toContain('>+0</text>')
+    expect(p).toContain('>+12</text>')
+    expect(p).not.toContain('+12 <')
+  })
+
+  test('every picture is well-formed: no tag repeats an attribute', () => {
+    const all = [
+      pillSvg('error', '#fff', '#000', 22, false, 'cross', 0, 0, { enter: 100, morph: PILL.busy, alive: true }).svg,
+      pillSvg('done', '#fff', '#000', 22, false, 'check', 0, 0, { enter: 100, morph: PILL.busy, alive: true }).svg,
+      badgeSvg('#fff', 'file', 32, false, 0, 100),
+      badgeSvg('#fff', 'file', 32, true),
+    ]
+    for (const svg of all)
+      for (const tag of svg.match(/<[a-zA-Z][^>]*>/g) ?? []) {
+        const names = [...tag.matchAll(/\s([\w:-]+)=/g)].map(m => m[1])
+        expect(names.length).toBe(new Set(names).size)
+      }
   })
 })
 
@@ -341,13 +438,27 @@ describe('loadingSvg', () => {
     expect(padded).toContain('viewBox="0 0 600 24" width="600" height="24"')
     expect(padded).toContain('<rect width="600" height="18" rx="9"')
   })
+
+  test('a narrowed box cuts the bar at the right instead of shrinking it', () => {
+    expect(loadingSvg(900, 18, '#fff')).toContain('preserveAspectRatio="xMinYMid slice"')
+  })
+
+  test('open: the left end round, the right end square for the cut, and a cap to round it off', () => {
+    const open = loadingSvg(900, 12, '#fff', { open: true, live: true })
+    expect(open).toContain('<path d="M6 0H900V12H6A6 6 0 0 1 6 0z" fill="#332f2d"/>')
+    expect(open).not.toContain('rx="6"')
+    const cap = barCapSvg(12, 6)
+    expect(cap.width).toBe(6)
+    expect(cap.height).toBe(18)
+    expect(cap.svg).toContain('A6 6 0 0 1 0 12z" fill="#332f2d"')
+  })
 })
 
 describe('more motion', () => {
-  test('a running badge turns an arc round its ring; a settled one is still', () => {
-    expect(badgeSvg('#ffd166', '>_', 30, true)).toContain('type="rotate" from="0 16 16" to="360 16 16"')
-    expect(badgeSvg('#ffd166', '>_', 30, true)).not.toContain('attributeName="r"')
-    expect(badgeSvg('#ffd166', '>_', 30, false)).not.toContain('<animate')
+  test('a running tile runs a light round its edge; a settled one is still', () => {
+    expect(badgeSvg('#ffd166', '>_', 32, true)).toContain('attributeName="stroke-dashoffset" from="0" to="-100"')
+    expect(badgeSvg('#ffd166', '>_', 32, true)).not.toContain('type="scale"')
+    expect(badgeSvg('#ffd166', '>_', 32, false)).not.toContain('<animate')
   })
 
   test('the status dot ripples only while live', () => {
@@ -456,10 +567,10 @@ describe('more motion', () => {
 })
 
 describe('icons', () => {
-  test('every tool kind has a drawn icon, and the badge centres it in the disc', () => {
+  test('every tool kind has a drawn icon, and the tile centres it', () => {
     for (const icon of Object.values(KIND_ICON)) {
-      const svg = badgeSvg('#ffd166', icon, 30)
-      expect(svg).toContain('translate(7 7) scale(0.75)') // 18px mark, top-left at 7, 7: dead centre in 32
+      const svg = badgeSvg('#ffd166', icon, 32)
+      expect(svg).toContain('translate(8 8) scale(0.6667)') // 16px mark, top-left at 8, 8: dead centre in 32
       expect(svg).not.toContain('<text')
     }
   })
@@ -613,6 +724,72 @@ describe('chipSvg', () => {
   })
 })
 
+describe('meterSvg', () => {
+  test('METER.segs crisp blocks, the first share of them lit, any use at all lighting one', () => {
+    const m = meterSvg(11, '#e8825f')
+    expect(m.width).toBe(METER.segs * (METER.w + METER.gap) - METER.gap)
+    expect(m.svg).toContain('shape-rendering="crispEdges"')
+    // 11% of 30 blocks is 3: the lit window ends at the third block's right edge.
+    expect(m.svg).toContain(`<rect x="0" y="0" width="${3 * (METER.w + METER.gap) - METER.gap}"`)
+    expect(meterSvg(1, '#fff').svg).toContain(`width="${METER.w}" height="${METER.h}"></rect>`)
+    expect(meterSvg(0, '#fff').svg).not.toContain('clip-path="url(#meterlit)"')
+    expect(meterSvg(null, '#fff').svg).not.toContain('clip-path="url(#meterlit)"')
+  })
+
+  test('the lit edge moves from where it was; still otherwise; breathes near the limit', () => {
+    expect(meterSvg(40, '#fff', { from: 20 }).svg).toContain('<animate attributeName="width" from="46" to="94"')
+    expect(meterSvg(40, '#fff').svg).not.toContain('<animate')
+    expect(meterSvg(90, '#f2736b', { pulse: true, now: 500 }).svg).toContain('attributeName="fill-opacity" values="1;0.55;1"')
+  })
+})
+
+describe('contextSvg', () => {
+  test('one line: figure, meter, then the name and what is left; the figure in ink', () => {
+    const c = contextSvg(11, '#e8825f', { left: '889k left', window: '1M window' })
+    expect(c.height).toBe(CONTEXT.height)
+    expect(c.svg).toContain(`font-size="${CONTEXT.fs}" font-weight="700" fill="#f1ece8">11%</text>`)
+    expect(c.svg).toContain('>context</tspan>')
+    expect(c.svg).toContain('> · 889k left</tspan>')
+    expect(c.svg).toContain('> · 1M window</tspan>')
+    expect(c.svg).toContain('shape-rendering="crispEdges"')
+  })
+
+  test('stacked: the meter under the figure, in a taller, narrower picture', () => {
+    const line = contextSvg(11, '#e8825f', { left: '889k left', window: '1M window' })
+    const stack = contextSvg(11, '#e8825f', { left: '889k left', window: '1M window', stack: true })
+    expect(stack.height).toBeGreaterThan(line.height)
+    expect(stack.natural).toBeLessThan(line.natural)
+  })
+
+  test('unknown usage draws a dash and an empty meter; near the limit the figure takes the colour', () => {
+    expect(contextSvg(null, '#e8825f').svg).toContain('>—</text>')
+    expect(contextSvg(90, '#f2736b', { pulse: true }).svg).toContain('fill="#f2736b">90%</text>')
+  })
+})
+
+describe('chipSvg quiet', () => {
+  test('outlined in the line colour, no tint, muted glyph and words', () => {
+    const c = chipSvg({ color: '#f2c94c', icon: 'bolt', value: '10', label: 'tools', quiet: true })
+    expect(c.svg).toContain('fill-opacity="0" stroke="#3a3634" stroke-opacity="1"')
+    expect(c.svg).toContain('stroke="#8f8782"')
+    expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, quiet: true }).svg).toContain('font-weight="700" fill="#a39b96"')
+  })
+
+  test('a growing count still flashes the tint once, back to none', () => {
+    expect(chipSvg({ color: '#f2c94c', value: '3', label: 'tools', quiet: true, changed: true, from: '2' }).svg).toContain('from="0.4" to="0"')
+  })
+})
+
+describe('statSvg plain', () => {
+  test('the icon alone, centred in the glyph slot, no tile', () => {
+    const svg = statSvg('$1', 'cost', { icon: 'coin', plain: true, color: '#8f8782' }).svg
+    expect(svg).not.toContain('rx="7"')
+    const across = (STAT.glyph - STAT.plainIcon) / 2
+    const down = (STAT.height - STAT.glyph) / 2 + across
+    expect(svg).toContain(`translate(${across} ${down}) scale(${+(STAT.plainIcon / 24).toFixed(4)})`)
+  })
+})
+
 describe('statSvg icon', () => {
   test('the icon sits in the middle of its tile, across and down', () => {
     const svg = statSvg('$1', 'cost', { icon: 'coin' }).svg
@@ -628,7 +805,7 @@ describe('statSvg stacked', () => {
     const stacked = statSvg('31%', 'context', { stack: ['693k left', '1M window'] })
     expect(stacked.natural).toBeLessThan(line.natural)
     expect(stacked.height).toBeGreaterThan(STAT.height)
-    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#857e7a">693k left</text>`)
+    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#8f8782">693k left</text>`)
     expect(stacked.svg).toContain('>1M window</text>')
     expect(stacked.svg).not.toContain(' · 1M window')
   })

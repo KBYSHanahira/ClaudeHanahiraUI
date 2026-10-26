@@ -2,21 +2,24 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Agent, Info, Stats, Tokens, Usage } from '../types'
-import { accentFor, agentCardSvg, agentStats, CARD_W, prettyModel, visibleAgents } from './agents'
+import { agentCardSvg, agentStats, prettyModel, visibleAgents } from './agents'
 import {
   KIND_COLOR,
   KIND_GLYPH,
   KIND_ICON,
+  INK,
   PILL,
   badgeSvg,
+  barCapSvg,
   base,
   cardSvg,
+  contextSvg,
   countSvg,
   dotSvg,
   describe,
   ENTER_MS,
   finishClock,
-  diffRows,
+  fileChange,
   fmtClock,
   fmtCost,
   fmtDuration,
@@ -28,6 +31,10 @@ import {
   phaseBegin,
   pillSvg,
   chipSvg,
+  ROW,
+  taskKind,
+  taskPill,
+  taskSummary,
   sinceBegin,
   STAT,
   liveSpeed,
@@ -40,7 +47,7 @@ import {
 import { iconGroup, iconSvg } from './icons'
 import { VERSION } from './version'
 import type { IconName } from './icons'
-import type { PillFx } from './chat'
+import type { DiffRow, PillFx } from './chat'
 
 // Per-call facts the transcript rows read: how long a call took, which Bash
 // commands are repeats. Plain module state; a row redraws when its call resolves.
@@ -49,11 +56,13 @@ const durations = new Map<string, number>()
 // plays from that moment, once. A row from history has no entry, so it draws still.
 const endedAt = new Map<string, number>()
 const reruns = new Set<string>()
-// A picture set again starts its loops over, even the same one (a transcript row is set again
-// as rows around it come and go; the band, every second). So every loop is drawn at the phase
-// it has reached now, read on every redraw, and the new picture carries on where the old one
-// was. LOOP_LEAD_MS covers the time from drawing to the picture showing
-// (over SSH, the round trip), so the loop lands where it should be, not a beat behind.
+// A surface blinks only when it swaps a picture; a picture's own loops run on untouched. So a
+// running picture (a busy pill, the band's bar and dots, a ring's pulse) is drawn with its loops
+// at phase 0: the same string on every redraw, which the surface leaves alone. Drawing it at
+// the clock's phase instead made every redraw a new picture, and every swap a blink.
+// Only a picture that changes anyway (an agent card, whose stats move) takes the clock, so the
+// loop in its new picture carries on near where the old one was. LOOP_LEAD_MS covers the time
+// from drawing to the picture showing (over SSH, the round trip).
 const LOOP_LEAD_MS = 120
 const seenCommands = new Set<string>()
 const remember = <V,>(m: Map<string, V>, k: string, v: V) => {
@@ -111,15 +120,16 @@ const RING = 38
 const CARD_MIN = 18
 
 const THEME = {
-  accent: '#9b8cf7', // dot, loading bar
-  warm: '#e8825f', // frame, working marker
+  accent: '#9b8cf7', // dot, loading bar, the working chip
+  warm: '#e8825f', // frame, the context meter, the limit rings
+  muted: INK.detail, // the figures' icons: quiet, so the meter leads
   fallbackTitle: 'Hanahira',
   frame: true,
   // Two even rows of one-line stats (gauges over figures, in aligned columns) in place of
   // three-line tiles over tall cards: about half the height. false brings back the full band.
   compact: true,
   barPx: 900, // widest the loading bar grows, in px
-  barHeight: 18, // its height in px
+  barHeight: 12, // its height in px
   barGap: 6, // room under the bar, in px: keeps it off the rings below
   listAgents: 4, // agent cards on the strip: running first, then the latest finished
   keepFinishedMs: 3000, // a finished agent's card stays this long (to show the check), then goes
@@ -265,7 +275,7 @@ const pillEl = (els: { Text: any; Svg: any }, p: PillSpec, now = 0) => {
     const label = p.icon ? `${PILL_GLYPH[p.icon]} ${p.text}` : p.text
     return <Text backgroundColor={p.bg} color={p.fg} bold>{` ${label} `}</Text>
   }
-  const b = pillSvg(p.text, p.fg, p.bg, 24, p.running === true, p.icon, now, p.minWidth, p.fx)
+  const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon, now, p.minWidth, p.fx)
   // An image, never a frame: a frame reloads (and blanks) whenever its picture changes.
   return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
 }
@@ -290,9 +300,124 @@ const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, siz
   return Svg ? <Svg source={iconSvg(name, color, size)} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
 }
 
-/** The moment a running row's loops are drawn at: now, a little ahead (0 when not running). */
-const loopNow = async ($: { clock: { now(): Promise<number> } }, running: boolean) =>
-  running ? (await $.clock.now()) + LOOP_LEAD_MS : 0
+/** The transcript's own colours, beside the kinds' and the pills'. */
+const CHAT = {
+  // The band's frame (THEME.warm at 55% over the band), so your card and the band read as one.
+  userEdge: '#8e5541',
+  userGround: '#221d1b',
+  // A changed line's ground: the pill's tint, darker, so a run of them stays readable as code.
+  addGround: '#1d2a21',
+  delGround: '#2e1c21',
+  diffEdge: INK.line,
+}
+
+// When each notification row was first drawn, and when this process loaded: a row first seen
+// well after the load is news, and plays its arrival once.
+const rowSeen = new Map<string, number>()
+let loadedAt = Infinity
+
+type RowSpec = {
+  color: string
+  icon: IconName
+  glyph: string
+  verb: string
+  target: string
+  /** The target is a file or a pattern: set in the surface's monospaced face. */
+  mono?: boolean
+  spins?: boolean
+  now?: number
+  /** How long ago the row finished, while its finish plays. */
+  done?: number
+  status: unknown
+  ms?: number
+}
+
+/**
+ * One transcript row, the grammar every tool, group and task row shares: the kind tile, the
+ * verb in the kind's colour and the target, then the status and the time at the right. The verb
+ * and target give way (cut in the middle, so a file name stays); the right side never shrinks.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toolRow = (els: { Box: any; Text: any; Svg: any }, r: RowSpec) => {
+  const { Box, Text, Svg } = els
+  return (
+    <Box justifyContent="space-between" alignItems="center" gap={1}>
+      <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
+        {Svg ? (
+          <Svg source={badgeSvg(r.color, r.icon, ROW.tile, r.spins === true, r.now ?? 0, r.done)} alt={r.verb} width={ROW.tile} height={ROW.tile} />
+        ) : (
+          <Text color={r.color} bold>{` ${r.glyph} `}</Text>
+        )}
+        <Text wrap="truncate-middle">
+          <Text weight="semibold" color={r.color}>{r.verb}</Text>
+          <Text> </Text>
+          <Text mono={r.mono === true}>{r.target}</Text>
+        </Text>
+      </Box>
+      <Box gap={1} alignItems="center" flexShrink={0}>
+        {r.status}
+        {r.ms !== undefined ? <Text dimColor tabular>{fmtDuration(r.ms)}</Text> : null}
+      </Box>
+    </Box>
+  )
+}
+
+/** What a file write changed, as two pills that count up as they pop in: +added, −removed. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const changePills = (els: { Box: any; Text: any; Svg: any }, added: number, removed: number, enter: number | undefined) => {
+  const { Box } = els
+  return (
+    <Box gap={1} alignItems="center">
+      {added > 0 ? pillEl(els, { text: `+${added}`, ...PILL.ok, fx: { enter, count: { n: added, word: '', prefix: '+' } } }) : null}
+      {removed > 0 ? pillEl(els, { text: `−${removed}`, ...PILL.bad, fx: { enter, count: { n: removed, word: '', prefix: '−' } } }) : null}
+    </Box>
+  )
+}
+
+/**
+ * The change itself, under the row: numbered lines like an editor, the added on a green
+ * ground, the removed on a red one, the rest dim; a gap row where the patch skips lines.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const diffCard = (els: { Box: any; Text: any }, d: { rows: DiffRow[]; more: number }) => {
+  const { Box, Text } = els
+  const gutter = String(Math.max(1, ...d.rows.map(r => r.n ?? 0))).length
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={CHAT.diffEdge} marginLeft={4} overflow="hidden">
+      {d.rows.map((r, i) =>
+        r.sign === '@' ? (
+          <Box key={`diff-${i}`} paddingX={1}>
+            <Text dimColor mono>{'⋯'.padStart(gutter)}</Text>
+          </Box>
+        ) : (
+          <Box
+            key={`diff-${i}`}
+            paddingX={1}
+            gap={1}
+            {...(r.sign === '+' ? { backgroundColor: CHAT.addGround } : r.sign === '-' ? { backgroundColor: CHAT.delGround } : {})}
+          >
+            <Text dimColor mono tabular>{String(r.n ?? '').padStart(gutter)}</Text>
+            <Text
+              mono
+              wrap="truncate-end"
+              {...(r.sign === '+' ? { color: PILL.ok.fg } : r.sign === '-' ? { color: PILL.bad.fg } : { dimColor: true })}
+            >
+              {`${r.sign === '-' ? '−' : r.sign} ${r.text}`}
+            </Text>
+          </Box>
+        ),
+      )}
+      {d.more > 0 ? (
+        <Box paddingX={1}>
+          <Text dimColor>{`… ${d.more} more lines`}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  )
+}
+
+/** A running row's loops open at phase 0 (see LOOP_LEAD_MS): the row's picture stays the same across redraws. */
+const LOOP_STILL = 0
 
 /** How long ago a row's finish began, while it still plays; else undefined (still). */
 const finishes = finishClock()
@@ -383,6 +508,7 @@ export const register: Register = on => {
   let charsPerToken = 4
 
   on('session.start', async ($, e, next) => {
+    loadedAt = await $.clock.now()
     await locate($)
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
     const fresh = await $.session.usage().catch(() => null)
@@ -670,10 +796,10 @@ export const register: Register = on => {
     ])
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
-    // Every loop on the band (the bar, the dots, a ring's pulse) is drawn at the phase it has
-    // reached now, plus LOOP_LEAD_MS: a picture set again starts its loops over, even the same
-    // one, so each redraw's new picture must carry on where the last one was.
-    const loopAt = nowMs + LOOP_LEAD_MS
+    // Every loop on the band (the bar, the dots, a ring's pulse) opens at phase 0 (see
+    // LOOP_LEAD_MS): a cell whose figure has not changed is the same picture on every redraw,
+    // so the surface never swaps it and its loop never blinks.
+    const loopAt = LOOP_STILL
     const { Box, Text } = $.ui.resolve(e)
 
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
@@ -682,9 +808,6 @@ export const register: Register = on => {
 
     const table = $.ui.resolve(e)
     const Svg = 'Svg' in table ? table.Svg : null
-    // Where the surface takes a `Client`, the bar under each running agent card is moved by
-    // the surface itself (shimmer.tsx), so no redraw restarts it.
-    const Client = 'Client' in table ? table.Client : null
 
 
     // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
@@ -732,13 +855,13 @@ export const register: Register = on => {
       chipSvg(
         working
           ? { color: THEME.accent, label: 'working', dots: true, strong: true, now: loopAt }
-          : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, strong: true },
+          : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, strong: true, quiet: true },
       )
     const chips = [
       { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
         ...(e.props.isWorking
           ? { color: THEME.accent, label: 'working', dots: true, now: loopAt }
-          : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName }),
+          : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, quiet: true }),
         strong: true,
         minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
       }) },
@@ -751,8 +874,9 @@ export const register: Register = on => {
         from: tools.from === undefined ? undefined : String(tools.from),
         ago: tools.ago,
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
+        quiet: true,
       }) },
-      { key: 'version', alt: `UI v${VERSION}`, art: chipSvg({ color: '#8f8985', icon: 'cube', label: `v${VERSION}` }) },
+      { key: 'version', alt: `UI v${VERSION}`, art: chipSvg({ color: '#8f8985', icon: 'cube', label: `v${VERSION}`, quiet: true }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -800,12 +924,12 @@ export const register: Register = on => {
       // the bounce, the flash and the stats roll by time since they began), so a redraw
       // carries each one on instead of starting it over.
       const sc = noteChange(`agent:${a.id}`, agentStats(a), nowMs)
+      // The card carries its own bar, drawn at the phase it has reached, so a redraw carries
+      // the light on: one bar per agent, inside its card, on every surface.
       const art = agentCardSvg(a, nowMs + LOOP_LEAD_MS, {
         pop,
         flash,
-        // Where the surface takes a `Client`, the bar under the card is its own (see below).
-        barless: Client !== null,
-        padBottom: Client !== null ? 0 : THEME.stripGap,
+        padBottom: THEME.stripGap,
         fromStats: sc.from,
         statsAgo: sc.ago,
         popAgo: nowMs - (firstSeenAt.get(a.id) ?? nowMs),
@@ -900,7 +1024,8 @@ export const register: Register = on => {
     // over everything else (narrower still); `bare`, one line without the detail.
     type Mode = 'line' | 'stack' | 'tall' | 'bare'
     type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; draw: (width?: number, mode?: Mode) => ReturnType<typeof statSvg> }
-    const gaugeCells: Cell[] = tiles.map(t => ({
+    // Context is the hero line above the grid (below); the other gauges share the grid.
+    const gaugeCells: Cell[] = tiles.filter(t => t.key !== 'context').map(t => ({
       key: `tile-${t.key}`,
       alt: `${t.big} ${t.caption}`,
       value: t.big,
@@ -950,7 +1075,8 @@ export const register: Register = on => {
         // Stacked, the label goes under the value, so the column is no wider than the value.
         draw: (width, mode = 'line') => {
           const under = mode === 'stack' || mode === 'tall'
-          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: c.color, width, ...(under ? { stack: [label] } : {}), ...motion })
+          // Plain and muted: the figures are the quiet row, so the meter and the gauges lead.
+          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, ...(under ? { stack: [label] } : {}), ...motion })
         },
       }
     })
@@ -962,6 +1088,20 @@ export const register: Register = on => {
     // narrower or wider band so picks a whole layout, never a cell that wrapped on its own.
     // Room is estimated at 8px a cell, less the frame, its padding and some slack.
     const roomPx = e.props.bodyColumns * 8 - 4 * 8 - 16
+    // The hero line: the context figure at 20px and its meter, the one thing drawn big. On a
+    // band too narrow for the figure, meter and words on one line, the meter goes under.
+    const ctxPulse = use.percent !== null && use.percent >= 85
+    const ctxOpts = {
+      left: contextLeft(use.tokens, use.window, use.percent),
+      window: use.window !== null ? `${fmtTokens(use.window)} window` : null,
+      from: ringFrom.get('context') ?? 0,
+      ago: ringAgo.get('context'),
+      pulse: ctxPulse,
+      now: loopAt,
+    }
+    const ctxColor = ringColor(use.percent ?? 0)
+    const ctxLine = contextSvg(use.percent, ctxColor, ctxOpts)
+    const ctxArt = ctxLine.natural > roomPx ? contextSvg(use.percent, ctxColor, { ...ctxOpts, stack: true }) : ctxLine
     const cellGapPx = 2 * 8
     const across = Math.max(gaugeCells.length, figureCells.length, 1)
     const layouts: { k: number; mode: Mode }[] = [
@@ -994,26 +1134,7 @@ export const register: Register = on => {
           {crewCards.length > 0 ? (
             <Box columnGap={2} rowGap={1} alignItems="center" flexWrap="wrap">
               {crewCards.map(({ a, pop, flash, art }) =>
-                Svg && Client ? (
-                  // The card, still, over its bar: a running agent's light glides along it, moved
-                  // by the surface (shimmer.tsx), so no redraw restarts it; a finished one's bar
-                  // is whole, in the card's accent.
-                  <Box key={`agent-${a.id}`} flexDirection="column" marginBottom={1}>
-                    <Svg source={art.svg} alt={`${a.name}, ${a.status}`} width={art.width} height={art.height} />
-                    {a.status === 'running' ? (
-                      <Client
-                        key={`agent-bar-${a.id}`}
-                        module="./shimmer.tsx"
-                        props={{ cells: Math.floor(CARD_W / 8), color: accentFor(a.effort, a.model), track: '#2b2827' }}
-                        width={Math.floor(CARD_W / 8)}
-                      />
-                    ) : (
-                      <Text wrap="truncate-end" color={a.status === 'done' ? accentFor(a.effort, a.model) : '#3a3836'}>
-                        {'━'.repeat(Math.floor(CARD_W / 8))}
-                      </Text>
-                    )}
-                  </Box>
-                ) : Svg ? (
+                Svg ? (
                   <Svg
                     key={`agent-${a.id}`}
                     source={art.svg}
@@ -1051,18 +1172,23 @@ export const register: Register = on => {
             {Svg ? (
               // The bar takes what its line leaves, as the surface lays it out (from no width,
               // growing): bodyColumns * 8 undercounts Desktop's row, and a bar sized from it
-              // came out under the cut-off and was dropped. Drawn THEME.barPx wide, clipped to fit.
-              <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-              <Svg
-                source={loadingSvg(THEME.barPx, THEME.barHeight, THEME.accent, {
-                  live: e.props.isWorking,
-                  padBottom: THEME.barGap,
-                  now: loopAt,
-                })}
-                alt={e.props.isWorking ? 'Working' : 'Idle'}
-                width={THEME.barPx}
-                height={THEME.barHeight + THEME.barGap}
-              />
+              // came out under the cut-off and was dropped. Drawn THEME.barPx wide with its right
+              // end open, clipped to fit, and capped after the clip, so both ends come out round.
+              <Box flexGrow={1} flexShrink={1} minWidth={0} alignItems="center">
+                <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+                  <Svg
+                    source={loadingSvg(THEME.barPx, THEME.barHeight, THEME.accent, {
+                      live: e.props.isWorking,
+                      padBottom: THEME.barGap,
+                      now: loopAt,
+                      open: true,
+                    })}
+                    alt={e.props.isWorking ? 'Working' : 'Idle'}
+                    width={THEME.barPx}
+                    height={THEME.barHeight + THEME.barGap}
+                  />
+                </Box>
+                <Svg source={barCapSvg(THEME.barHeight, THEME.barGap).svg} alt="" width={barCapSvg(THEME.barHeight).width} height={THEME.barHeight + THEME.barGap} />
               </Box>
             ) : null}
           </Box>
@@ -1099,6 +1225,19 @@ export const register: Register = on => {
           </Box>
         </Box>
 
+        {THEME.compact ? (
+          Svg ? (
+            <Svg source={ctxArt.svg} alt={`${use.percent === null ? '—' : `${use.percent}%`} context`} width={ctxArt.width} height={ctxArt.height} />
+          ) : (
+            <Text>
+              <Text bold>{use.percent === null ? '—' : `${use.percent}%`}</Text>
+              <Text dimColor> context </Text>
+              <Text color={ctxColor}>{meter(use.percent ?? 0, 20).filled}</Text>
+              <Text dimColor>{meter(use.percent ?? 0, 20).rest}</Text>
+              {ctxOpts.left ? <Text dimColor>{` · ${ctxOpts.left}`}</Text> : null}
+            </Text>
+          )
+        ) : null}
         {THEME.compact ? (
           // Compact: the grid chosen above, one Box per line, nothing left to wrap on its own.
           <Box flexDirection="column">
@@ -1172,161 +1311,149 @@ export const register: Register = on => {
 
   // ---- Transcript ----------------------------------------------------------
 
-  // The prompt you typed: a rounded card.
+  // The prompt you typed: a card framed in the band's own warm edge, on a faintly warm ground.
+  // A task's notification: a row of the same grammar as a tool's, its status as a pill.
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
-    if (e.props.origin.kind !== 'composer' || !e.props.isExpanded) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-    return (
-      <Box borderStyle="round" borderColor={THEME.warm} paddingX={1}>
-        <Text>{e.props.text}</Text>
-      </Box>
-    )
+    if (e.props.isExpanded && e.props.origin.kind !== 'composer') return next(e)
+    const table = $.ui.resolve(e)
+    const { Box, Text } = table
+    const Svg = 'Svg' in table ? table.Svg : null
+    if (e.props.origin.kind === 'composer') {
+      if (!e.props.isExpanded) return next(e)
+      return (
+        <Box borderStyle="round" borderColor={CHAT.userEdge} backgroundColor={CHAT.userGround} paddingX={1}>
+          <Text>{e.props.text}</Text>
+        </Box>
+      )
+    }
+    const task = e.props.task
+    if (e.props.origin.kind !== 'task-notification' || !task) return next(e)
+    const kind = taskKind(task.type)
+    // A notification drawn after the session loaded is news: its pill pops in once, timed from
+    // its first sight. One drawn as the transcript loads is history, and still.
+    const now = await $.clock.now()
+    if (!rowSeen.has(e.requestId)) remember(rowSeen, e.requestId, now)
+    const seen = rowSeen.get(e.requestId) ?? now
+    const ago = seen - loadedAt > 3000 && now - seen < ENTER_MS ? now - seen : undefined
+    await settleRow($, ago, now)
+    const verb = kind === 'run' ? 'Task' : 'Agent'
+    return toolRow({ Box, Text, Svg }, {
+      color: KIND_COLOR[kind],
+      icon: KIND_ICON[kind],
+      glyph: KIND_GLYPH[kind],
+      verb,
+      target: clip(taskSummary(e.props.text, verb), 96),
+      now: LOOP_STILL,
+      done: ago,
+      status: pillEl({ Text, Svg }, { ...taskPill(task.status), fx: { enter: ago, alive: true } }),
+      ms: task.durationMs,
+    })
   })
 
-  // A tool call: round badge, coloured verb, target, status pill, duration.
+  // A tool call: kind tile, coloured verb, target, status pill, duration. An Edit or Write that
+  // changed lines counts them in its pills and shows the change under the row.
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     const p = e.props
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
-    const pill = statusPill(p.tool, p)
     const ms = durations.get(p.tool_use_id)
-    // Only a running row loops (spinner, busy pill), at the phase it has reached now.
-    const now = await loopNow($, p.isRunning)
-    // Just finished: the pill pops in and the badge sends out one ripple.
+    // Only a running row loops (the light round its tile, the busy pill), at phase 0: the
+    // running picture is the same on every redraw (see LOOP_LEAD_MS).
+    const now = LOOP_STILL
+    // Just finished: the pill turns from running to its state and the tile sends out one ripple.
     const clock = await $.clock.now()
     const done = finishAgo([p.tool_use_id], p.isRunning, clock)
     await settleRow($, done, clock)
-    const color = KIND_COLOR[d.kind]
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
     const Client = 'Client' in table ? table.Client : null
-    // Where a `Client` is offered (Desktop, the terminal) the pill carries the motion, so the
-    // badge stays still: one motion.
-    const badgeSpins = p.isRunning && !Client
+    const els = { Text, Svg }
 
+    // What the call changed, when it is a file write that landed. Drawn here, in the row, so it
+    // shows wherever the row does; the ToolResult under it then draws nothing (see below).
+    // (`isExpanded` read loosely: older engines' props do not have it.)
+    const expanded = (p as { isExpanded?: boolean }).isExpanded === true
+    const change = !p.isRunning && !p.isErrored && !p.isInterrupted && !expanded ? fileChange(p.tool, p.output) : null
+    const status = p.isRunning
+      ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now)
+      : change && change.added + change.removed > 0
+        ? changePills({ Box, Text, Svg }, change.added, change.removed, done)
+        : pillEl(els, { ...statusPill(p.tool, p), fx: { enter: done, alive: true, morph: PILL.busy } })
+    const row = toolRow({ Box, Text, Svg }, {
+      color: KIND_COLOR[d.kind],
+      icon: KIND_ICON[d.kind],
+      glyph: KIND_GLYPH[d.kind],
+      verb: d.verb,
+      target: d.target,
+      mono: d.kind === 'read' || d.kind === 'edit' || d.kind === 'write' || d.kind === 'delete',
+      // Where a `Client` is offered (Desktop, the terminal) the pill carries the motion, so the
+      // tile stays still: one motion.
+      spins: p.isRunning && !Client,
+      now,
+      done,
+      status,
+      ms: p.isRunning ? undefined : ms,
+    })
+    if (!change || change.rows.length === 0) return row
     return (
-      <Box justifyContent="space-between" alignItems="center" gap={1}>
-        {/* The verb and target give way (cut in the middle, so the file name stays); the
-            pill and the duration on the right never shrink or wrap. */}
-        <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
-          {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON[d.kind], 30, badgeSpins, now, done)} alt={d.verb} width={30} height={30} />
-          ) : (
-            <Text color={color} bold>{` ${KIND_GLYPH[d.kind]} `}</Text>
-          )}
-          <Text wrap="truncate-middle">
-            <Text bold color={color}>{d.verb}</Text>
-            <Text> {d.target}</Text>
-          </Text>
-        </Box>
-        <Box gap={1} alignItems="center" flexShrink={0}>
-          {p.isRunning ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done, alive: true } }, now)}
-          {ms !== undefined && !p.isRunning ? <Text dimColor>{fmtDuration(ms)}</Text> : null}
-        </Box>
+      <Box flexDirection="column">
+        {row}
+        {diffCard({ Box, Text }, change)}
       </Box>
     )
   })
 
-  // What an Edit or Write changed: a numbered diff card.
+  // The result block under a standalone row. An Edit or Write's change is drawn in its ToolUse
+  // row already, so here it is nothing; the full view (ctrl+o) keeps the engine's own.
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     const p = e.props
-    const isFile = p.tool === 'Edit' || p.tool === 'Write'
-    if (!isFile || p.isErrored) return next(e)
-
-    const out = (p.output ?? {}) as { filePath?: string; structuredPatch?: unknown; content?: string; type?: string }
-    const { rows, more, added, removed } = diffRows(out.structuredPatch, out.type === 'create' ? out.content : undefined)
-    if (rows.length === 0) return next(e)
-
-    const table = $.ui.resolve(e)
-    const { Box, Text } = table
-    const Svg = 'Svg' in table ? table.Svg : null
-    const took = durations.get(p.tool_use_id)
-    // Just written: the counts rise from 0 as their pills pop in.
-    const clock = await $.clock.now()
-    const fresh = finishAgo([p.tool_use_id], false, clock)
-    await settleRow($, fresh, clock)
-    const gutter = String(Math.max(...rows.map(r => r.n ?? 0))).length
-
-    return (
-      <Box flexDirection="column" borderStyle="round" borderColor="#4a4240" marginLeft={3}>
-        <Box paddingX={1} gap={1} alignItems="center">
-          {iconEl({ Text, Svg }, 'file', '#8f8985', 14, '')}
-          <Text bold dimColor>{base(out.filePath ?? '')}</Text>
-          {added > 0 ? pillEl({ Text, Svg }, { text: `${added} added`, ...PILL.ok, fx: { enter: fresh, count: { n: added, word: 'added' } } }) : null}
-          {removed > 0 ? pillEl({ Text, Svg }, { text: `${removed} removed`, ...PILL.bad, fx: { enter: fresh, count: { n: removed, word: 'removed' } } }) : null}
-          {took !== undefined ? <Text dimColor>{fmtDuration(took)}</Text> : null}
-        </Box>
-        {rows.map((r, i) => (
-          <Box key={`diff-${i}`} justifyContent="space-between" paddingX={1}>
-            <Box gap={1}>
-              <Text dimColor>{String(r.n ?? '').padStart(gutter)}</Text>
-              <Text
-                color={r.sign === '+' ? PILL.ok.fg : r.sign === '-' ? PILL.bad.fg : undefined}
-                backgroundColor={r.sign === '+' ? PILL.ok.bg : r.sign === '-' ? PILL.bad.bg : undefined}
-                dimColor={r.sign === ' '}
-                wrap="truncate"
-              >
-                {`${r.sign} ${r.text}`}
-              </Text>
-            </Box>
-          </Box>
-        ))}
-        {more > 0 ? (
-          <Box paddingX={1}>
-            <Text dimColor>… {more} more lines</Text>
-          </Box>
-        ) : null}
-      </Box>
-    )
+    if ((p as { isExpanded?: boolean }).isExpanded === true || p.isErrored) return next(e)
+    const change = fileChange(p.tool, p.output)
+    if (!change || change.rows.length === 0) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box />
   })
 
-  // A folded run of reads and searches: one summary row.
+  // A folded run of reads and searches: one summary row, counted by what each call did.
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
     if (e.props.isExpanded) return next(e)
     const calls = e.props.calls
     const counts: Record<string, number> = {}
-    for (const c of calls) counts[c.tool] = (counts[c.tool] ?? 0) + 1
+    for (const c of calls) {
+      const verb = describe(c.tool, c.input).verb
+      counts[verb] = (counts[verb] ?? 0) + 1
+    }
     const summary = top(counts, 4)
-      .map(([name, n]) => `${name} ${n}`)
+      .map(([verb, n]) => `${verb} ${n}`)
       .join(' · ')
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
-    const now = await loopNow($, isRunning)
-    // The run's last call just ended: the group's pill pops in, its badge ripples.
+    const now = LOOP_STILL
+    // The run's last call just ended: the group's pill turns, its tile ripples.
     const clock = await $.clock.now()
     const done = finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), isRunning, clock)
     await settleRow($, done, clock)
-    const pill = isRunning
-      ? { text: 'running', running: true, ...PILL.busy }
-      : isErrored
-        ? { text: 'error', icon: 'cross' as const, ...PILL.bad }
-        : { text: `${calls.length} calls`, icon: 'check' as const, ...PILL.ok }
-    const color = KIND_COLOR.search
+    const pill = isErrored
+      ? { text: 'error', icon: 'cross' as const, ...PILL.bad }
+      : { text: `${calls.length} calls`, icon: 'check' as const, ...PILL.ok }
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
     const Client = 'Client' in table ? table.Client : null
 
-    return (
-      <Box justifyContent="space-between" alignItems="center" gap={1}>
-        {/* The verb and target give way (cut in the middle, so the file name stays); the
-            pill and the duration on the right never shrink or wrap. */}
-        <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
-          {Svg ? (
-            <Svg source={badgeSvg(color, KIND_ICON.search, 30, isRunning && !Client, now, done)} alt="Explore" width={30} height={30} />
-          ) : (
-            <Text color={color} bold>{` ${KIND_GLYPH.search} `}</Text>
-          )}
-          <Text wrap="truncate-middle">
-            <Text bold color={color}>Explore</Text>
-            <Text> {summary}</Text>
-          </Text>
-        </Box>
-        <Box flexShrink={0}>
-          {isRunning ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now) : pillEl({ Text, Svg }, { ...pill, fx: { enter: done, alive: true } }, now)}
-        </Box>
-      </Box>
-    )
+    return toolRow({ Box, Text, Svg }, {
+      color: KIND_COLOR.search,
+      icon: KIND_ICON.search,
+      glyph: KIND_GLYPH.search,
+      verb: 'Explore',
+      target: summary,
+      spins: isRunning && !Client,
+      now,
+      done,
+      status: isRunning
+        ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now)
+        : pillEl({ Text, Svg }, { ...pill, fx: { enter: done, alive: true, morph: PILL.busy } }),
+    })
   })
 
   // A `Client` that failed on a surface says why in the log; the engine draws the site again.

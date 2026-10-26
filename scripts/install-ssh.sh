@@ -27,7 +27,7 @@ rm -rf "$DEST"
 P="$DEST/$SSH_NAME"
 mkdir -p "$P/.claude-plugin" "$P/hooks" "$P/types" "$DEST/.claude-plugin"
 cp "$SRC"/hooks/*.ts "$SRC"/hooks/*.tsx "$SRC"/hooks/hooks.json "$P/hooks/"
-rm -f "$P"/hooks/*.test.ts
+rm -f "$P"/hooks/*.test.ts "$P"/hooks/*.test.tsx
 cp "$SRC/types/index.d.ts" "$P/types/"
 # Values in $.state belong to the plugin by name, so the name inside the code follows it.
 sed -i "s/$NAME/$SSH_NAME/g" "$P/hooks/register.tsx" "$P/types/index.d.ts"
