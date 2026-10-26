@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock, BREATH_S, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock, BREATH_S, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, holdFirst } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -363,6 +363,30 @@ describe('finish motion', () => {
         const names = [...tag.matchAll(/\s([\w:-]+)=/g)].map(m => m[1])
         expect(names.length).toBe(new Set(names).size)
       }
+  })
+})
+
+describe('holdFirst', () => {
+  test('a key keeps what it was first drawn with, so a redraw gives the same picture', () => {
+    const hold = holdFirst<number>()
+    expect(hold('row:a', 120)).toBe(120)
+    expect(hold('row:a', 320)).toBe(120)
+    expect(hold('row:a', 820)).toBe(120)
+    expect(hold('row:b', 40)).toBe(40)
+  })
+
+  test('nothing to hold stays nothing, and does not take the key', () => {
+    const hold = holdFirst<number>()
+    expect(hold('row:c', undefined)).toBeUndefined()
+    expect(hold('row:c', 10)).toBe(10)
+  })
+
+  test('it keeps only its latest keys', () => {
+    const hold = holdFirst<number>(2)
+    hold('a', 1)
+    hold('b', 2)
+    hold('c', 3)
+    expect(hold('a', 9)).toBe(9) // forgotten: held anew
   })
 })
 

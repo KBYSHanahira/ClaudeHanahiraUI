@@ -538,6 +538,25 @@ export const finishClock = (limit = 400) => {
   }
 }
 
+/**
+ * Holds, per key, the value a picture was first drawn with. A one-shot is drawn with how long
+ * ago it began, which grows on every redraw: a new picture each time, and every new picture the
+ * surface swaps in blinks and starts its motion over. Held, a redraw while the motion plays
+ * draws the very same picture, which the surface keeps, and the motion plays through once.
+ * `undefined` (nothing playing) is passed through and takes no key; the latest `limit` keys stay.
+ */
+export const holdFirst = <V>(limit = 400) => {
+  const held = new Map<string, V>()
+  return <T extends V | undefined>(key: string, value: T): T => {
+    if (value === undefined) return value
+    if (!held.has(key)) {
+      held.set(key, value)
+      if (held.size > limit) held.delete(held.keys().next().value as string)
+    }
+    return held.get(key) as T
+  }
+}
+
 /** What a pill does in the moment it appears; each is a ms-ago, so a redraw carries it on. */
 export type PillFx = {
   /** It just appeared: the capsule pops in and its icon traces itself. */

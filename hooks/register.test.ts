@@ -133,6 +133,15 @@ describe('noteChange', () => {
     expect(noteChange('t:a', '$2', 60_000).from).toBeUndefined()
   })
 
+  test('a redraw inside the window draws the very same picture: the motion is not restarted', () => {
+    noteChange('t:h', 1, 0)
+    const first = noteChange('t:h', 2, 1_000)
+    // Redrawn 200 and 700 ms later: the roll was drawn once and the surface keeps that picture,
+    // so these draws must give it the same `ago`, not a new one each time (a new picture blinks).
+    expect(noteChange('t:h', 2, 1_200)).toEqual(first)
+    expect(noteChange('t:h', 2, 1_700)).toEqual(first)
+  })
+
   test('only the changes that count move: the tool counter rolls when it grows, not when it resets', () => {
     const grows = { counts: (a: number, b: number) => b > a }
     noteChange('t:n', 4, 0, grows)

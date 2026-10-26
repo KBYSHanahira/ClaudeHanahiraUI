@@ -28,6 +28,7 @@ import {
   fmtSpeed,
   fmtTokens,
   loadingSvg,
+  holdFirst,
   phaseBegin,
   pillSvg,
   chipSvg,
@@ -60,9 +61,11 @@ const reruns = new Set<string>()
 // running picture (a busy pill, the band's bar and dots, a ring's pulse) is drawn with its loops
 // at phase 0: the same string on every redraw, which the surface leaves alone. Drawing it at
 // the clock's phase instead made every redraw a new picture, and every swap a blink.
-// Only a picture that changes anyway (an agent card, whose stats move) takes the clock, so the
-// loop in its new picture carries on near where the old one was. LOOP_LEAD_MS covers the time
-// from drawing to the picture showing (over SSH, the round trip).
+// Only a picture that changes anyway (an agent card, whose stats move) takes the clock, at the
+// moment it changes, so the loop in its new picture carries on near where the old one was; it
+// holds that phase until it changes again. A one-shot (a finish, a roll, a bounce) is held at
+// its first draw the same way (see holdFirst). LOOP_LEAD_MS covers the time from drawing to the
+// picture showing (over SSH, the round trip).
 const LOOP_LEAD_MS = 120
 const seenCommands = new Set<string>()
 const remember = <V,>(m: Map<string, V>, k: string, v: V) => {
@@ -231,7 +234,7 @@ const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 /** How long a figure counts as "just changed": its roll plays inside this window, and after
  * it the picture is still, so a redraw or a reloaded image never replays an old change. */
 export const CHANGE_MS = 1200
-const changes = new Map<string, { value: unknown; from?: unknown; at: number }>()
+const changes = new Map<string, { value: unknown; from?: unknown; at: number; drawnAgo?: number }>()
 // When the freshest change ends, and whether a redraw is already booked for then.
 let freshUntil = 0
 let settleBooked = false
@@ -255,7 +258,10 @@ export const noteChange = <T,>(
   const c = changes.get(key)!
   if (now - c.at >= CHANGE_MS) return {}
   freshUntil = Math.max(freshUntil, c.at + CHANGE_MS)
-  return { from: c.from as T, ago: now - c.at }
+  // The roll is drawn once, from where it stood at its first draw: a redraw inside the window
+  // gives the same picture, which the surface keeps (see holdFirst).
+  c.drawnAgo ??= now - c.at
+  return { from: c.from as T, ago: c.drawnAgo }
 }
 
 /** Drops what noteChange remembers under `prefix` for every id not in `keep` (agents gone). */
@@ -423,6 +429,14 @@ const LOOP_STILL = 0
 const finishes = finishClock()
 const finishAgo = (ids: ReadonlyArray<string>, isRunning: boolean, now: number) =>
   finishes.ago(ids, isRunning, now, id => endedAt.get(id))
+// What each one-shot was first drawn with (see holdFirst): a row redrawn while its finish
+// plays, as rows around it come and go, keeps the picture it has instead of blinking.
+const held = holdFirst<number>()
+/** A row's finish as drawn (held at its first draw) and as it really stands (for the settle). */
+const finish = (key: string, ids: ReadonlyArray<string>, isRunning: boolean, now: number) => {
+  const real = finishAgo(ids, isRunning, now)
+  return { real, draw: held(`finish:${key}`, real) }
+}
 
 // When the booked settle redraw fires: one timer covers every row finishing before it.
 let settleRowsAt = -Infinity
@@ -924,16 +938,22 @@ export const register: Register = on => {
       // the bounce, the flash and the stats roll by time since they began), so a redraw
       // carries each one on instead of starting it over.
       const sc = noteChange(`agent:${a.id}`, agentStats(a), nowMs)
-      // The card carries its own bar, drawn at the phase it has reached, so a redraw carries
-      // the light on: one bar per agent, inside its card, on every surface.
-      const art = agentCardSvg(a, nowMs + LOOP_LEAD_MS, {
+      // The card carries its own bar and spinner. They are drawn at the phase reached when the
+      // card's picture last changed for its own sake (its stats, its status, its bounce or its
+      // flash beginning or ending), held between those: the band redraws every second, and a
+      // card that only moved its phase would be a new picture, swapped in with a blink, every
+      // second. A card that does change carries its loops on from where the old one was.
+      const look = [a.status, agentStats(a), a.model ?? '', a.effort ?? '', pop, flash].join('|')
+      const phaseAt = held(`agent-phase:${a.id}:${look}`, nowMs + LOOP_LEAD_MS)
+      const art = agentCardSvg(a, phaseAt, {
         pop,
         flash,
         padBottom: THEME.stripGap,
         fromStats: sc.from,
         statsAgo: sc.ago,
-        popAgo: nowMs - (firstSeenAt.get(a.id) ?? nowMs),
-        flashAgo: changed ? nowMs - changed.at : 0,
+        // Held at their first draw, as a row's finish is: the bounce and the flash play once.
+        popAgo: held(`agent-pop:${a.id}`, nowMs - (firstSeenAt.get(a.id) ?? nowMs)),
+        flashAgo: changed ? held(`agent-flash:${a.id}:${changed.at}`, nowMs - changed.at) : 0,
       })
       return { a, pop, flash, art }
     })
@@ -1334,8 +1354,9 @@ export const register: Register = on => {
     const now = await $.clock.now()
     if (!rowSeen.has(e.requestId)) remember(rowSeen, e.requestId, now)
     const seen = rowSeen.get(e.requestId) ?? now
-    const ago = seen - loadedAt > 3000 && now - seen < ENTER_MS ? now - seen : undefined
-    await settleRow($, ago, now)
+    const real = seen - loadedAt > 3000 && now - seen < ENTER_MS ? now - seen : undefined
+    await settleRow($, real, now)
+    const ago = held(`note:${e.requestId}`, real)
     const verb = kind === 'run' ? 'Task' : 'Agent'
     return toolRow({ Box, Text, Svg }, {
       color: KIND_COLOR[kind],
@@ -1361,8 +1382,9 @@ export const register: Register = on => {
     const now = LOOP_STILL
     // Just finished: the pill turns from running to its state and the tile sends out one ripple.
     const clock = await $.clock.now()
-    const done = finishAgo([p.tool_use_id], p.isRunning, clock)
-    await settleRow($, done, clock)
+    const fin = finish(p.tool_use_id, [p.tool_use_id], p.isRunning, clock)
+    await settleRow($, fin.real, clock)
+    const done = fin.draw
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
@@ -1431,8 +1453,10 @@ export const register: Register = on => {
     const now = LOOP_STILL
     // The run's last call just ended: the group's pill turns, its tile ripples.
     const clock = await $.clock.now()
-    const done = finishAgo(calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : [])), isRunning, clock)
-    await settleRow($, done, clock)
+    const ids = calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : []))
+    const fin = finish(`group:${ids.join(',')}`, ids, isRunning, clock)
+    await settleRow($, fin.real, clock)
+    const done = fin.draw
     const pill = isErrored
       ? { text: 'error', icon: 'cross' as const, ...PILL.bad }
       : { text: `${calls.length} calls`, icon: 'check' as const, ...PILL.ok }
@@ -1483,8 +1507,9 @@ export const register: Register = on => {
       Math.abs(e.props.durationMs - lastTurn.durationMs) < 1000 ? lastTurn.at : undefined,
     ].filter((v): v is number => v !== undefined)
     const ago = at.length > 0 ? now - Math.min(...at) : Infinity
-    const enter = ago >= 0 && ago < ENTER_MS ? ago : undefined
-    await settleRow($, enter, now)
+    const real = ago >= 0 && ago < ENTER_MS ? ago : undefined
+    await settleRow($, real, now)
+    const enter = held(`turn:${key}`, real)
     return (
       <Box gap={1} alignItems="center">
         {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok, fx: { enter } })}
