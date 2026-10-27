@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -580,5 +580,105 @@ describe('statSvg stacked', () => {
     const a = statSvg('31%', 'context', { stack: ['693k left', '1M window'] })
     const b = statSvg('57', 'tok/s', { stack: ['peak 1523', ''] })
     expect(a.height).toBe(b.height)
+  })
+})
+
+// The band's motion (MOTION): loops that keep their picture, figures that glide.
+describe('motion', () => {
+  /** A picture with its SMIL taken out: what a surface that plays none shows, and a loop's first frame. */
+  const still = (svg: string) =>
+    svg
+      .replace(/<animate(Transform)? [^>]*\/>/g, '')
+      .replace(/<(circle)( [^>]*)><\/circle>/g, '<$1$2/>')
+
+  test('the bar lights glide only while live with motion, from where the still bar has them', () => {
+    const moving = loadingSvg(900, 12, '#9b8cf7', { live: true, open: true, motion: true })
+    expect(moving).toContain(`<animateTransform attributeName="transform" type="translate" from="0 0" to="${MOTION.barPeriod} 0"`)
+    expect(moving).toContain('repeatCount="indefinite"')
+    // Over the lit dots and cut to them alone: the track keeps one colour to its end, so the
+    // cap after the slot still matches it while a light passes.
+    expect(moving.indexOf('url(#bar-glow)')).toBeGreaterThan(moving.indexOf('fill-opacity="0.95"'))
+    expect(moving).toMatch(/<clipPath id="bar-cut"><path d="M8 [^"]+z"\/><\/clipPath>/)
+    expect(moving).not.toContain('<clipPath id="bar-cut"><path d="M6 0H900')
+    expect(loadingSvg(900, 12, '#9b8cf7', { live: false, open: true, motion: true })).not.toContain('<animate')
+    expect(loadingSvg(900, 12, '#9b8cf7', { live: true, open: true })).not.toContain('<animate')
+  })
+
+  test('a loop holds no time: drawn again, it is the same picture', () => {
+    const draw = () =>
+      loadingSvg(900, 12, '#9b8cf7', { live: true, open: true, motion: true }) +
+      chipSvg({ color: '#9b8cf7', label: 'working', dots: true, motion: true }).svg +
+      dotSvg('#9b8cf7', true, 14, true)
+    expect(draw()).toBe(draw())
+  })
+
+  test('the working dots wave from their still look and come back to it', () => {
+    const moving = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true, motion: true }).svg
+    const plain = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).svg
+    expect(still(moving)).toBe(plain)
+    const waves = [...moving.matchAll(/opacity="([\d.]+)"><animate attributeName="opacity" values="([^"]+)"/g)]
+    expect(waves.length).toBe(3)
+    for (const [, at, values] of waves) {
+      const v = values!.split(';')
+      expect(v[0]).toBe(at)
+      expect(v[v.length - 1]).toBe(at)
+    }
+    // The brightest dot steps left to right: last, then first, then middle.
+    expect(waves.map(w => w[2]!.split(';')[1])).toEqual(['1.00', '0.30', '0.65'])
+  })
+
+  test('the status dot breathes from its still halo, only with motion', () => {
+    const moving = dotSvg('#9b8cf7', true, 14, true)
+    expect(still(moving)).toBe(dotSvg('#9b8cf7', true, 14))
+    expect(moving).toContain('values="0.4;0.1;0.4"')
+    expect(moving).toContain('values="5.8;6.25;5.8"')
+    expect(dotSvg('#9b8cf7', false, 14, true)).not.toContain('<animate')
+  })
+
+  test('easeOut runs 0 to 1, fast first, and holds past the ends', () => {
+    expect(easeOut(0)).toBe(0)
+    expect(easeOut(1)).toBe(1)
+    expect(easeOut(0.5)).toBeGreaterThan(0.5)
+    expect(easeOut(-1)).toBe(0)
+    expect(easeOut(2)).toBe(1)
+  })
+
+  test('a figure seen first shows as it is; a new value glides there and lands exactly', () => {
+    const g = glider(400)
+    expect(g.value('n', 10, 0)).toBe(10)
+    expect(g.active(0)).toBe(false)
+    expect(g.value('n', 110, 1000)).toBe(10)
+    expect(g.active(1000)).toBe(true)
+    const mid = g.value('n', 110, 1200)!
+    expect(mid).toBeGreaterThan(60) // eased: past halfway at half the time
+    expect(mid).toBeLessThan(110)
+    expect(Number.isInteger(mid)).toBe(true)
+    expect(g.value('n', 110, 1400)).toBe(110)
+    expect(g.active(1400)).toBe(false)
+    expect(g.value('n', 110, 9999)).toBe(110)
+  })
+
+  test('a new target mid-glide carries on from where the figure is, never back', () => {
+    const g = glider(400)
+    g.value('n', 0, 0)
+    g.value('n', 100, 1000)
+    const at = g.value('n', 100, 1200)!
+    expect(g.value('n', 200, 1200)).toBe(at)
+    expect(g.value('n', 200, 1300)!).toBeGreaterThan(at)
+    expect(g.value('n', 200, 1600)).toBe(200)
+  })
+
+  test('round shapes a moving figure only; none, a value passes as it is', () => {
+    const g = glider(400)
+    g.value('usd', 1, 0, n => n)
+    g.value('usd', 2, 1000, n => n)
+    const mid = g.value('usd', 2, 1100, n => n)!
+    expect(Number.isInteger(mid)).toBe(false)
+    expect(g.value('usd', 2.37, 5000, n => n)).toBe(2) // the change starts where it stood
+    expect(g.value('usd', 2.37, 5400, n => n)).toBe(2.37) // and lands on the value itself
+    expect(g.value('gone', null, 0)).toBe(null)
+    g.value('k', 5, 0)
+    expect(g.value('k', null, 10)).toBe(null)
+    expect(g.value('k', 9, 20)).toBe(9) // after a gap, seen first again
   })
 })

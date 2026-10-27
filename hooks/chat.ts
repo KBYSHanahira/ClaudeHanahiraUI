@@ -304,6 +304,66 @@ export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow:
 export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line: '#3a3634', track: '#332f2d' }
 
 /**
+ * The band's motion, on two rules so a redraw never blinks or starts a motion over (the reason
+ * v1.8.0 took motion out):
+ * - Loops (the bar's lights, the working dots, the status dot's halo) are SMIL with no time in
+ *   them: while the state holds, every redraw draws the same picture and the surface keeps the
+ *   one it has, so the loop runs on. Their first frame is the still picture, so a surface that
+ *   starts one over, or plays no SMIL, shows no jump.
+ * - A figure that changes glides to its new value (`glider`): a few still pictures, eased, then
+ *   the exact value. No SMIL in them, so swapping one in is only a new image.
+ */
+export const MOTION = {
+  barMs: 2200, // one light's step to where the next one was
+  barPeriod: 280, // px between two lights
+  barGlow: 150, // px wide each light
+  glowInk: '#ded8ff',
+  dotsMs: 1200, // the working dots' wave
+  haloMs: 2400, // the status dot's breath
+  glideMs: 480, // a figure moving to its new value
+  glideStepMs: 100, // a redraw this often while one moves: the engine's most, ten a second
+}
+
+/** A looping SMIL `<animate>` over `values`, eased between each, starting from the first. */
+export const loopAnim = (attr: string, values: (number | string)[], ms: number) =>
+  `<animate attributeName="${attr}" values="${values.join(';')}" dur="${ms}ms" repeatCount="indefinite" ` +
+  `calcMode="spline" keySplines="${Array(values.length - 1).fill('0.45 0 0.55 1').join(';')}"/>`
+
+/** Ease out: quick away from the old value, settling softly on the new one. */
+export const easeOut = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 3
+
+type Glide = { from: number; to: number; at: number }
+
+/**
+ * Figures that glide to a new value instead of jumping. `value(key, target, now)` gives what
+ * to draw: the target itself when first seen or once a glide ends, else an eased step between
+ * where it was and the target (rounded by `round` while it moves). A new target mid-glide
+ * starts from where the figure is, so it never jumps back. `active(now)` says whether any
+ * figure is still moving, so the caller knows to draw again.
+ */
+export const glider = (ms = MOTION.glideMs) => {
+  const glides = new Map<string, Glide>()
+  const at = (g: Glide, now: number) => (now - g.at >= ms ? g.to : g.from + (g.to - g.from) * easeOut((now - g.at) / ms))
+  return {
+    value(key: string, target: number | null, now: number, round: (v: number) => number = Math.round): number | null {
+      if (target === null || !Number.isFinite(target)) {
+        glides.delete(key)
+        return target
+      }
+      const g = glides.get(key)
+      if (!g) {
+        glides.set(key, { from: target, to: target, at: now - ms })
+        return target
+      }
+      if (g.to !== target) glides.set(key, { from: at(g, now), to: target, at: now })
+      const next = glides.get(key)!
+      return now - next.at >= ms ? target : round(at(next, now))
+    },
+    active: (now: number) => [...glides.values()].some(g => now - g.at < ms && g.from !== g.to),
+  }
+}
+
+/**
  * A panel's background: gradient fill, hairline edge, a one-pixel highlight along the top.
  * `id` keeps the gradient's name unique where several panels share one document.
  */
@@ -498,12 +558,16 @@ export const pillSvg = (
  * default `meet`, a surface that narrows the box shrinks the whole bar to a hairline.
  * With `open`, the right end is left square for that cut, and `barCapSvg` drawn after the
  * slot rounds it off: a bar that fits a slot of any width with both ends round.
+ *
+ * With `motion` (and `live`), soft lights glide left to right under the dots, one every
+ * MOTION.barPeriod px, so a slot of any width shows one. A loop (see MOTION): its first frame
+ * is the still picture, and nothing in it depends on time, so a redraw sends the same picture.
  */
 export const loadingSvg = (
   width: number,
   height: number,
   color: string,
-  opts: { live?: boolean; padBottom?: number; open?: boolean } = {},
+  opts: { live?: boolean; padBottom?: number; open?: boolean; motion?: boolean } = {},
 ) => {
   const w = Math.max(120, Math.round(width))
   const h = height
@@ -530,10 +594,29 @@ export const loadingSvg = (
     }
   }
 
+  // The lights: a row of glows moved one period on per loop, cut to the lit dots alone. The
+  // track under them keeps one colour to its end, so the cap drawn after the slot (which the
+  // lights cannot reach) still matches it, and the right end stays round as a light passes.
+  const P = MOTION.barPeriod
+  const glows: string[] = []
+  for (let gx = -P; gx < w; gx += P) glows.push(`<rect x="${gx}" width="${MOTION.barGlow}" height="${h}" fill="url(#bar-glow)"/>`)
+  const glide =
+    opts.live && opts.motion
+      ? `<defs><linearGradient id="bar-glow" x1="0" x2="1">` +
+        `<stop offset="0" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
+        `<stop offset="0.5" stop-color="${MOTION.glowInk}" stop-opacity="0.9"/>` +
+        `<stop offset="1" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
+        `</linearGradient><clipPath id="bar-cut"><path d="${bright.join('')}${dim.join('')}"/></clipPath></defs>` +
+        `<g clip-path="url(#bar-cut)"><g>${glows.join('')}` +
+        `<animateTransform attributeName="transform" type="translate" from="0 0" to="${P} 0" dur="${MOTION.barMs}ms" repeatCount="indefinite"/>` +
+        `</g></g>`
+      : ''
+
   const lit = opts.live
     ? `${track} fill="${color}" fill-opacity="0.2"/>` +
       `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
-      `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>`
+      `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
+      glide
     : ''
 
   return (
@@ -643,9 +726,15 @@ export const barCapSvg = (height: number, padBottom = 0, color?: string) => {
 }
 
 /** The little status dot of the band: a halo round it while Claude works. */
-export const dotSvg = (color: string, live: boolean, size = 14) =>
+export const dotSvg = (color: string, live: boolean, size = 14, motion = false) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" width="${size}" height="${size}">` +
-  (live ? `<circle cx="7" cy="7" r="5.8" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.4"/>` : '') +
+  (live
+    ? `<circle cx="7" cy="7" r="5.8" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.4"` +
+      // With `motion` the halo breathes out and fades, and comes back (a loop: see MOTION).
+      (motion
+        ? `>${loopAnim('stroke-opacity', [0.4, 0.1, 0.4], MOTION.haloMs)}${loopAnim('r', [5.8, 6.25, 5.8], MOTION.haloMs)}</circle>`
+        : '/>')
+    : '') +
   `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
   `</svg>`
 
@@ -783,6 +872,8 @@ export const chipSvg = (opts: {
   minWidth?: number
   /** Outlined in the band's line colour, no tint, muted glyph and words: a chip that is not state. */
   quiet?: boolean
+  /** The dots light in a wave, left to right, from their still look (a loop: see MOTION). */
+  motion?: boolean
 }) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CHIP_LINE
@@ -795,9 +886,15 @@ export const chipSvg = (opts: {
   const y = C.baseline
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
   const valueFont = `${font} font-size="${C.fs}" font-weight="700" fill="#f1ece8"`
+  // Still, the dots brighten left to right; moving, that brightness steps one dot on each third.
+  const levels = [0, 1, 2].map(i => (0.3 + i * 0.35).toFixed(2))
   const glyph = opts.dots
     ? [0, 1, 2]
-        .map(i => `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${glyphColor}" opacity="${(0.3 + i * 0.35).toFixed(2)}"/>`)
+        .map(
+          i =>
+            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${glyphColor}" opacity="${levels[i]}"` +
+            (opts.motion ? `>${loopAnim('opacity', [0, 1, 2, 3].map(p => levels[(i - p + 3) % 3]!), MOTION.dotsMs)}</circle>` : '/>'),
+        )
         .join('')
     : opts.icon
       ? iconGroup(opts.icon, glyphColor, C.lead, (h - C.icon) / 2, C.icon, 2.2)

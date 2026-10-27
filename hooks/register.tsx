@@ -26,7 +26,9 @@ import {
   fmtReset,
   fmtSpeed,
   fmtTokens,
+  glider,
   loadingSvg,
+  MOTION,
   pillSvg,
   chipSvg,
   ROW,
@@ -86,6 +88,12 @@ const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, []
 // value that gains or loses a digit while a turn runs never moves its neighbours.
 const colMax = new Map<string, number>()
 const efforts = new Map<string, string>()
+// The band's figures glide to each new value; while one moves, `glidePump` redraws the band
+// every MOTION.glideStepMs, and stops once nothing moves (or after `glideBeats`, should the
+// band not be drawn to say so).
+const glides = glider()
+let glidePump: { cancel: () => void } | null = null
+let glideBeats = 0
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
@@ -738,7 +746,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const [st, secs, where, use, tk, run, , nowMs, roster, sp, mdl] = await Promise.all([
+    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl] = await Promise.all([
       read($, stats),
       read($, seconds),
       read($, info),
@@ -751,6 +759,34 @@ export const register: Register = on => {
       read($, speed),
       read($, model),
     ])
+    // What the band draws: each figure on its way to the stored one (see MOTION in chat.ts).
+    const glide = (key: string, v: number | null, round?: (n: number) => number) => glides.value(key, v, nowMs, round)
+    const exact = (n: number) => n
+    const st = { ...stNow, tools: glide('tools', stNow.tools) ?? 0 }
+    const use = {
+      ...useNow,
+      usd: glide('usd', useNow.usd, exact),
+      percent: glide('context', useNow.percent),
+      tokens: glide('context-tokens', useNow.tokens),
+      limits: (Array.isArray(useNow.limits) ? useNow.limits : []).map(l => ({
+        ...l,
+        percentUsed: glide(`limit-${l.kind}`, l.percentUsed, exact) ?? l.percentUsed,
+      })),
+    }
+    const sp = { ...spNow, tps: glide('tps', spNow.tps, exact) }
+    if (glides.active(nowMs)) {
+      glideBeats = Math.ceil(MOTION.glideMs / MOTION.glideStepMs) + 2
+      glidePump ??= $.clock.every(MOTION.glideStepMs, () => {
+        if (--glideBeats <= 0) {
+          glidePump?.cancel()
+          glidePump = null
+        }
+        void update($, tick, n => (n ?? 0) + 1)
+      })
+    } else if (glidePump) {
+      glidePump.cancel()
+      glidePump = null
+    }
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
     const { Box, Text } = $.ui.resolve(e)
@@ -764,7 +800,7 @@ export const register: Register = on => {
 
 
     // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
-    const allTokens = (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)
+    const allTokens = glide('tokens', (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)) ?? 0
     const cards = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c' },
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7' },
@@ -788,13 +824,13 @@ export const register: Register = on => {
     const statusChip = (working: boolean) =>
       chipSvg(
         working
-          ? { color: THEME.accent, label: 'working', dots: true, strong: true }
+          ? { color: THEME.accent, label: 'working', dots: true, strong: true, motion: true }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, strong: true, quiet: true },
       )
     const chips = [
       { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
         ...(e.props.isWorking
-          ? { color: THEME.accent, label: 'working', dots: true }
+          ? { color: THEME.accent, label: 'working', dots: true, motion: true }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, quiet: true }),
         strong: true,
         minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
@@ -1016,7 +1052,7 @@ export const register: Register = on => {
         <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'stretch' : 'center'}>
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14)} alt="" width={14} height={14} />
+              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, true)} alt="" width={14} height={14} />
             ) : (
               <Text color={THEME.accent}>●</Text>
             )}
@@ -1040,6 +1076,7 @@ export const register: Register = on => {
                       live: e.props.isWorking,
                       padBottom: THEME.barGap,
                       open: true,
+                      motion: true,
                     })}
                     alt={e.props.isWorking ? 'Working' : 'Idle'}
                     width={THEME.barPx}

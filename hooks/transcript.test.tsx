@@ -152,3 +152,66 @@ run('a running agent card is not swapped on every beat of the band', async ($, o
   }
   await band.unmount()
 })
+
+/** The band on Desktop, after a session start that reads `usage` as its figures. */
+const band = async ($: any, on: any, usage: { percent: number; usd: number }, isWorking: boolean) => {
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'main\n', stderr: '' } }) as never)
+  on('session.usage', () => ({ value: { cost: { usd: usage.usd }, context: { percent: usage.percent, tokens: usage.percent * 10000, window: 1000000 }, rateLimits: [] } }) as never)
+  on('agent.list', () => ({ value: [] }) as never)
+  on('session.measure', (_: unknown, e: { changed: string[] }) => ({ changed: e.changed }))
+  on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
+  return $.ui.mount({
+    plugin: PLUGIN, surface: 'desktop', component: 'AbovePrompt', requestId: 'band',
+    props: { hasSurvey: false, isWorking, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} } as never,
+  })
+}
+
+run('the band\'s loops keep their picture across beats, so they run on and never blink', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const ui = await band($, on, { percent: 20, usd: 1 }, true)
+  const loops = async () => (await pictures(ui)).filter(p => p.includes('<animate'))
+  const first = await loops()
+  // The status dot, the loading bar and the working chip.
+  expect(first.length).toBe(3)
+  for (let i = 0; i < 5; i++) {
+    await clock.advance(1000)
+    await ui.redraw()
+    expect(await loops()).toEqual(first)
+  }
+  // Idle, nothing moves.
+  await ui.redraw({ hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} })
+  expect((await pictures(ui)).join()).not.toContain('<animate')
+  await ui.unmount()
+})
+
+run('a figure that changes glides to its new value, lands on it, then holds still', async ($, on) => {
+  const clock = mock.clock(on, { now: 2_000_000 })
+  const usage = { percent: 20, usd: 1 }
+  const ui = await band($, on, usage, false)
+  const context = async () => (await pictures(ui)).find(p => /:\d+% context=/.test(p))!
+  const shown = async () => Number(/:(\d+)% context=/.exec(await context())![1])
+  expect(await shown()).toBe(20)
+  usage.percent = 60
+  usage.usd = 5
+  await ($ as any).session.measure({
+    context: { percent: 60, tokens: 600000, window: 1000000 }, rateLimits: [], cost: { usd: 5 }, changed: ['context', 'cost'],
+  })
+  const seen: number[] = []
+  for (let i = 0; i < 8; i++) {
+    await clock.advance(100)
+    seen.push(await shown())
+  }
+  // On its way: some steps between, never back, then the value itself.
+  expect(seen.some(v => v > 20 && v < 60)).toBe(true)
+  expect(seen).toEqual([...seen].sort((a, b) => a - b))
+  expect(seen[seen.length - 1]).toBe(60)
+  expect((await pictures(ui)).join()).toContain('≈$5.00')
+  // Landed: the band is still again, a redraw draws the same pictures.
+  const settled = await pictures(ui)
+  await clock.advance(1000)
+  await ui.redraw()
+  expect(await pictures(ui)).toEqual(settled)
+  await ui.unmount()
+})
