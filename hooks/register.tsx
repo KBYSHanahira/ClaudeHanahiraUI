@@ -794,6 +794,11 @@ export const register: Register = on => {
       glidePump.cancel()
       glidePump = null
     }
+    // The looping pictures (status dot, loading bar, working chip) are drawn in the surface's
+    // sandboxed frame while Claude works, the only place SMIL runs: as a plain image a loop
+    // would show one still frame and move only when the band redraws. Idle they hold no loop,
+    // so they go back to plain images and the motion stops.
+    const loop = e.props.isWorking ? { isInteractive: true } : {}
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
     const { Box, Text } = $.ui.resolve(e)
@@ -1061,7 +1066,7 @@ export const register: Register = on => {
         <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'stretch' : 'center'}>
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, true)} alt="" width={14} height={14} />
+              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, true)} alt="" width={14} height={14} {...loop} />
             ) : (
               <Text color={THEME.accent}>●</Text>
             )}
@@ -1088,6 +1093,7 @@ export const register: Register = on => {
                     alt={e.props.isWorking ? 'Working' : 'Idle'}
                     width={THEME.barPx}
                     height={THEME.barHeight + THEME.barGap}
+                    {...loop}
                   />
                 </Box>
               </Box>
@@ -1104,7 +1110,7 @@ export const register: Register = on => {
             {THEME.compact && Svg ? (
               chips
                 .filter(c => showVersion || c.key !== 'version')
-                .map(c => <Svg key={`chip-${c.key}`} source={c.art.svg} alt={c.alt} width={c.art.width} height={c.art.height} />)
+                .map(c => <Svg key={`chip-${c.key}`} source={c.art.svg} alt={c.alt} width={c.art.width} height={c.art.height} {...(c.key === 'status' ? loop : {})} />)
             ) : (
               <Box gap={1} alignItems="center">
               {pillEl(

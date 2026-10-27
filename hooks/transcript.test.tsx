@@ -180,9 +180,15 @@ run('the band\'s loops keep their picture across beats, so they run on and never
     await ui.redraw()
     expect(await loops()).toEqual(first)
   }
-  // Idle, nothing moves.
+  // Each loop is drawn in the surface's frame, where SMIL runs on its own between redraws.
+  const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; isInteractive?: boolean } }[]
+  const looping = (await svgs()).filter(s => s.props.source.includes('<animate'))
+  expect(looping.length).toBe(3)
+  expect(looping.every(s => s.props.isInteractive === true)).toBe(true)
+  // Idle, nothing moves, and nothing is drawn in a frame.
   await ui.redraw({ hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} })
   expect((await pictures(ui)).join()).not.toContain('<animate')
+  expect((await svgs()).some(s => s.props.isInteractive)).toBe(false)
   await ui.unmount()
 })
 
