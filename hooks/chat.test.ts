@@ -30,6 +30,18 @@ describe('describe', () => {
     expect(describeCall('Bash', { command: 'rm -f -- -weird b' }).target).toBe('-weird b')
   })
 
+  test('a description that opens with the row\'s verb does not say it twice', () => {
+    expect(describeCall('Bash', { command: 'bun test', description: 'Run the test suite' }).target).toBe('the test suite')
+    expect(describeCall('Bash', { command: 'bun test', description: 'run tests' }, true)).toEqual({ kind: 'run', verb: 'Rerun', target: 'tests' })
+    expect(describeCall('Bash', { command: 'bun test', description: 'Rerun the suite' }, true).target).toBe('the suite')
+    expect(describeCall('Bash', { command: 'rm a', description: 'Remove old builds' })).toEqual({ kind: 'delete', verb: 'Delete', target: 'old builds' })
+    expect(describeCall('Bash', { command: 'rm a', description: 'Delete a' }).target).toBe('a')
+    // Only the verb as a word: a description that is the verb alone, or starts with a longer word, stays.
+    expect(describeCall('Bash', { command: 'x', description: 'Run' }).target).toBe('Run')
+    expect(describeCall('Bash', { command: 'x', description: 'Runtime check' }).target).toBe('Runtime check')
+    expect(describeCall('Bash', { command: 'x', description: 'List files' }).target).toBe('List files')
+  })
+
   test('mcp tools fall back to their short name', () => {
     expect(describeCall('mcp__srv__do_thing', {}).target).toBe('do_thing')
   })
@@ -228,6 +240,31 @@ describe('fmtTokens', () => {
   test('zero and negatives', () => {
     expect(fmtTokens(0)).toBe('0')
     expect(fmtTokens(-4)).toBe('0')
+  })
+})
+
+describe('a figure that is no reading', () => {
+  test('shows a dash, never NaN or Infinity', () => {
+    for (const v of [NaN, Infinity]) {
+      expect(fmtCost(v)).toBe('—')
+      expect(fmtClock(v)).toBe('—')
+      expect(fmtTokens(v)).toBe('—')
+      expect(fmtSpeed(v)).toBe('—')
+      expect(fmtDuration(v)).toBe('0s')
+    }
+    expect(fmtSpeed(-Infinity)).toBe('—')
+    expect(fmtDuration(-500)).toBe('0.0 s')
+    expect(contextSvg(NaN, '#fff').svg).toContain('>—<')
+  })
+
+  test('a reset time against an unreadable clock is no reading at all', () => {
+    expect(fmtReset('2026-10-27T10:00:00Z', NaN)).toBeNull()
+    expect(fmtReset('2026-10-27T10:00:00Z', -Infinity)).toBeNull()
+  })
+
+  test('pictures built on one carry no NaN', () => {
+    expect(speedoSvg(NaN, '#fff', 20)).not.toContain('NaN')
+    expect(contextSvg(NaN, '#fff', { left: 'x' }).svg).not.toContain('NaN')
   })
 })
 

@@ -94,7 +94,7 @@ export const totalTokens = (c: Counts) => c.input + c.output + c.cacheRead + c.c
 /** Counts a figure can be built on: a NaN or a negative count is no reading at all. */
 const countsKnown = (c: Counts) => [c.input, c.output, c.cacheRead, c.cacheWrite].every(v => Number.isFinite(v) && v >= 0)
 
-export const usd = (v: number | null) => (v === null ? '—' : v < 0.005 ? '$0.00' : `$${v.toFixed(2)}`)
+export const usd = (v: number | null) => (v === null || !Number.isFinite(v) ? '—' : v < 0.005 ? '$0.00' : `$${v.toFixed(2)}`)
 
 /** What the strip lists: running agents first, then the ones that finished lately; at most `max`. */
 export const visibleAgents = (agents: Agent[], now: number, opts: { max?: number; keepMs?: number } = {}) => {

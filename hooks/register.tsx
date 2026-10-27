@@ -66,6 +66,21 @@ const keep = (s: Set<string>, k: string) => {
 }
 
 const NO_TOKENS: Tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+
+/** The API's usage fields, any of which may be missing (the cache ones are null when unused). */
+type UsageCounts = { input_tokens?: number | null; output_tokens?: number | null; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }
+/** Counts plus one response's usage. A field the response leaves out adds nothing: one missing
+ *  figure would otherwise make the running total NaN for the rest of the session. */
+export const addUsage = <T extends Partial<Tokens>>(t: T, u: UsageCounts | null | undefined) => {
+  const n = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return {
+    ...t,
+    input: n(t.input) + n(u?.input_tokens),
+    output: n(t.output) + n(u?.output_tokens),
+    cacheRead: n(t.cacheRead) + n(u?.cache_read_input_tokens),
+    cacheWrite: n(t.cacheWrite) + n(u?.cache_creation_input_tokens),
+  }
+}
 const tokens = atom({ plugin: 'hanahira-claude-ui', key: 'tokens' } as const, NO_TOKENS)
 
 const EMPTY: Stats = { tools: 0, byTool: {}, files: [], last: null }
@@ -664,12 +679,7 @@ export const register: Register = on => {
     const effort = typeof sent === 'number' ? `budget ${fmtTokens(sent)}` : sent
     const aid = (e as unknown as { agentId?: string }).agentId
     if (u) {
-      await update($, tokens, t => ({
-        input: (t.input ?? 0) + u.input_tokens,
-        output: (t.output ?? 0) + u.output_tokens,
-        cacheRead: (t.cacheRead ?? 0) + u.cache_read_input_tokens,
-        cacheWrite: (t.cacheWrite ?? 0) + u.cache_creation_input_tokens,
-      }))
+      await update($, tokens, t => addUsage(t, u))
     }
     // Speed of the main thread only: subagents run beside it and would blur the figure.
     const tps = !aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
@@ -682,14 +692,10 @@ export const register: Register = on => {
           a.id !== aid
             ? a
             : {
-                ...a,
+                ...addUsage(a, u),
                 model: u?.model || a.model,
                 // The engine's word wins over what was asked: no effort sent means none applies.
                 effort: effort ?? null,
-                input: a.input + (u?.input_tokens ?? 0),
-                output: a.output + (u?.output_tokens ?? 0),
-                cacheRead: a.cacheRead + (u?.cache_read_input_tokens ?? 0),
-                cacheWrite: a.cacheWrite + (u?.cache_creation_input_tokens ?? 0),
               },
         ),
       )

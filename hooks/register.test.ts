@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { dangerous, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { addUsage, dangerous, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -155,5 +155,23 @@ describe('asList', () => {
 
   test('turns anything else a stored value might be into an empty list', () => {
     for (const bad of [undefined, null, 0, 5, 'x', {}, { length: 2 }, true]) expect(asList(bad)).toEqual([])
+  })
+})
+
+describe('addUsage', () => {
+  test('adds a response to the running counts', () => {
+    const u = { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 40 }
+    expect(addUsage({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }, u)).toEqual({ input: 11, output: 22, cacheRead: 33, cacheWrite: 44 })
+  })
+
+  test('a field the response leaves out adds nothing, so the total never turns NaN', () => {
+    const t = addUsage({ input: 5, output: 5, cacheRead: 5, cacheWrite: 5 }, { input_tokens: 1, output_tokens: 2 })
+    expect(t).toEqual({ input: 6, output: 7, cacheRead: 5, cacheWrite: 5 })
+    expect(addUsage({}, { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: null, cache_creation_input_tokens: NaN })).toEqual({ input: 1, output: 1, cacheRead: 0, cacheWrite: 0 })
+    expect(addUsage({ input: 3 }, null)).toEqual({ input: 3, output: 0, cacheRead: 0, cacheWrite: 0 })
+  })
+
+  test('keeps the other fields of what it adds to', () => {
+    expect(addUsage({ id: 'a1', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, { input_tokens: 2 })).toEqual({ id: 'a1', input: 2, output: 0, cacheRead: 0, cacheWrite: 0 })
   })
 })

@@ -182,6 +182,15 @@ describe('agent card', () => {
     expect(agentUsd('claude-opus-5-5', mk({ output: -5 }))).toBeNull()
   })
 
+  test('a time that is no reading shows a dash, not NaN', () => {
+    const line = agentStats(mk({ status: 'done', startedAt: NaN, endedAt: 5000 }))
+    expect(line.endsWith(' · —')).toBe(true)
+    expect(line).not.toContain('NaN')
+    expect(agentCardSvg(mk({ status: 'done', startedAt: 0, endedAt: NaN })).svg).not.toContain('NaN')
+    expect(usd(NaN)).toBe('—')
+    expect(usd(Infinity)).toBe('—')
+  })
+
   test('a barless card leaves the bar out', () => {
     const svg = agentCardSvg(mk({ startedAt: 0 }), { barless: true })
     expect(svg.height).toBe(CARD_H - BAR_ROOM)

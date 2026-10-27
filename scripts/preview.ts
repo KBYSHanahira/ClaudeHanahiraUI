@@ -1,6 +1,13 @@
 // Renders docs/preview.svg / preview.png: the compact status band drawn by the plugin's own SVG
 // builders (chat.ts, agents.ts, icons.ts) with sample numbers. Run: bun scripts/preview.ts
-import { writeFileSync } from 'node:fs'
+// The PNG (what the READMEs show) is drawn from the SVG by a headless Chromium: PREVIEW_CHROME,
+// else Playwright's, else one on the PATH. docs/preview.png.sha256 names the SVG it was drawn
+// from, so scripts/preview.test.ts fails while the PNG shows an older band.
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { agentCardSvg, CARD_H, CARD_W, prettyModel } from '../hooks/agents'
 import { chipSvg, contextSvg, CONTEXT, dotSvg, fmtClock, fmtElapsed, INK, loadingSvg, speedoSvg, STAT, statSvg } from '../hooks/chat'
 import { iconGroup, iconSvg } from '../hooks/icons'
@@ -82,4 +89,35 @@ const colW = gauges.map((g, i) => Math.max(g.natural, figureArt[i]!.natural))
 })
 parts.push(`<text x="${W - 40}" y="${H - 14}" text-anchor="end" ${font} font-size="11" fill="#5c5654">Hanahira Claude UI · sample numbers</text>`)
 
-writeFileSync(new URL('../docs/preview.svg', import.meta.url), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${parts.join('')}</svg>`)
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${parts.join('')}</svg>`
+const doc = (name: string) => fileURLToPath(new URL(`../docs/${name}`, import.meta.url))
+writeFileSync(doc('preview.svg'), svg)
+
+const chrome = (): string | null => {
+  if (process.env.PREVIEW_CHROME) return process.env.PREVIEW_CHROME
+  const cache = join(homedir(), '.cache', 'ms-playwright')
+  if (existsSync(cache))
+    for (const dir of readdirSync(cache).sort().reverse())
+      for (const bin of ['chrome-linux/headless_shell', 'chrome-linux/chrome'])
+        if (existsSync(join(cache, dir, bin))) return join(cache, dir, bin)
+  for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
+    const found = Bun.which(name)
+    if (found) return found
+  }
+  return null
+}
+const bin = chrome()
+if (!bin) {
+  console.error('No Chromium found (set PREVIEW_CHROME): docs/preview.png was not redrawn and scripts/preview.test.ts will fail.')
+  process.exit(1)
+}
+// Twice the SVG's size, the corners left transparent.
+const shot = Bun.spawnSync([
+  bin, '--headless', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2',
+  '--default-background-color=00000000', `--window-size=${W},${H}`, `--screenshot=${doc('preview.png')}`, `file://${doc('preview.svg')}`,
+])
+if (shot.exitCode !== 0) {
+  console.error(shot.stderr.toString())
+  process.exit(1)
+}
+writeFileSync(doc('preview.png.sha256'), `${createHash('sha256').update(svg).digest('hex')}\n`)

@@ -4,7 +4,7 @@
 // With an output path as the argument, it writes the rows mid-finish instead (every row's
 // finish begins at time 0), for a browser to step through the motion.
 import { writeFileSync } from 'node:fs'
-import { badgeSvg, diffRows, fmtDuration, INK, KIND_COLOR, KIND_ICON, PILL, pillSvg, ROW, statusPill, taskSummary } from '../hooks/chat'
+import { badgeSvg, describe, diffRows, fmtDuration, INK, KIND_COLOR, KIND_ICON, PILL, pillSvg, ROW, statusPill, taskSummary } from '../hooks/chat'
 import type { Kind, PillIcon } from '../hooks/chat'
 
 const out = process.argv[2]
@@ -58,7 +58,7 @@ parts.push(`<rect x="${X}" y="${y}" width="${W - 2 * X}" height="40" rx="10" fil
 parts.push(`<text x="${X + 16}" y="${y + 25}" ${font} font-size="14" fill="${INK.value}">${esc(prompt)}</text>`)
 y += 56
 
-row('run', 'Run', 'Run the test suite', [done(statusPill('Bash', { ...idle, output: { stdout: '159 pass' } }))], 4300)
+row('run', 'Run', describe('Bash', { command: 'bun test', description: 'Run the test suite' }).target, [done(statusPill('Bash', { ...idle, output: { stdout: '159 pass' } }))], 4300)
 row('read', 'Read', 'register.tsx', [done(statusPill('Read', { ...idle, output: { file: { numLines: 1386 } } }))], 40, { mono: true })
 
 // An Edit: its counts as pills, its lines under it.

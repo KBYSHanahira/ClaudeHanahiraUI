@@ -78,6 +78,11 @@ const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 
 type Input = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
+/** A description that opens with the row's own verb drops it: `Run` + `Run the tests` would say it twice. */
+const unsaid = (text: string, verbs: RegExp) => {
+  const rest = text.replace(verbs, '')
+  return rest && rest !== text ? rest : text
+}
 
 /** What a tool row says: a coloured verb and the thing it acted on. */
 export const describe = (tool: string, raw: unknown, isRerun = false) => {
@@ -91,12 +96,12 @@ export const describe = (tool: string, raw: unknown, isRerun = false) => {
         return {
           kind: 'delete' as Kind,
           verb: 'Delete',
-          target: clip(str(i.description) || deleted(str(i.command)), 64),
+          target: clip(unsaid(str(i.description), /^(?:delete|remove)\s+/i) || deleted(str(i.command)), 64),
         }
       return {
         kind: 'run' as Kind,
         verb: isRerun ? 'Rerun' : 'Run',
-        target: clip(str(i.description) || str(i.command).replace(/\s+/g, ' '), 64),
+        target: clip(unsaid(str(i.description), /^(?:re)?run\s+/i) || str(i.command).replace(/\s+/g, ' '), 64),
       }
     case 'Read':
       return { kind: 'read' as Kind, verb: 'Read', target: base(path) }
@@ -188,7 +193,7 @@ export const fmtElapsed = (totalSecs: number) => {
 
 /** Tenths of a second under a minute; compared after rounding so 59.96 s reads 1m 0s, not 60.0 s. */
 export const fmtDuration = (ms: number) =>
-  Math.round(ms / 100) < 600 ? `${(ms / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000))
+  Math.round(Math.max(0, ms) / 100) < 600 ? `${(Math.max(0, ms) / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000))
 
 /**
  * A tool row's kind tile: a rounded square tinted in the kind's colour, its icon in the middle,
@@ -406,10 +411,11 @@ export const halftone = (
 }
 
 /** ≈-free money for a stat card: always two decimals, $15.62. */
-export const fmtCost = (usd: number) => `$${usd.toFixed(2)}`
+export const fmtCost = (usd: number) => (Number.isFinite(usd) ? `$${usd.toFixed(2)}` : '—')
 
 /** 0:18, 12:05, 1:02:03 (hours only when needed). */
 export const fmtClock = (ms: number) => {
+  if (Number.isNaN(ms) || ms === Infinity) return '—'
   const s = Math.max(0, Math.round(ms / 1000))
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -419,6 +425,7 @@ export const fmtClock = (ms: number) => {
 
 /** Token counts with k / M / B / T: 950, 1.5k, 196k, 1.25M, 3.4B. */
 export const fmtTokens = (n: number) => {
+  if (Number.isNaN(n) || n === Infinity) return '—'
   const units = ['', 'k', 'M', 'B', 'T']
   const shape = (v: number) => {
     const s = v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : v.toFixed(0)
@@ -469,7 +476,7 @@ export const speedScale = (peak: number) =>
 
 /** A speedometer as SVG: a 270° track open at the bottom, an arc filled to `fraction`, and a needle. */
 export const speedoSvg = (fraction: number, color: string, size: number) => {
-  const f = Math.max(0, Math.min(1, fraction))
+  const f = Number.isNaN(fraction) ? 0 : Math.max(0, Math.min(1, fraction))
   const r = 17
   const c = 2 * Math.PI * r
   const sweep = 0.75 * c
@@ -492,7 +499,7 @@ export const speedoSvg = (fraction: number, color: string, size: number) => {
 }
 
 /** Speed for a tile: 42, 8.5 (one decimal under 10). */
-export const fmtSpeed = (tps: number) => (tps < 10 ? String(Math.round(tps * 10) / 10) : String(Math.round(tps)))
+export const fmtSpeed = (tps: number) => (!Number.isFinite(tps) ? '—' : tps < 10 ? String(Math.round(tps * 10) / 10) : String(Math.round(tps)))
 
 /** Rough width of a label in px at a given font size: symbols run wide, capitals a little wider. */
 const labelWidth = (text: string, fs: number) =>
@@ -678,7 +685,7 @@ export const contextSvg = (
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CONTEXT
   const meter = meterSvg(percent, color)
-  const value = percent === null ? '—' : `${Math.round(percent)}%`
+  const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
   const valueX = C.icon + 8
   const valueW = labelWidth(value, C.fs)
@@ -963,6 +970,7 @@ export const fmtReset = (iso: string | undefined, now: number): string | null =>
   const at = Date.parse(iso)
   if (Number.isNaN(at)) return null
   const ms = at - now
+  if (!Number.isFinite(ms)) return null
   if (ms <= 0) return 'resetting now'
   const mins = Math.floor(ms / 60_000)
   if (mins < 1) return 'resets in <1m'
