@@ -2,7 +2,7 @@
 // builders (chat.ts, agents.ts, icons.ts) with sample numbers. Run: bun scripts/preview.ts
 // The PNG (what the READMEs show) is drawn from the SVG by a headless Chromium: PREVIEW_CHROME,
 // else Playwright's, else one on the PATH. docs/preview.png.sha256 names the SVG it was drawn
-// from, so scripts/preview.test.ts fails while the PNG shows an older band.
+// from, so scripts/repo.spec.ts fails while the PNG shows an older band.
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -108,7 +108,7 @@ const chrome = (): string | null => {
 }
 const bin = chrome()
 if (!bin) {
-  console.error('No Chromium found (set PREVIEW_CHROME): docs/preview.png was not redrawn and scripts/preview.test.ts will fail.')
+  console.error('No Chromium found (set PREVIEW_CHROME): docs/preview.png was not redrawn and scripts/repo.spec.ts will fail.')
   process.exit(1)
 }
 // Twice the SVG's size, the corners left transparent.

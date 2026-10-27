@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, popLift } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -717,5 +717,37 @@ describe('motion', () => {
     g.value('k', 5, 0)
     expect(g.value('k', null, 10)).toBe(null)
     expect(g.value('k', 9, 20)).toBe(9) // after a gap, seen first again
+  })
+
+  test('progress says how far a figure is through its glide, null while it is still', () => {
+    const g = glider(400)
+    g.value('n', 0, 0)
+    expect(g.progress('n', 0)).toBe(null)
+    g.value('n', 100, 1000)
+    expect(g.progress('n', 1100)).toBe(0.25)
+    expect(g.progress('n', 1400)).toBe(null)
+    expect(g.progress('unseen', 0)).toBe(null)
+  })
+
+  test('a moving figure pops up off its line and lands back on it', () => {
+    expect(popLift(null)).toBe(0)
+    expect(popLift(0)).toBe(0)
+    expect(popLift(1)).toBe(0)
+    const path = [0.2, 0.4, 0.6, 0.8].map(popLift)
+    expect(Math.max(...path)).toBeLessThanOrEqual(MOTION.popPx)
+    expect(path.every(v => v > 0)).toBe(true)
+    // Up quickly, down to land: the highest point comes in the first half.
+    expect(path.indexOf(Math.max(...path))).toBeLessThan(2)
+  })
+
+  test('lift raises the value alone; the label holds its line', () => {
+    const still = statSvg('$1', 'cost', { plain: true, icon: 'coin' }).svg
+    const up = statSvg('$1', 'cost', { plain: true, icon: 'coin', lift: 2.5 }).svg
+    const valueY = (svg: string) => Number(/<text x="[\d.]+" y="([\d.]+)"[^>]*font-weight="700"/.exec(svg)![1])
+    expect(valueY(still)).toBe(STAT.baseline)
+    expect(valueY(up)).toBe(STAT.baseline - 2.5)
+    // Nothing else moved: put the value back on its line and it is the still picture.
+    expect(up.replace(`y="${STAT.baseline - 2.5}"`, `y="${STAT.baseline}"`)).toBe(still)
+    expect(up).not.toContain('<animate')
   })
 })

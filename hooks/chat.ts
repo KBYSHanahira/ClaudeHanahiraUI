@@ -316,7 +316,8 @@ export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line
  *   one it has, so the loop runs on. Their first frame is the still picture, so a surface that
  *   starts one over, or plays no SMIL, shows no jump.
  * - A figure that changes glides to its new value (`glider`): a few still pictures, eased, then
- *   the exact value. No SMIL in them, so swapping one in is only a new image.
+ *   the exact value. No SMIL in them, so swapping one in is only a new image. On its way the
+ *   figure pops up off its line and lands back on it (`popLift`), in the same still pictures.
  */
 export const MOTION = {
   barMs: 2200, // one light's step to where the next one was
@@ -327,12 +328,21 @@ export const MOTION = {
   haloMs: 2400, // the status dot's breath
   glideMs: 480, // a figure moving to its new value
   glideStepMs: 100, // a redraw this often while one moves: the engine's most, ten a second
+  popPx: 3, // how high a moving figure pops off its line
 }
 
 /** A looping SMIL `<animate>` over `values`, eased between each, starting from the first. */
 export const loopAnim = (attr: string, values: (number | string)[], ms: number) =>
   `<animate attributeName="${attr}" values="${values.join(';')}" dur="${ms}ms" repeatCount="indefinite" ` +
   `calcMode="spline" keySplines="${Array(values.length - 1).fill('0.45 0 0.55 1').join(';')}"/>`
+
+/**
+ * How far a moving figure sits above its line, `t` (0 to 1) of the way through its glide: up
+ * quickly to MOTION.popPx, then back down to land on its line as the glide ends. Not moving
+ * (`null`), it sits on its line.
+ */
+export const popLift = (t: number | null) =>
+  t === null ? 0 : Math.round(MOTION.popPx * Math.sin(Math.PI * Math.min(1, Math.max(0, t)) ** 0.7) * 10) / 10
 
 /** Ease out: quick away from the old value, settling softly on the new one. */
 export const easeOut = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 3
@@ -344,7 +354,8 @@ type Glide = { from: number; to: number; at: number }
  * to draw: the target itself when first seen or once a glide ends, else an eased step between
  * where it was and the target (rounded by `round` while it moves). A new target mid-glide
  * starts from where the figure is, so it never jumps back. `active(now)` says whether any
- * figure is still moving, so the caller knows to draw again.
+ * figure is still moving, so the caller knows to draw again; `progress(key, now)` how far
+ * through its glide one figure is (0 to 1), or `null` while it is still.
  */
 export const glider = (ms = MOTION.glideMs) => {
   const glides = new Map<string, Glide>()
@@ -365,6 +376,10 @@ export const glider = (ms = MOTION.glideMs) => {
       return now - next.at >= ms ? target : round(at(next, now))
     },
     active: (now: number) => [...glides.values()].some(g => now - g.at < ms && g.from !== g.to),
+    progress(key: string, now: number): number | null {
+      const g = glides.get(key)
+      return g && g.from !== g.to && now - g.at < ms ? Math.max(0, now - g.at) / ms : null
+    },
   }
 }
 
@@ -802,6 +817,8 @@ export const statSvg = (
     stack?: string[]
     /** The icon alone, no tile, centred in the glyph slot: the quiet look of a figure. */
     plain?: boolean
+    /** Px the value sits above its line (`popLift` while it moves); the label stays put. */
+    lift?: number
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -836,7 +853,8 @@ export const statSvg = (
     under
       .map((line, i) => `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" fill="#8f8782">${esc(line)}</text>`)
       .join('')
-  const valueLine = `<text x="${x}" y="${y}" ${valueFont}>${esc(value)}</text>`
+  const lift = opts.lift ?? 0
+  const valueLine = `<text x="${x}" y="${lift ? (y - lift).toFixed(1) : y}" ${valueFont}>${esc(value)}</text>`
   // Sized generously, so the label always fits; `width` only ever widens it to the column.
   // The last 12px are for a face wider than the estimate (bold values run wide), which would
   // otherwise clip the label.

@@ -199,15 +199,23 @@ run('a figure that changes glides to its new value, lands on it, then holds stil
     context: { percent: 60, tokens: 600000, window: 1000000 }, rateLimits: [], cost: { usd: 5 }, changed: ['context', 'cost'],
   })
   const seen: number[] = []
+  // How high the cost's figure stands above its line in each picture on the way.
+  const costY = async () => Number(/:Cost [^=]*=[\s\S]*?<text x="[\d.]+" y="([\d.]+)"[^>]*font-weight="700"/.exec((await pictures(ui)).find(p => /:Cost /.test(p))!)![1])
+  const restY = await costY()
+  const lifts: number[] = []
   for (let i = 0; i < 8; i++) {
     await clock.advance(100)
     seen.push(await shown())
+    lifts.push(Math.round((restY - (await costY())) * 10) / 10)
   }
   // On its way: some steps between, never back, then the value itself.
   expect(seen.some(v => v > 20 && v < 60)).toBe(true)
   expect(seen).toEqual([...seen].sort((a, b) => a - b))
   expect(seen[seen.length - 1]).toBe(60)
   expect((await pictures(ui)).join()).toContain('≈$5.00')
+  // The figure popped up off its line on the way, and landed back on it.
+  expect(Math.max(...lifts)).toBeGreaterThan(0)
+  expect(lifts[lifts.length - 1]).toBe(0)
   // Landed: the band is still again, a redraw draws the same pictures.
   const settled = await pictures(ui)
   await clock.advance(1000)

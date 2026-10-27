@@ -27,6 +27,7 @@ import {
   fmtSpeed,
   fmtTokens,
   glider,
+  popLift,
   loadingSvg,
   MOTION,
   pillSvg,
@@ -780,6 +781,7 @@ export const register: Register = on => {
       })),
     }
     const sp = { ...spNow, tps: glide('tps', spNow.tps, exact) }
+    const runShown = glide('time', run ?? 0) ?? 0
     if (glides.active(nowMs)) {
       glideBeats = Math.ceil(MOTION.glideMs / MOTION.glideStepMs) + 2
       glidePump ??= $.clock.every(MOTION.glideStepMs, () => {
@@ -807,12 +809,13 @@ export const register: Register = on => {
 
     // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
     const allTokens = glide('tokens', (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)) ?? 0
-    const cards = [
-      { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c' },
-      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7' },
+    // `glide` names the figure's glide, so its cell pops while it moves (popLift in chat.ts).
+    const cards: { label: string; value: string; icon: IconName; color: string; glide?: string }[] = [
+      { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', glide: 'usd' },
+      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7', glide: 'tokens' },
       // The finished turns' total: it moves when a turn ends, so the card's picture is not
       // swapped every second (the live count is the text clock on the top line).
-      { label: 'Time', value: fmtClock(Math.floor((run ?? 0) / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
+      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f', glide: 'time' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
@@ -981,7 +984,8 @@ export const register: Register = on => {
         draw: (width, mode = 'line') => {
           const under = mode === 'stack' || mode === 'tall'
           // Plain and muted: the figures are the quiet row, so the meter and the gauges lead.
-          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, ...(under ? { stack: [label] } : {}) })
+          const lift = c.glide ? popLift(glides.progress(c.glide, nowMs)) : 0
+          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, lift, ...(under ? { stack: [label] } : {}) })
         },
       }
     })
