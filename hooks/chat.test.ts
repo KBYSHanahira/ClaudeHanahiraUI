@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, popLift, INK } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, popLift, INK } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -345,52 +345,47 @@ describe('pills and tiles are still', () => {
 })
 
 describe('loadingSvg', () => {
-  test('idle is a quiet track: no animation, no mask', () => {
-    const svg = loadingSvg(500, 18, '#9b8cf7')
-    expect(svg).toContain('width="500" height="18"')
-    expect(svg).not.toContain('<animate')
-    expect(svg).not.toContain('<mask')
+  const blocks = (svg: string) => /<path d="([^"]*)" fill="[^"]*"\/>/.exec(svg)![1]!
+
+  test('the context meter\'s look: crisp blocks of its size and gap across the bar', () => {
+    const svg = loadingSvg(500, 12, '#9b8cf7')
+    expect(svg).toContain('shape-rendering="crispEdges"')
+    const pitch = METER.w + METER.gap
+    expect(blocks(svg).startsWith(`M0 0h${METER.w}v12h-${METER.w}zM${pitch} 0h${METER.w}v12`)).toBe(true)
+    // Enough blocks to reach the right end.
+    expect(blocks(svg).match(/M/g)!.length).toBe(Math.ceil(500 / pitch))
   })
 
-  test('live lights the dots across the track, still', () => {
-    const svg = loadingSvg(500, 18, '#9b8cf7', { live: true })
-    expect(svg).toContain('fill-opacity="0.95"')
+  test('idle is the empty meter: the track\'s colour, no animation', () => {
+    const svg = loadingSvg(500, 12, '#9b8cf7')
+    expect(svg).toContain(`fill="${INK.track}"/>`)
+    expect(svg).not.toContain('#9b8cf7')
+    expect(svg).not.toContain('<animate')
+  })
+
+  test('live lights every block in the colour, still without motion', () => {
+    const svg = loadingSvg(500, 12, '#9b8cf7', { live: true })
+    expect(svg).toContain(`fill="#9b8cf7"/>`)
+    expect(svg).not.toContain(INK.track)
     expect(svg).not.toContain('<animate')
   })
 
   test('draws no number: no label, no pill', () => {
-    expect(loadingSvg(500, 18, '#9b8cf7', { live: true })).not.toContain('<text')
+    expect(loadingSvg(500, 12, '#9b8cf7', { live: true })).not.toContain('<text')
   })
 
   test('is deterministic', () => {
-    expect(loadingSvg(400, 18, '#fff', { live: true })).toBe(loadingSvg(400, 18, '#fff', { live: true }))
+    expect(loadingSvg(400, 12, '#fff', { live: true })).toBe(loadingSvg(400, 12, '#fff', { live: true }))
   })
 
   test('padBottom adds transparent room and leaves the bar alone', () => {
-    const padded = loadingSvg(600, 18, '#fff', { padBottom: 6 })
-    expect(padded).toContain('viewBox="0 0 600 24" width="600" height="24"')
-    expect(padded).toContain('<rect width="600" height="18" rx="9"')
+    const padded = loadingSvg(600, 12, '#fff', { padBottom: 6 })
+    expect(padded).toContain('viewBox="0 0 600 18" width="600" height="18"')
+    expect(blocks(padded)).toBe(blocks(loadingSvg(600, 12, '#fff')))
   })
 
   test('a narrowed box cuts the bar at the right instead of shrinking it', () => {
-    expect(loadingSvg(900, 18, '#fff')).toContain('preserveAspectRatio="xMinYMid slice"')
-  })
-
-  test('open: the left end round, the right end square for the cut, and a cap to round it off', () => {
-    const open = loadingSvg(900, 12, '#fff', { open: true, live: true })
-    expect(open).toContain('<path d="M6 0H900V12H6A6 6 0 0 1 6 0z" fill="#332f2d"/>')
-    expect(open).not.toContain('rx="6"')
-    const cap = barCapSvg(12, 6)
-    expect(cap.width).toBe(6)
-    expect(cap.height).toBe(18)
-    expect(cap.svg).toContain('A6 6 0 0 1 0 12z" fill="#332f2d"')
-    expect(cap.svg).not.toContain('fill-opacity')
-  })
-
-  test('a live cap takes the same tint as the lit track, so the right end rounds like the left', () => {
-    const tint = 'fill="#9b8cf7" fill-opacity="0.2"'
-    expect(loadingSvg(900, 12, '#9b8cf7', { open: true, live: true })).toContain(`0 1 6 0z" ${tint}`)
-    expect(barCapSvg(12, 6, '#9b8cf7').svg).toContain(`A6 6 0 0 1 0 12z" ${tint}`)
+    expect(loadingSvg(900, 12, '#fff')).toContain('preserveAspectRatio="xMinYMid slice"')
   })
 })
 
@@ -535,31 +530,17 @@ describe('chipSvg', () => {
 })
 
 describe('meterSvg', () => {
-  test('the loading bar\'s look: a round track, the first share of it lit, any use at all lighting a round stub', () => {
-    const m = meterSvg(25, '#e8825f')
-    expect(m.width).toBe(METER.w)
-    expect(m.height).toBe(METER.h)
-    expect(m.svg).toContain(`<rect width="${METER.w}" height="${METER.h}" rx="${METER.h / 2}" fill="${INK.track}"/>`)
-    expect(m.litW).toBe(Math.round(0.25 * METER.w))
-    expect(m.svg).toContain(`<rect width="${m.litW}" height="${METER.h}" rx="${METER.h / 2}" fill="#e8825f" fill-opacity="0.2"/>`)
-    // The lit dots, as the loading bar's: bright and dim, cut to the lit share.
-    expect(m.svg).toContain('fill="#e8825f" fill-opacity="0.95"')
-    expect(m.svg).toContain('clip-path="url(#meter-lit)"')
-    expect(meterSvg(1, '#e8825f').litW).toBe(METER.h)
-    expect(meterSvg(100, '#e8825f').litW).toBe(METER.w)
-    expect(meterSvg(140, '#e8825f').litW).toBe(METER.w)
-    for (const p of [0, null, NaN]) {
-      const empty = meterSvg(p, '#e8825f')
-      expect(empty.litW).toBe(0)
-      expect(empty.svg).not.toContain('meter-lit')
-    }
+  test('METER.segs crisp blocks, the first share of them lit, any use at all lighting one', () => {
+    const m = meterSvg(11, '#e8825f')
+    expect(m.width).toBe(METER.segs * (METER.w + METER.gap) - METER.gap)
+    expect(m.svg).toContain('shape-rendering="crispEdges"')
+    const lit = (svg: string) => (/<path d="([^"]*)" fill="#e8825f"/.exec(svg)?.[1]?.match(/M/g) ?? []).length
+    // 11% of 30 blocks is 3.
+    expect(lit(m.svg)).toBe(3)
+    expect(lit(meterSvg(1, '#e8825f').svg)).toBe(1)
+    expect(lit(meterSvg(0, '#e8825f').svg)).toBe(0)
+    expect(lit(meterSvg(null, '#e8825f').svg)).toBe(0)
     expect(meterSvg(90, '#e8825f').svg).not.toContain('<animate')
-  })
-
-  test('the meter\'s dots are the loading bar\'s, on a track of the same height', () => {
-    const dots = (svg: string) => /<path d="([^"]*)" fill="#e8825f" fill-opacity="0.95"/.exec(svg)![1]!
-    const bar = loadingSvg(METER.w, METER.h, '#e8825f', { live: true })
-    expect(dots(meterSvg(100, '#e8825f').svg)).toBe(dots(bar))
   })
 })
 
@@ -571,7 +552,7 @@ describe('contextSvg', () => {
     expect(c.svg).toContain('>context</tspan>')
     expect(c.svg).toContain('> · 889k left</tspan>')
     expect(c.svg).toContain('> · 1M window</tspan>')
-    expect(c.svg).toContain(meterSvg(11, '#e8825f').svg)
+    expect(c.svg).toContain('shape-rendering="crispEdges"')
   })
 
   test('stacked: the meter under the figure, in a taller, narrower picture', () => {
@@ -643,21 +624,21 @@ describe('motion', () => {
       .replace(/<(circle)( [^>]*)><\/circle>/g, '<$1$2/>')
 
   test('the bar lights glide only while live with motion, from where the still bar has them', () => {
-    const moving = loadingSvg(900, 12, '#9b8cf7', { live: true, open: true, motion: true })
+    const moving = loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true })
     expect(moving).toContain(`<animateTransform attributeName="transform" type="translate" from="0 0" to="${MOTION.barPeriod} 0"`)
     expect(moving).toContain('repeatCount="indefinite"')
-    // Over the lit dots and cut to them alone: the track keeps one colour to its end, so the
-    // cap after the slot still matches it while a light passes.
-    expect(moving.indexOf('url(#bar-glow)')).toBeGreaterThan(moving.indexOf('fill-opacity="0.95"'))
-    expect(moving).toMatch(/<clipPath id="bar-cut"><path d="M8 [^"]+z"\/><\/clipPath>/)
-    expect(moving).not.toContain('<clipPath id="bar-cut"><path d="M6 0H900')
-    expect(loadingSvg(900, 12, '#9b8cf7', { live: false, open: true, motion: true })).not.toContain('<animate')
-    expect(loadingSvg(900, 12, '#9b8cf7', { live: true, open: true })).not.toContain('<animate')
+    // Over the lit blocks and cut to them alone, so no light shows in the gaps.
+    expect(moving.indexOf('url(#bar-glow)')).toBeGreaterThan(moving.indexOf('fill="#9b8cf7"/>'))
+    expect(moving).toMatch(/<clipPath id="bar-cut"><path d="M0 0h6v12h-6z[^"]+"\/><\/clipPath>/)
+    expect(loadingSvg(900, 12, '#9b8cf7', { live: false, motion: true })).not.toContain('<animate')
+    expect(loadingSvg(900, 12, '#9b8cf7', { live: true })).not.toContain('<animate')
+    // The first frame is the still bar.
+    expect(still(moving).replace(/<defs>[\s\S]*<\/defs><g clip-path="url\(#bar-cut\)">[\s\S]*<\/g><\/g>/, '')).toBe(loadingSvg(900, 12, '#9b8cf7', { live: true }))
   })
 
   test('a loop holds no time: drawn again, it is the same picture', () => {
     const draw = () =>
-      loadingSvg(900, 12, '#9b8cf7', { live: true, open: true, motion: true }) +
+      loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true }) +
       chipSvg({ color: '#9b8cf7', label: 'working', dots: true, motion: true }).svg +
       dotSvg('#9b8cf7', true, 14, true)
     expect(draw()).toBe(draw())

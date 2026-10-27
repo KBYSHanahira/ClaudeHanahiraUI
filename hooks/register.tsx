@@ -10,7 +10,6 @@ import {
   INK,
   PILL,
   badgeSvg,
-  barCapSvg,
   base,
   cardSvg,
   clip,
@@ -1077,15 +1076,13 @@ export const register: Register = on => {
             {Svg ? (
               // The bar takes what its line leaves, as the surface lays it out (from no width,
               // growing): bodyColumns * 8 undercounts Desktop's row, and a bar sized from it
-              // came out under the cut-off and was dropped. Drawn THEME.barPx wide with its right
-              // end open, clipped to fit, and capped after the clip, so both ends come out round.
+              // came out under the cut-off and was dropped. Drawn THEME.barPx wide and clipped to fit.
               <Box flexGrow={1} flexShrink={1} minWidth={0} alignItems="center">
                 <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                   <Svg
                     source={loadingSvg(THEME.barPx, THEME.barHeight, THEME.accent, {
                       live: e.props.isWorking,
                       padBottom: THEME.barGap,
-                      open: true,
                       motion: true,
                     })}
                     alt={e.props.isWorking ? 'Working' : 'Idle'}
@@ -1093,7 +1090,6 @@ export const register: Register = on => {
                     height={THEME.barHeight + THEME.barGap}
                   />
                 </Box>
-                <Svg source={barCapSvg(THEME.barHeight, THEME.barGap, e.props.isWorking ? THEME.accent : undefined).svg} alt="" width={barCapSvg(THEME.barHeight).width} height={THEME.barHeight + THEME.barGap} />
               </Box>
             ) : null}
           </Box>

@@ -572,42 +572,14 @@ export const pillSvg = (
 }
 
 /**
- * The dot field of a bar `w` x `h` (the loading bar's and the context meter's): square dots on
- * a grid, `bright` and `dim` the ones a lit bar shows, `faint` a sprinkle seen on the bare track.
- * Deterministic, so a redraw gives the same picture.
- */
-const barDots = (w: number, h: number) => {
-  const step = Math.max(3, Math.round(h / 6.5))
-  const size = +(step * 0.55).toFixed(2)
-  const rows = Math.max(1, Math.floor((h - 4) / step))
-  const top = (h - rows * step) / 2
-  const faint: string[] = []
-  const bright: string[] = []
-  const dim: string[] = []
-  for (let cx = 0; cx * step + step < w - 6; cx++) {
-    const x = 8 + cx * step
-    for (let ry = 0; ry < rows; ry++) {
-      const r = noise(cx, ry)
-      const y = top + ry * step
-      const cell = `M${x} ${y.toFixed(1)}h${size}v${size}h-${size}z`
-      if (r < 0.1) faint.push(cell)
-      if (r < 0.74) (r < 0.36 ? bright : dim).push(cell)
-    }
-  }
-  return { faint, bright, dim }
-}
-
-/**
- * A loading bar with no number behind it: a dark rounded track sprinkled with faint
- * dots and, while `live`, a dithered field of violet dots lit across it. Idle, it is just
- * the quiet track. `padBottom` adds transparent room under the bar, in px.
+ * A loading bar with no number behind it, in the context meter's look: a row of crisp blocks
+ * (METER's size and gap, the bar's `height` tall), the track's colour while idle and all lit
+ * in `color` while `live`. `padBottom` adds transparent room under the bar, in px.
  *
  * Drawn wider than its slot, it keeps its height and is cut at the right (`slice`): with the
  * default `meet`, a surface that narrows the box shrinks the whole bar to a hairline.
- * With `open`, the right end is left square for that cut, and `barCapSvg` drawn after the
- * slot rounds it off: a bar that fits a slot of any width with both ends round.
  *
- * With `motion` (and `live`), soft lights glide left to right under the dots, one every
+ * With `motion` (and `live`), soft lights glide left to right over the blocks, one every
  * MOTION.barPeriod px, so a slot of any width shows one. A loop (see MOTION): its first frame
  * is the still picture, and nothing in it depends on time, so a redraw sends the same picture.
  */
@@ -615,19 +587,15 @@ export const loadingSvg = (
   width: number,
   height: number,
   color: string,
-  opts: { live?: boolean; padBottom?: number; open?: boolean; motion?: boolean } = {},
+  opts: { live?: boolean; padBottom?: number; motion?: boolean } = {},
 ) => {
   const w = Math.max(120, Math.round(width))
   const h = height
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
-  // The track: a capsule, or with `open` one rounded at the left alone.
-  const r = h / 2
-  const track = opts.open ? `<path d="M${r} 0H${w}V${h}H${r}A${r} ${r} 0 0 1 ${r} 0z"` : `<rect width="${w}" height="${h}" rx="${r}"`
-  const { faint, bright, dim } = barDots(w, h)
+  const pitch = METER.w + METER.gap
+  const blocks = Array.from({ length: Math.ceil(w / pitch) }, (_, k) => `M${k * pitch} 0h${METER.w}v${h}h-${METER.w}z`).join('')
 
-  // The lights: a row of glows moved one period on per loop, cut to the lit dots alone. The
-  // track under them keeps one colour to its end, so the cap drawn after the slot (which the
-  // lights cannot reach) still matches it, and the right end stays round as a light passes.
+  // The lights: a row of glows moved one period on per loop, cut to the blocks alone.
   const P = MOTION.barPeriod
   const glows: string[] = []
   for (let gx = -P; gx < w; gx += P) glows.push(`<rect x="${gx}" width="${MOTION.barGlow}" height="${h}" fill="url(#bar-glow)"/>`)
@@ -637,62 +605,43 @@ export const loadingSvg = (
         `<stop offset="0" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
         `<stop offset="0.5" stop-color="${MOTION.glowInk}" stop-opacity="0.9"/>` +
         `<stop offset="1" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
-        `</linearGradient><clipPath id="bar-cut"><path d="${bright.join('')}${dim.join('')}"/></clipPath></defs>` +
+        `</linearGradient><clipPath id="bar-cut"><path d="${blocks}"/></clipPath></defs>` +
         `<g clip-path="url(#bar-cut)"><g>${glows.join('')}` +
         `<animateTransform attributeName="transform" type="translate" from="0 0" to="${P} 0" dur="${MOTION.barMs}ms" repeatCount="indefinite"/>` +
         `</g></g>`
       : ''
 
-  const lit = opts.live
-    ? `${track} fill="${color}" fill-opacity="0.2"/>` +
-      `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
-      `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
-      glide
-    : ''
-
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice">` +
-    `${track} fill="${INK.track}"/>` +
-    `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.12"/>` +
-    `<path d="${faint.join('')}" fill="#8a8480" fill-opacity="0.3"/>` +
-    lit +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice" shape-rendering="crispEdges">` +
+    `<path d="${blocks}" fill="${opts.live ? color : INK.track}"/>` +
+    glide +
     `</svg>`
   )
 }
 
-/** The context meter's size: as wide as its 30 blocks were, as tall as the loading bar. */
-export const METER = { w: 238, h: 12 }
+/** The context meter's blocks: how many across, each one's size, and the gap between them. */
+export const METER = { segs: 30, w: 6, h: 12, gap: 2 }
 
 /**
- * The context meter in the loading bar's look: the same rounded track and dot field, lit in
- * `color` over the first `percent` of it, a capsule of its own that grows from the left (the
- * dots the bar lights, inside it; the bare track's, past it). Any use at all lights a round
- * stub, so a session that has begun never reads as empty. A still picture: no motion.
+ * A segmented meter as SVG: METER.segs blocks across, the first `percent` of them lit in
+ * `color`, the rest the track. Drawn crisp, no anti-aliasing: the same language as the agent
+ * sprites. Any use at all lights the first block, so a session that has begun never reads as empty.
  */
 export const meterSvg = (percent: number | null, color: string) => {
-  const { w: width, h: height } = METER
-  const r = height / 2
-  const share = percent === null || !Number.isFinite(percent) ? 0 : Math.max(0, Math.min(100, percent)) / 100
-  // The lit capsule never narrower than its own height, so it is round at both ends.
-  const litW = share > 0 ? Math.max(height, Math.round(share * width)) : 0
-  const { faint, bright, dim } = barDots(width, height)
-  const lit =
-    litW > 0
-      ? `<defs><clipPath id="meter-lit"><rect width="${litW}" height="${height}" rx="${r}"/></clipPath></defs>` +
-        `<g clip-path="url(#meter-lit)">` +
-        `<rect width="${litW}" height="${height}" rx="${r}" fill="${color}" fill-opacity="0.2"/>` +
-        `<path d="${bright.join('')}" fill="${color}" fill-opacity="0.95"/>` +
-        `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.55"/>` +
-        `</g>`
-      : ''
+  const M = METER
+  const pitch = M.w + M.gap
+  const width = M.segs * pitch - M.gap
+  const height = M.h
+  const share = percent === null ? 0 : Math.max(0, Math.min(100, percent)) / 100
+  const litN = share > 0 ? Math.max(1, Math.round(share * M.segs)) : 0
+  const blocks = (from: number, to: number) =>
+    Array.from({ length: to - from }, (_, k) => `M${(from + k) * pitch} 0h${M.w}v${M.h}h-${M.w}z`).join('')
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<rect width="${width}" height="${height}" rx="${r}" fill="${INK.track}"/>` +
-    `<path d="${dim.join('')}" fill="${color}" fill-opacity="0.12"/>` +
-    `<path d="${faint.join('')}" fill="#8a8480" fill-opacity="0.3"/>` +
-    lit +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" shape-rendering="crispEdges">` +
+    (litN < M.segs ? `<path d="${blocks(litN, M.segs)}" fill="${INK.track}"/>` : '') +
+    (litN > 0 ? `<path d="${blocks(0, litN)}" fill="${color}"/>` : '') +
     `</svg>`
-  return { svg, width, height, litW }
+  return { svg, width, height }
 }
 
 /** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
@@ -744,26 +693,6 @@ export const contextSvg = (
     `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
     `</svg>`
   return { svg, width, height, natural }
-}
-
-/**
- * The right end of an `open` loading bar: a half disc in the track's colour, drawn after the slot
- * that cuts the bar. Pass the bar's `color` while it is live: the cap takes the same tint as the
- * lit track, or it reads as a square end against the background.
- */
-export const barCapSvg = (height: number, padBottom = 0, color?: string) => {
-  const r = height / 2
-  const w = Math.ceil(r)
-  const disc = `<path d="M0 0A${r} ${r} 0 0 1 0 ${height}z"`
-  return {
-    svg:
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${height + padBottom}" width="${w}" height="${height + padBottom}">` +
-      `${disc} fill="${INK.track}"/>` +
-      (color ? `${disc} fill="${color}" fill-opacity="0.2"/>` : '') +
-      `</svg>`,
-    width: w,
-    height: height + padBottom,
-  }
 }
 
 /** The little status dot of the band: a halo round it while Claude works. */

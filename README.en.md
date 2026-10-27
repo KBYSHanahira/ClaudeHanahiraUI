@@ -23,14 +23,14 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 | | Feature | What it does |
 | :-: | :-- | :-- |
-| 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar that lights up while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
-| ▮▮▮ | **Context meter** | Context used as one big figure with a meter beside it drawn like the loading bar (a round, dotted track, lit over the share used), the one thing drawn large; what is left and the window's size follow. It turns red past 85%. |
+| 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar of blocks like the context meter's that lights up while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
+| ▮▮▮ | **Context meter** | Context used as one big figure with a 30-block meter beside it, the one thing drawn large; what is left and the window's size follow. It turns red past 85%. |
 | ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed as small rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
 | 💰 | **Totals** | Cost, tokens, time and model as a quiet row of figures. Time is the finished turns' total; the live count is the clock on the top line. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
 | 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), a status pill and the time. Deleting files with `rm` shows as a red **Delete** row. |
 | ✏️ | **Code changes inline** | An Edit or Write shows its change right under its row: numbered lines, added ones on green, removed ones on red, a `⋯` where the patch skips lines, and `+N` / `−N` pills in place of `saved`. The full view (ctrl+o) keeps the engine's own. |
-| 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide through the loading bar's dots, the working chip's dots light in a wave and the status dot breathes; a figure that changes (context, limits, tok/s, cost, tokens, tools) glides to its new value, and cost, tokens and time pop up off their line and land back on it as they do. A loop's picture never changes while it runs, so a redraw never restarts it; transcript rows stay still. |
+| 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide over the loading bar's blocks, the working chip's dots light in a wave and the status dot breathes; a figure that changes (context, limits, tok/s, cost, tokens, tools) glides to its new value, and cost, tokens and time pop up off their line and land back on it as they do. A loop's picture never changes while it runs, so a redraw never restarts it; transcript rows stay still. |
 | 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
