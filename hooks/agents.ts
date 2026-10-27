@@ -63,7 +63,7 @@ export const PRICES: Record<string, Price> = {
   'opus 4.5': [5, 25, 0.5, 6.25],
   'opus 4.1': [15, 75, 1.5, 18.75],
   'opus 4': [15, 75, 1.5, 18.75],
-  'sonnet 5.5': [2, 10, 0.1, 2.5],
+  'sonnet 5.5': [2, 10, 0.2, 2.5],
   'sonnet 5': [2, 10, 0.2, 2.5],
   'sonnet 4.6': [3, 15, 0.3, 3.75],
   'sonnet 4.5': [3, 15, 0.3, 3.75],
@@ -80,6 +80,7 @@ export type Counts = Pick<Agent, 'input' | 'output' | 'cacheRead' | 'cacheWrite'
 
 /** An estimate from token counts and the table above, not a bill. */
 export const agentUsd = (model: string, c: Counts): number | null => {
+  if (!countsKnown(c)) return null
   const name = prettyModel(model).toLowerCase()
   // A version the table lacks (or an id we cannot read) has no price: say so, do not borrow another's.
   const price = PRICES[LATEST[name] ?? name]
@@ -90,15 +91,19 @@ export const agentUsd = (model: string, c: Counts): number | null => {
 
 export const totalTokens = (c: Counts) => c.input + c.output + c.cacheRead + c.cacheWrite
 
+/** Counts a figure can be built on: a NaN or a negative count is no reading at all. */
+const countsKnown = (c: Counts) => [c.input, c.output, c.cacheRead, c.cacheWrite].every(v => Number.isFinite(v) && v >= 0)
+
 export const usd = (v: number | null) => (v === null ? '—' : v < 0.005 ? '$0.00' : `$${v.toFixed(2)}`)
 
 /** What the strip lists: running agents first, then the ones that finished lately; at most `max`. */
 export const visibleAgents = (agents: Agent[], now: number, opts: { max?: number; keepMs?: number } = {}) => {
-  const max = opts.max ?? 4
+  const max = Math.max(0, opts.max ?? 4)
   const keepMs = opts.keepMs ?? 120_000
   const running = agents.filter(a => a.status === 'running')
   const recent = agents
-    .filter(a => a.status !== 'running' && a.endedAt !== null && now - a.endedAt <= keepMs)
+    // Either way round: after the clock steps back, a card that seems to end ahead of now still leaves.
+    .filter(a => a.status !== 'running' && a.endedAt !== null && Math.abs(now - a.endedAt) <= keepMs)
     .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
   const all = [...running, ...recent]
   return { shown: all.slice(0, max), more: Math.max(0, all.length - max) }
@@ -149,7 +154,10 @@ export const agentStats = (a: Agent) => {
   const cost = agentUsd(a.model, a)
   const costText = cost === null ? '—' : `≈${usd(cost)}`
   const when = a.status === 'running' ? 'working' : fmtClock((a.endedAt ?? a.startedAt) - a.startedAt)
-  return clip(`${a.tools} tools · ${fmtTokens(totalTokens(a))} · ${costText} · ${when}`, 40)
+  const tokens = countsKnown(a) ? fmtTokens(totalTokens(a)) : '—'
+  // The clip takes from the figures, never the time: a cut `10:00:00` would read as ten minutes.
+  const tail = ` · ${when}`
+  return `${clip(`${a.tools} tools · ${tokens} · ${costText}`, 40 - tail.length)}${tail}`
 }
 
 /**

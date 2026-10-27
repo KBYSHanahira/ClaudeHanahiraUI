@@ -13,6 +13,7 @@ import {
   barCapSvg,
   base,
   cardSvg,
+  clip,
   contextSvg,
   countSvg,
   dotSvg,
@@ -40,6 +41,7 @@ import {
   statusPill,
   tokensPerSec,
 } from './chat'
+export { clip }
 import { iconGroup, iconSvg } from './icons'
 import { VERSION } from './version'
 import type { IconName } from './icons'
@@ -115,10 +117,97 @@ const THEME = {
   // Icons in front of each label: swap for any glyph or emoji.
 }
 
-// `down` removing volumes in any spelling (-v, a short-flag bundle with v, --volumes), within the
-// one command: a `;`, `&` or `|` ends it, so a later `ls -v` is not read as its flag.
-export const DANGEROUS =
-  /\bdocker(?:\s+|-)compose\b[^;&|\n]*?\sdown\b[^;&|\n]*?\s(?:--volumes\b|-[a-zA-Z]*v[a-zA-Z]*\b)|\bufw\s+(?:--force\s+)?enable\b/
+type Word = { text: string; quoted: boolean; runs: boolean }
+
+/**
+ * A command line read the way the shell reads it: the simple commands it runs, each a list of
+ * words with quotes and backslashes taken off. `;`, `|`, `&`, a newline, `(`, `)` and a backtick
+ * end a command (`2>&1` and `&>` are redirections, not ends); a backslash-newline joins lines.
+ * A quoted word remembers it was quoted, and `runs` marks a double-quoted one holding `$(` or a
+ * backtick, which the shell runs even inside the quotes.
+ */
+const shellCommands = (line: string): Word[][] => {
+  const s = line.replace(/\\\r?\n/g, ' ')
+  const out: Word[][] = [[]]
+  let word = ''
+  let quoted = false
+  let runs = false
+  let has = false
+  const end = () => {
+    if (has) out[out.length - 1]!.push({ text: word, quoted, runs })
+    word = ''
+    quoted = runs = has = false
+  }
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!
+    if (c === "'") {
+      const close = s.indexOf("'", i + 1)
+      const to = close < 0 ? s.length : close
+      word += s.slice(i + 1, to)
+      quoted = has = true
+      i = to
+    } else if (c === '"') {
+      let j = i + 1
+      for (; j < s.length && s[j] !== '"'; j++) {
+        if (s[j] === '\\' && j + 1 < s.length) j++
+        else if (s[j] === '`' || (s[j] === '$' && s[j + 1] === '(')) runs = true
+        word += s[j]
+      }
+      quoted = has = true
+      i = j
+    } else if (c === '\\') {
+      word += s[i + 1] ?? ''
+      has = true
+      i++
+    } else if (/\s/.test(c) && c !== '\n') {
+      end()
+    } else if (c === '&' && (s[i - 1] === '>' || s[i - 1] === '<' || s[i + 1] === '>')) {
+      word += c
+      has = true
+    } else if (';&|\n()`'.includes(c)) {
+      end()
+      out.push([])
+    } else {
+      word += c
+      has = true
+    }
+  }
+  end()
+  return out.filter(ws => ws.length)
+}
+
+const command = (w: string) => w.split('/').pop()!
+const isVolumesFlag = (w: string) =>
+  w === '--volumes' || (w.startsWith('--volumes=') && !/=(?:false|0)$/i.test(w)) || /^-[a-zA-Z]*v[a-zA-Z]*$/.test(w)
+
+/** `docker compose … down … -v` (or `docker-compose`), with the flag in any spelling. */
+const removesVolumes = (ws: string[]) => {
+  const at = ws.findIndex((w, i) => command(w) === 'docker-compose' || (command(w) === 'docker' && ws.slice(i + 1).includes('compose')))
+  if (at < 0) return false
+  const down = ws.indexOf('down', at + 1)
+  return down >= 0 && ws.slice(down + 1).some(isVolumesFlag)
+}
+
+/** `ufw enable`, whatever options come before the verb. */
+const enablesFirewall = (ws: string[]) => {
+  const at = ws.findIndex(w => command(w) === 'ufw')
+  return at >= 0 && ws.slice(at + 1).find(w => !w.startsWith('-')) === 'enable'
+}
+
+/** Programs whose quoted argument is itself a command line they run. */
+const RUNNERS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'eval', 'ssh', 'su', 'watch', 'xargs'])
+
+// `down` removing volumes in any spelling (-v, a short-flag bundle with v, --volumes), and `ufw
+// enable`, within one command: a later `ls -v` is not read as down's flag. Text in quotes is an
+// argument, not a command (`git commit -m "… ufw enable"`), unless the shell or a runner
+// (`bash -c`, `ssh host`) will run it.
+export const dangerous = (line: string): boolean =>
+  shellCommands(line).some(ws => {
+    const words = ws.map(w => w.text)
+    if (removesVolumes(words) || enablesFirewall(words)) return true
+    const runner = words.some(w => RUNNERS.has(command(w)))
+    return ws.some(w => w.quoted && (runner || w.runs) && dangerous(w.text))
+  })
 
 export const top = (byTool: Record<string, number>, n: number) =>
   Object.entries(byTool)
@@ -160,29 +249,30 @@ export const ringSvg = (percent: number, color: string, size: number, opts: { ic
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">${track}${fill}${mark}</svg>`
 }
 
-/** One-cell ring for a surface that cannot draw SVG. */
+/** One-cell ring for a surface that cannot draw SVG; no reading draws an empty ring, never a full one. */
 export const glyph = (percent: number) =>
-  percent < 12.5 ? '○' : percent < 37.5 ? '◔' : percent < 62.5 ? '◑' : percent < 87.5 ? '◕' : '●'
+  !Number.isFinite(percent) || percent < 12.5 ? '○' : percent < 37.5 ? '◔' : percent < 62.5 ? '◑' : percent < 87.5 ? '◕' : '●'
 
 export const limitLabel = (kind: string) =>
   kind === 'five_hour' ? '5-hour limit' : kind === 'seven_day' ? '7-day limit' : kind === 'spend_limit' ? 'spend limit' : kind
 
 /** What is left of the context window: the tokens when known, else the share. */
 export const contextLeft = (tokens: number | null, window: number | null, percent: number | null) =>
-  tokens !== null && window !== null
+  tokens !== null && window !== null && Number.isFinite(window - tokens)
     ? `${fmtTokens(Math.max(0, window - tokens))} left`
-    : percent !== null
-      ? `${Math.max(0, 100 - Math.round(percent))}% left`
+    : percent !== null && Number.isFinite(percent)
+      ? `${share(percent)}% left`
       : null
 
+/** The share left of 100, from 0 to 100 whatever the engine reports. */
+const share = (percentUsed: number) => Math.min(100, Math.max(0, 100 - Math.round(percentUsed)))
+
 /** What is left of a rate limit, as a share. */
-export const limitLeft = (percentUsed: number) => `${Math.max(0, 100 - Math.round(percentUsed))}% left`
+export const limitLeft = (percentUsed: number) => (Number.isFinite(percentUsed) ? `${share(percentUsed)}% left` : '—')
 
 /** The limit's name on the compact band, where every character costs room on one line. */
 export const shortLimitLabel = (kind: string) =>
   kind === 'five_hour' ? '5h limit' : kind === 'seven_day' ? '7d limit' : limitLabel(kind)
-
-export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 
@@ -448,7 +538,7 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Bash' }, ($, e, next) => {
-    if (DANGEROUS.test(e.command)) {
+    if (dangerous(e.command)) {
       return { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }
     }
     const key = e.command.trim()

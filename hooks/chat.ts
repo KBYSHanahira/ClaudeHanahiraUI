@@ -57,13 +57,21 @@ const DELETE_CMD = /^\s*(?:sudo\s+)?(?:git\s+rm|rm|unlink|rmdir)\s+/
 const deleted = (command: string) =>
   command
     .replace(DELETE_CMD, '')
-    .split(/[;&|]/)[0]!
+    .split(/[;&|\n]/)[0]!
     .split(/\s+/)
-    .filter(w => w && !w.startsWith('-'))
+    // After `--` every word is a path, even one that starts with a dash.
+    .filter((w, i, ws) => w && w !== '--' && (!w.startsWith('-') || ws.slice(0, i).includes('--')))
     .map(base)
     .join(' ')
 
-export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+/** At most n characters, the last an ellipsis when cut. Counts whole characters, so an emoji or
+ *  a Thai vowel mark is never split from its base. */
+export const clip = (s: string, n: number) => {
+  if (n <= 0) return ''
+  const chars = Array.from(graphemes.segment(s), g => g.segment)
+  return chars.length > n ? `${chars.slice(0, n - 1).join('')}…` : s
+}
 /** The last part of a path, for POSIX and Windows paths alike (C:\\work\\app → app). */
 export const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
@@ -164,7 +172,7 @@ export const statusPill = (
   if (name === 'Read') {
     const file = (out.file ?? {}) as Input
     const n = typeof file.numLines === 'number' ? file.numLines : null
-    return { text: n === null ? 'read' : `${n} lines`, icon: 'check', ...PILL.ok }
+    return { text: n === null ? 'read' : n === 1 ? '1 line' : `${n} lines`, icon: 'check', ...PILL.ok }
   }
   return { text: 'done', icon: 'check', ...PILL.ok }
 }
@@ -229,11 +237,16 @@ export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
       }
     }
   } else if (fallback) {
-    fallback.split('\n').forEach((text, i) => rows.push({ n: i + 1, sign: '+', text }))
+    // A file's last newline ends its last line; it starts no line of its own.
+    fallback.replace(/\n$/, '').split('\n').forEach((text, i) => rows.push({ n: i + 1, sign: '+', text }))
   }
-  const total = rows.length
+  const shown = rows.slice(0, max)
+  // A gap with nothing shown after it says nothing: the "more" note covers what follows.
+  if (shown.length < rows.length && shown[shown.length - 1]?.sign === '@') shown.pop()
+  // `more` counts the file's lines left out, not the gap rows between hunks.
+  const more = rows.slice(shown.length).filter(r => r.sign !== '@').length
   // Counted over every row, so the header's "added" and "removed" do not stop at the rows shown.
-  return { rows: rows.slice(0, max), more: Math.max(0, total - max), ...countChanges(rows) }
+  return { rows: shown, more, ...countChanges(rows) }
 }
 
 /**

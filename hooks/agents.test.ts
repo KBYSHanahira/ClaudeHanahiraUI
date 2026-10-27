@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
+import { fmtClock } from './chat'
 import { BAR_ROOM, CARD_H, CARD_W, accentFor, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
@@ -80,6 +81,8 @@ describe('cost', () => {
 
   test('cache tokens use their own rates, and totals add up', () => {
     expect(cents(agentUsd('claude-fable-5-1', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 1_000_000 }))).toBe(12.75)
+    // Sonnet 5.5 cache reads are $0.20/MTok, as Opus 5.5's are.
+    expect(cents(agentUsd('claude-sonnet-5-5', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 0 }))).toBe(0.2)
     expect(totalTokens({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 })).toBe(10)
     expect(usd(0.29)).toBe('$0.29')
     expect(usd(0.001)).toBe('$0.00')
@@ -103,6 +106,16 @@ describe('visibleAgents', () => {
 
   test('nothing running and nothing recent is an empty strip', () => {
     expect(visibleAgents([mk({ status: 'done', endedAt: 1 })], 999_999).shown).toEqual([])
+  })
+
+  test('a finished card still leaves after the clock steps back past it', () => {
+    expect(visibleAgents([mk({ status: 'done', endedAt: 1000 })], -1e6, { keepMs: 3000 }).shown).toEqual([])
+    expect(visibleAgents([mk({ status: 'done', endedAt: 1000 })], 999, { keepMs: 3000 }).shown.length).toBe(1)
+  })
+
+  test('a max below zero shows nothing and counts every agent as more', () => {
+    const list = Array.from({ length: 5 }, (_, i) => mk({ id: `a${i}` }))
+    expect(visibleAgents(list, 0, { max: -1 })).toMatchObject({ shown: [], more: 5 })
   })
 })
 
@@ -156,6 +169,17 @@ describe('agent card', () => {
   test('a running card carries no ticking clock, so its stats line holds still between events', () => {
     expect(agentStats(mk({ startedAt: 0 }))).toBe(agentStats(mk({ startedAt: 0 })))
     expect(agentStats(mk({ startedAt: 0 }))).toContain('working')
+  })
+
+  test('a long stats line is cut in its figures, never in the time', () => {
+    const line = agentStats(mk({ status: 'done', startedAt: 0, endedAt: 36_000_000, tools: 12345, output: 1e10 }))
+    expect(line.length).toBeLessThanOrEqual(40)
+    expect(line.endsWith(` · ${fmtClock(36_000_000)}`)).toBe(true)
+  })
+
+  test('counts that are no reading show a dash, not NaN or a cost', () => {
+    expect(agentStats(mk({ input: NaN }))).toBe('0 tools · — · — · working')
+    expect(agentUsd('claude-opus-5-5', mk({ output: -5 }))).toBeNull()
   })
 
   test('a barless card leaves the bar out', () => {

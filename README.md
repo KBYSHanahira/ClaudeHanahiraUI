@@ -189,7 +189,7 @@ scripts/install-ssh.sh
 - `hooks/register.tsx` の `THEME.compact`（既定でオン）は、統計を 1 行ずつのゲージと数値の 2 段（列がそろう）で描き、高さをおよそ半分にします。`false` で従来のカードに戻ります。
 - 色・アイコン・リングの大きさ・バーの長さ・カード表示数・完了カードの表示時間は、`hooks/register.tsx` 冒頭の `THEME` と `RING` で変更できます。
 - ツール行の見た目は `hooks/chat.ts`、エージェントカードと価格表は `hooks/agents.ts`、アイコンは `hooks/icons.ts` です。
-- ブロックするコマンドは `hooks/register.tsx` の `DANGEROUS` で編集できます。
+- ブロックするコマンドは `hooks/register.tsx` の `dangerous` で編集できます。
 - 制限リングは、アカウントがレート制限を報告する場合だけ表示されます。
 
 ## 🧪 動作要件と注意

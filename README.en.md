@@ -189,7 +189,7 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 - `THEME.compact` in `hooks/register.tsx` (on by default) draws the stats as two aligned rows of one-line gauges and figures, about half the height; `false` brings back the full cards.
 - Colours, icons, ring size, bar length, number of agent cards and how long a finished card stays are in `THEME` and `RING` at the top of `hooks/register.tsx`.
 - The tool-row look is in `hooks/chat.ts`; agent cards and the price table in `hooks/agents.ts`; icons in `hooks/icons.ts`.
-- Edit the blocked commands in `DANGEROUS` in `hooks/register.tsx`.
+- Edit the blocked commands in `dangerous` in `hooks/register.tsx`.
 - The limit rings appear only when the account reports rate limits.
 
 ## 🧪 Requirements and notes

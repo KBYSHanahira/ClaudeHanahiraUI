@@ -1,31 +1,60 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DANGEROUS, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { dangerous, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
   test('matches the dangerous commands', () => {
-    expect(DANGEROUS.test('docker compose down -v')).toBe(true)
-    expect(DANGEROUS.test('sudo ufw  enable')).toBe(true)
+    expect(dangerous('docker compose down -v')).toBe(true)
+    expect(dangerous('sudo ufw  enable')).toBe(true)
   })
 
   test('lets normal commands through', () => {
-    expect(DANGEROUS.test('docker compose up -d --build')).toBe(false)
-    expect(DANGEROUS.test('docker compose ps')).toBe(false)
-    expect(DANGEROUS.test('sudo ufw allow 9020/tcp')).toBe(false)
+    expect(dangerous('docker compose up -d --build')).toBe(false)
+    expect(dangerous('docker compose ps')).toBe(false)
+    expect(dangerous('sudo ufw allow 9020/tcp')).toBe(false)
   })
 
   test('catches the other spellings of removing volumes', () => {
-    expect(DANGEROUS.test('docker-compose down -v')).toBe(true)
-    expect(DANGEROUS.test('docker compose down --volumes')).toBe(true)
-    expect(DANGEROUS.test('docker compose -f prod.yml down --rmi all -v')).toBe(true)
-    expect(DANGEROUS.test('sudo ufw --force enable')).toBe(true)
+    expect(dangerous('docker-compose down -v')).toBe(true)
+    expect(dangerous('docker compose down --volumes')).toBe(true)
+    expect(dangerous('docker compose -f prod.yml down --rmi all -v')).toBe(true)
+    expect(dangerous('sudo ufw --force enable')).toBe(true)
   })
 
   test('a flag that only contains v, or a later command, is not a volume removal', () => {
-    expect(DANGEROUS.test('docker compose down --verbose')).toBe(false)
-    expect(DANGEROUS.test('docker compose down && git log -v')).toBe(false)
-    expect(DANGEROUS.test('docker compose down; ls -v')).toBe(false)
+    expect(dangerous('docker compose down --verbose')).toBe(false)
+    expect(dangerous('docker compose down && git log -v')).toBe(false)
+    expect(dangerous('docker compose down; ls -v')).toBe(false)
+  })
+
+  test('a line continuation, a redirection or quotes around the flag do not hide it', () => {
+    expect(dangerous('docker compose down \\\n  -v')).toBe(true)
+    expect(dangerous('docker compose \\\n down --volumes')).toBe(true)
+    expect(dangerous('docker compose down 2>&1 -v')).toBe(true)
+    expect(dangerous('docker compose down "-v"')).toBe(true)
+    expect(dangerous("docker compose down '-v'")).toBe(true)
+    expect(dangerous('docker compose down \\-v')).toBe(true)
+    expect(dangerous('docker compose down --volumes=true')).toBe(true)
+    expect(dangerous('ufw \\\n enable')).toBe(true)
+    expect(dangerous('ufw "enable"')).toBe(true)
+    expect(dangerous('sudo ufw --force=yes enable')).toBe(true)
+    expect(dangerous('/usr/sbin/ufw enable')).toBe(true)
+  })
+
+  test('a command run by a shell, ssh or a substitution is still caught', () => {
+    expect(dangerous("bash -c 'docker compose down -v'")).toBe(true)
+    expect(dangerous('ssh prod "sudo ufw enable"')).toBe(true)
+    expect(dangerous('echo "$(docker compose down -v)"')).toBe(true)
+    expect(dangerous('echo $(ufw enable)')).toBe(true)
+  })
+
+  test('the words inside a quoted argument are not a command', () => {
+    expect(dangerous('echo "ufw enable"')).toBe(false)
+    expect(dangerous('git commit -m "docs: never ufw enable"')).toBe(false)
+    expect(dangerous('grep "docker compose down -v" README.md')).toBe(false)
+    expect(dangerous('docker compose down --volumes=false')).toBe(false)
+    expect(dangerous('docker compose -p a-down down --env-file .env-v')).toBe(false)
   })
 })
 
@@ -41,6 +70,14 @@ describe('stats helpers', () => {
   test('clip shortens with an ellipsis', () => {
     expect(clip('abcdef', 4)).toBe('abc…')
     expect(clip('abc', 4)).toBe('abc')
+  })
+
+  test('clip cuts between whole characters and never runs past n', () => {
+    expect(clip('🚀'.repeat(20), 4)).toBe('🚀🚀🚀…')
+    expect(clip('👩‍💻'.repeat(5), 3)).toBe('👩‍💻👩‍💻…')
+    expect(clip('ที่นี่ที่นี่', 3)).toBe('ที่นี่…')
+    expect(clip('🚀🚀', 2)).toBe('🚀🚀')
+    expect(clip('abcdef', 0)).toBe('')
   })
 })
 
@@ -76,6 +113,7 @@ describe('rings', () => {
 
   test('glyph steps through quarters', () => {
     expect([0, 25, 50, 75, 100].map(glyph)).toEqual(['○', '◔', '◑', '◕', '●'])
+    expect(glyph(NaN)).toBe('○')
   })
 
   test('limitLabel names the windows', () => {
@@ -95,6 +133,10 @@ describe('rings', () => {
     expect(limitLeft(12)).toBe('88% left')
     expect(limitLeft(20.6)).toBe('79% left')
     expect(limitLeft(130)).toBe('0% left')
+    expect(limitLeft(-20)).toBe('100% left')
+    expect(limitLeft(NaN)).toBe('—')
+    expect(contextLeft(null, null, NaN)).toBeNull()
+    expect(contextLeft(null, null, -5)).toBe('100% left')
   })
 })
 

@@ -25,6 +25,11 @@ describe('describe', () => {
     expect(describeCall('Bash', { command: 'echo rm x' }).kind).toBe('run')
   })
 
+  test('a delete ends at a newline, and a path after -- counts even with a dash', () => {
+    expect(describeCall('Bash', { command: 'rm a.txt\necho done' }).target).toBe('a.txt')
+    expect(describeCall('Bash', { command: 'rm -f -- -weird b' }).target).toBe('-weird b')
+  })
+
   test('mcp tools fall back to their short name', () => {
     expect(describeCall('mcp__srv__do_thing', {}).target).toBe('do_thing')
   })
@@ -48,6 +53,7 @@ describe('statusPill', () => {
   test('Edit is saved, Read counts lines', () => {
     expect(statusPill('Edit', idle)).toMatchObject({ text: 'saved', icon: 'check' })
     expect(statusPill('Read', { ...idle, output: { file: { numLines: 12 } } })).toMatchObject({ text: '12 lines', icon: 'check' })
+    expect(statusPill('Read', { ...idle, output: { file: { numLines: 1 } } })).toMatchObject({ text: '1 line' })
   })
 })
 
@@ -98,6 +104,16 @@ describe('diffRows', () => {
     expect({ added, removed }).toEqual({ added: 2, removed: 1 })
   })
 
+  test('more counts hidden lines, not gap rows, and no gap ends the rows shown', () => {
+    const many = { oldStart: 1, newStart: 1, lines: Array.from({ length: 14 }, (_, i) => `+l${i}`) }
+    const { rows, more } = diffRows([many, { oldStart: 90, newStart: 90, lines: ['+z'] }])
+    expect(rows.length).toBe(14)
+    expect(more).toBe(1)
+    const cut = diffRows([{ ...many, lines: many.lines.slice(0, 13) }, { oldStart: 90, newStart: 90, lines: ['+z'] }])
+    expect(cut.rows.map(r => r.sign).at(-1)).toBe('+')
+    expect(cut.more).toBe(1)
+  })
+
   test('skips the no-newline marker: it is no line of the file', () => {
     const { rows } = diffRows([{ oldStart: 1, newStart: 1, lines: ['-a', '\\ No newline at end of file', '+a', ' b'] }])
     expect(rows.map(r => [r.n, r.sign, r.text])).toEqual([
@@ -113,6 +129,9 @@ describe('fileChange', () => {
     expect(fileChange('Edit', { structuredPatch: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }] })).toMatchObject({ added: 1, removed: 1 })
     expect(fileChange('Write', { type: 'create', content: 'x\ny', structuredPatch: [] })).toMatchObject({ added: 2, removed: 0 })
     expect(fileChange('Write', { type: 'update', content: 'x', structuredPatch: [] })?.rows).toEqual([])
+    // The last newline ends the last line; it adds no empty line of its own.
+    expect(fileChange('Write', { type: 'create', content: 'a\nb\n', structuredPatch: [] })).toMatchObject({ added: 2 })
+    expect(fileChange('Write', { type: 'create', content: '\n', structuredPatch: [] })).toMatchObject({ added: 1 })
     expect(fileChange('Edit', 'Error: file not found')?.rows).toEqual([])
     expect(fileChange('Read', { file: {} })).toBeNull()
   })
