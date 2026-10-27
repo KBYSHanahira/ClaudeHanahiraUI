@@ -622,14 +622,21 @@ export const contextSvg = (
   return { svg, width, height, natural }
 }
 
-/** The right end of an `open` loading bar: a half disc in the track's colour, drawn after the slot that cuts the bar. */
-export const barCapSvg = (height: number, padBottom = 0) => {
+/**
+ * The right end of an `open` loading bar: a half disc in the track's colour, drawn after the slot
+ * that cuts the bar. Pass the bar's `color` while it is live: the cap takes the same tint as the
+ * lit track, or it reads as a square end against the background.
+ */
+export const barCapSvg = (height: number, padBottom = 0, color?: string) => {
   const r = height / 2
   const w = Math.ceil(r)
+  const disc = `<path d="M0 0A${r} ${r} 0 0 1 0 ${height}z"`
   return {
     svg:
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${height + padBottom}" width="${w}" height="${height + padBottom}">` +
-      `<path d="M0 0A${r} ${r} 0 0 1 0 ${height}z" fill="${INK.track}"/></svg>`,
+      `${disc} fill="${INK.track}"/>` +
+      (color ? `${disc} fill="${color}" fill-opacity="0.2"/>` : '') +
+      `</svg>`,
     width: w,
     height: height + padBottom,
   }

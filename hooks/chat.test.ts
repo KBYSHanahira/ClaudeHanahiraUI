@@ -347,6 +347,13 @@ describe('loadingSvg', () => {
     expect(cap.width).toBe(6)
     expect(cap.height).toBe(18)
     expect(cap.svg).toContain('A6 6 0 0 1 0 12z" fill="#332f2d"')
+    expect(cap.svg).not.toContain('fill-opacity')
+  })
+
+  test('a live cap takes the same tint as the lit track, so the right end rounds like the left', () => {
+    const tint = 'fill="#9b8cf7" fill-opacity="0.2"'
+    expect(loadingSvg(900, 12, '#9b8cf7', { open: true, live: true })).toContain(`0 1 6 0z" ${tint}`)
+    expect(barCapSvg(12, 6, '#9b8cf7').svg).toContain(`A6 6 0 0 1 0 12z" ${tint}`)
   })
 })
 

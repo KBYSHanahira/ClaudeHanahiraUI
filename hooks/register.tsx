@@ -1046,7 +1046,7 @@ export const register: Register = on => {
                     height={THEME.barHeight + THEME.barGap}
                   />
                 </Box>
-                <Svg source={barCapSvg(THEME.barHeight, THEME.barGap).svg} alt="" width={barCapSvg(THEME.barHeight).width} height={THEME.barHeight + THEME.barGap} />
+                <Svg source={barCapSvg(THEME.barHeight, THEME.barGap, e.props.isWorking ? THEME.accent : undefined).svg} alt="" width={barCapSvg(THEME.barHeight).width} height={THEME.barHeight + THEME.barGap} />
               </Box>
             ) : null}
           </Box>
