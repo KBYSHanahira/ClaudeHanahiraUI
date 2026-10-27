@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
-import { SPIN_S, phaseBegin } from './chat'
 import { BAR_ROOM, CARD_H, CARD_W, accentFor, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
@@ -109,38 +108,38 @@ describe('visibleAgents', () => {
 
 describe('agent card', () => {
   test('is deterministic and the size it says', () => {
-    const a = agentCardSvg(mk(), 5000)
-    expect(a.svg).toBe(agentCardSvg(mk(), 5000).svg)
+    const a = agentCardSvg(mk())
+    expect(a.svg).toBe(agentCardSvg(mk()).svg)
     expect(a.svg).toContain(`width="${CARD_W}" height="${CARD_H}"`)
     expect(a.width).toBe(CARD_W)
   })
 
   test('says only what is known: no effort means no effort word, and no model means so', () => {
-    const noEffort = agentCardSvg(mk({ effort: null }), 1).svg
+    const noEffort = agentCardSvg(mk({ effort: null })).svg
     for (const word of ['low', 'medium', 'high', 'xhigh', 'max', 'light', 'careful', 'heavy']) {
       expect(noEffort).not.toContain(`>${word}</text>`)
     }
-    const noModel = agentCardSvg(mk({ model: '' }), 1).svg
+    const noModel = agentCardSvg(mk({ model: '' })).svg
     expect(noModel).toContain('model pending')
     expect(noModel).toContain('· — ·') // and no borrowed price: the cost is a dash
   })
 
   test('never prints a weight word of its own', () => {
     for (const effort of ['low', 'medium', 'high', 'xhigh', 'max', null]) {
-      const svg = agentCardSvg(mk({ effort }), 1).svg
+      const svg = agentCardSvg(mk({ effort })).svg
       for (const word of ['>light<', '>careful<', '>heavy<']) expect(svg).not.toContain(word)
     }
   })
 
   test('padBottom adds transparent room under the card and leaves the card alone', () => {
-    const padded = agentCardSvg(mk(), 5000, { padBottom: 8 })
+    const padded = agentCardSvg(mk(), { padBottom: 8 })
     expect(padded.height).toBe(CARD_H + 8)
     expect(padded.svg).toContain(`viewBox="0 0 ${CARD_W} ${CARD_H + 8}"`)
     expect(padded.svg).toContain(`height="${CARD_H - 1.5}" rx="12"`)
   })
 
   test('shows the name, the tag, the model and the figures', () => {
-    const svg = agentCardSvg(mk({ effort: 'xhigh', tools: 3, input: 20000, output: 1000, startedAt: 0, endedAt: 44000, status: 'done' }), 50000).svg
+    const svg = agentCardSvg(mk({ effort: 'xhigh', tools: 3, input: 20000, output: 1000, startedAt: 0, endedAt: 44000, status: 'done' })).svg
     expect(svg).toContain('Build the landing page')
     expect(svg).toContain('>Opus 5.5</text>')
     expect(svg).toContain('>xhigh</text>')
@@ -149,9 +148,9 @@ describe('agent card', () => {
   })
 
   test('a long name is pinned short of the status mark', () => {
-    const svg = agentCardSvg(mk({ name: 'Research competitor launches and write it all up' }), 1).svg
+    const svg = agentCardSvg(mk({ name: 'Research competitor launches and write it all up' })).svg
     expect(svg).toMatch(/textLength="156"/)
-    expect(agentCardSvg(mk({ name: 'Short' }), 1).svg).not.toContain('textLength')
+    expect(agentCardSvg(mk({ name: 'Short' })).svg).not.toContain('textLength')
   })
 
   test('a running card carries no ticking clock, so its stats line holds still between events', () => {
@@ -159,52 +158,25 @@ describe('agent card', () => {
     expect(agentStats(mk({ startedAt: 0 }))).toContain('working')
   })
 
-  test('a barless card leaves the bar out and holds its spinner still, for the surface to move', () => {
-    const svg = agentCardSvg(mk({ startedAt: 0 }), 5_000, { barless: true })
+  test('a barless card leaves the bar out', () => {
+    const svg = agentCardSvg(mk({ startedAt: 0 }), { barless: true })
     expect(svg.height).toBe(CARD_H - BAR_ROOM)
-    expect(svg.svg).not.toContain('<animate')
     expect(svg.svg).not.toContain('fill="#2b2827"')
   })
 
-  test('a running card picks its loops up at the phase reached since the agent started', () => {
-    const svg = agentCardSvg(mk({ startedAt: 0 }), 5_000).svg
-    expect(svg).toContain(`begin="${phaseBegin(5_000, SPIN_S * 1000)}"`)
-    expect(svg).toContain(`begin="${phaseBegin(5_000, 1600)}"`)
-  })
-
-  test('a changed stats line rolls the old one out and the new one in', () => {
-    const svg = agentCardSvg(mk({ tools: 4 }), 1_000, { fromStats: '3 tools · 0 · — · working' }).svg
-    expect(svg).toContain('3 tools · 0 · — · working')
-    expect(svg).toContain('from="0 0" to="0 -14"')
-    expect(svg).toContain('from="0 14" to="0 0"')
-    expect(agentCardSvg(mk({ tools: 4 }), 1_000).svg).not.toContain('to="0 -14"')
-  })
-
   test('escapes a name that would break the markup', () => {
-    expect(agentCardSvg(mk({ name: 'a<b>&c' }), 1).svg).toContain('a&lt;b&gt;&amp;c')
+    expect(agentCardSvg(mk({ name: 'a<b>&c' })).svg).toContain('a&lt;b&gt;&amp;c')
   })
 
-  test('running turns a spinner and glides its bar one way, border still; a finished card is still', () => {
-    const run = agentCardSvg(mk(), 5000).svg
-    expect(run).toContain('type="rotate"')
-    expect(run).toContain('keySplines="0.65 0 0.35 1"')
-    expect(run).not.toContain('attributeName="stroke"')
-    expect(run).toContain('repeatCount="indefinite"')
-    const done = agentCardSvg(mk({ status: 'done', endedAt: 4000 }), 5000).svg
-    expect(done).not.toContain('<animate')
+  test('every card is a still picture, running or finished', () => {
+    for (const a of [mk(), mk({ status: 'done', endedAt: 4000 }), mk({ status: 'error', endedAt: 4000 })]) {
+      expect(agentCardSvg(a).svg).not.toContain('<animate')
+    }
   })
-
-  test('pop bounces the card in; flash washes the border once', () => {
-    const popped = agentCardSvg(mk({ status: 'done', endedAt: 4000 }), 5000, { pop: true }).svg
-    expect(popped).toContain('type="scale" values="0.82;1.06;1"')
-    const flash = agentCardSvg(mk({ status: 'done', endedAt: 4000 }), 5000, { flash: true }).svg
-    expect(flash).toContain('from="#7bd88f" to="#3a3836"')
-  })
-
 
   test('the status mark is drawn: a check, a cross, a ban', () => {
     for (const status of ['done', 'error', 'stopped'] as const) {
-      expect(agentCardSvg(mk({ status, endedAt: 1 }), 2).svg).toContain('stroke-linecap="round"')
+      expect(agentCardSvg(mk({ status, endedAt: 1 })).svg).toContain('stroke-linecap="round"')
     }
   })
 

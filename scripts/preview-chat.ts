@@ -5,11 +5,9 @@
 // finish begins at time 0), for a browser to step through the motion.
 import { writeFileSync } from 'node:fs'
 import { badgeSvg, diffRows, fmtDuration, INK, KIND_COLOR, KIND_ICON, PILL, pillSvg, ROW, statusPill, taskSummary } from '../hooks/chat'
-import type { Kind, PillFx, PillIcon } from '../hooks/chat'
+import type { Kind, PillIcon } from '../hooks/chat'
 
 const out = process.argv[2]
-// Mid-finish: the finish of every finished row starts at 0, so a browser can seek through it.
-const enter = out ? 0 : undefined
 
 const W = 780
 const font = 'font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif"'
@@ -21,7 +19,7 @@ const parts: string[] = []
 let y = 20
 const X = 24
 
-type Pill = { text: string; fg: string; bg: string; icon?: PillIcon; running?: boolean; fx?: PillFx }
+type Pill = { text: string; fg: string; bg: string; icon?: PillIcon; running?: boolean }
 /** The pills at the right, right-aligned, then the duration; returns nothing, draws at row y. */
 const right = (pills: Pill[], ms: number | undefined, rowY: number) => {
   let x = W - X
@@ -31,7 +29,7 @@ const right = (pills: Pill[], ms: number | undefined, rowY: number) => {
     x -= t.length * 7.4 + 10
   }
   for (const p of [...pills].reverse()) {
-    const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon, 0, 0, p.fx)
+    const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon)
     x -= b.width
     parts.push(nest(b.svg, x, rowY + (ROW.tile - ROW.pill) / 2))
     x -= 8
@@ -40,7 +38,7 @@ const right = (pills: Pill[], ms: number | undefined, rowY: number) => {
 
 const row = (kind: Kind, verb: string, target: string, pills: Pill[], ms?: number, opts: { mono?: boolean; running?: boolean } = {}) => {
   const color = KIND_COLOR[kind]
-  parts.push(nest(badgeSvg(color, KIND_ICON[kind], ROW.tile, opts.running === true, 0, opts.running ? undefined : enter), X, y))
+  parts.push(nest(badgeSvg(color, KIND_ICON[kind], ROW.tile, opts.running === true), X, y))
   const vx = X + ROW.tile + 8
   // One text, so the target follows the verb wherever the font ends it.
   parts.push(
@@ -51,7 +49,7 @@ const row = (kind: Kind, verb: string, target: string, pills: Pill[], ms?: numbe
   y += ROW.tile + 10
 }
 
-const done = (p: ReturnType<typeof statusPill>): Pill => ({ ...p, fx: { enter, alive: true, morph: PILL.busy } })
+const done = (p: ReturnType<typeof statusPill>): Pill => p
 const idle = { isRunning: false, isErrored: false, isInterrupted: false }
 
 // Your card: the band's warm edge, a faintly warm ground.
@@ -70,8 +68,8 @@ const patch = [
 ]
 const d = diffRows(patch)
 row('edit', 'Edit', 'chat.ts', [
-  { text: `+${d.added}`, ...PILL.ok, fx: { enter, count: { n: d.added, word: '', prefix: '+' } } },
-  { text: `−${d.removed}`, ...PILL.bad, fx: { enter, count: { n: d.removed, word: '', prefix: '−' } } },
+  { text: `+${d.added}`, ...PILL.ok },
+  { text: `−${d.removed}`, ...PILL.bad },
 ], 1100, { mono: true })
 {
   const lineH = 20
@@ -97,9 +95,9 @@ row('edit', 'Edit', 'chat.ts', [
 }
 
 row('delete', 'Delete', 'old.js build', [done(statusPill('Bash', idle))], 90, { mono: true })
-row('search', 'Explore', 'Read 3 · Search 2 · Find 1', [{ text: '6 calls', icon: 'check', ...PILL.ok, fx: { enter, alive: true, morph: PILL.busy } }])
+row('search', 'Explore', 'Read 3 · Search 2 · Find 1', [{ text: '6 calls', icon: 'check', ...PILL.ok }])
 row('run', 'Run', 'bun run build', [{ text: 'running', running: true, ...PILL.busy }], undefined, { running: true })
-row('agent', 'Agent', taskSummary('Agent "Agent smoke test" completed', 'Agent'), [{ text: 'done', icon: 'check', ...PILL.ok, fx: { enter, alive: true } }], 8000)
+row('agent', 'Agent', taskSummary('Agent "Agent smoke test" completed', 'Agent'), [{ text: 'done', icon: 'check', ...PILL.ok }], 8000)
 row('run', 'Run', 'Deploy to staging', [done(statusPill('Bash', { ...idle, isErrored: true }))], 2600)
 
 const H = y + 10

@@ -17,8 +17,6 @@ import {
   countSvg,
   dotSvg,
   describe,
-  ENTER_MS,
-  finishClock,
   fileChange,
   fmtClock,
   fmtCost,
@@ -28,15 +26,12 @@ import {
   fmtSpeed,
   fmtTokens,
   loadingSvg,
-  holdFirst,
-  phaseBegin,
   pillSvg,
   chipSvg,
   ROW,
   taskKind,
   taskPill,
   taskSummary,
-  sinceBegin,
   STAT,
   liveSpeed,
   speedScale,
@@ -48,25 +43,12 @@ import {
 import { iconGroup, iconSvg } from './icons'
 import { VERSION } from './version'
 import type { IconName } from './icons'
-import type { DiffRow, PillFx } from './chat'
+import type { DiffRow } from './chat'
 
 // Per-call facts the transcript rows read: how long a call took, which Bash
 // commands are repeats. Plain module state; a row redraws when its call resolves.
 const durations = new Map<string, number>()
-// When each call this process ran ended: a row's finish (pill pop, badge ripple, a count rising)
-// plays from that moment, once. A row from history has no entry, so it draws still.
-const endedAt = new Map<string, number>()
 const reruns = new Set<string>()
-// A surface blinks only when it swaps a picture; a picture's own loops run on untouched. So a
-// running picture (a busy pill, the band's bar and dots, a ring's pulse) is drawn with its loops
-// at phase 0: the same string on every redraw, which the surface leaves alone. Drawing it at
-// the clock's phase instead made every redraw a new picture, and every swap a blink.
-// Only a picture that changes anyway (an agent card, whose stats move) takes the clock, at the
-// moment it changes, so the loop in its new picture carries on near where the old one was; it
-// holds that phase until it changes again. A one-shot (a finish, a roll, a bounce) is held at
-// its first draw the same way (see holdFirst). LOOP_LEAD_MS covers the time from drawing to the
-// picture showing (over SSH, the round trip).
-const LOOP_LEAD_MS = 120
 const seenCommands = new Set<string>()
 const remember = <V,>(m: Map<string, V>, k: string, v: V) => {
   m.set(k, v)
@@ -98,19 +80,12 @@ const stats = atom({ plugin: 'hanahira-claude-ui', key: 'stats' } as const, EMPT
 /** A stored value is whatever an earlier version or a reload left behind: never trust its shape. */
 export const asList = (v: unknown): Agent[] => (Array.isArray(v) ? (v as Agent[]) : [])
 const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, [] as Agent[])
-// What the strip last drew, so a card bounces in once and flashes once, not on every redraw.
-const firstSeenAt = new Map<string, number>()
 // The widest each compact-band column has been, per layout: a column only ever widens, so a
 // value that gains or loses a digit while a turn runs never moves its neighbours.
 const colMax = new Map<string, number>()
-const statusAt = new Map<string, { status: string; at: number }>()
 const efforts = new Map<string, string>()
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
-// Read by a transcript row only while its finish plays; bumped once that motion ends, so the row
-// is drawn once more as a still picture. Left on its animated picture, a row replays the pop
-// (and its fade from nothing) every time the surface mounts it again, long after it finished.
-const settle = atom({ plugin: 'hanahira-claude-ui', key: 'settle' } as const, 0)
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
 const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
 const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
@@ -164,39 +139,21 @@ export const tone = (percent: number) => (percent >= 85 ? '#f2736b' : percent >=
 /** Ring colour:the theme's warm tone, red once the window is nearly spent. */
 export const ringColor = (percent: number) => (percent >= 85 ? '#f2736b' : THEME.warm)
 
-/**
- * A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. Given `from`
- * (the percent it was last drawn at) the arc grows from there; `pulse` breathes it.
- */
-export const ringSvg = (
-  percent: number,
-  color: string,
-  size: number,
-  opts: { from?: number; pulse?: boolean; icon?: IconName; ago?: number; now?: number; bigIcon?: boolean } = {},
-) => {
+/** A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. */
+export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean } = {}) => {
   // `bigIcon`, for a ring drawn small: a thinner ring and a larger icon, so the icon still
   // reads as what it is at a text row's height.
   const stroke = opts.bigIcon ? 3.5 : 5
   const r = (44 - stroke) / 2
   const c = 2 * Math.PI * r
-  const arcAt = (v: number) => (Math.max(0, Math.min(100, v)) / 100) * c
-  const arc = arcAt(percent)
-  const arcFrom = opts.from === undefined ? arc : arcAt(opts.from)
-  const grow =
-    Math.abs(arc - arcFrom) > 0.5
-      ? `<animate attributeName="stroke-dasharray" from="${arcFrom.toFixed(2)} ${c.toFixed(2)}" to="${arc.toFixed(2)} ${c.toFixed(2)}" dur="0.9s" begin="${sinceBegin(opts.ago)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"/>`
-      : ''
-  // Near the limit the arc breathes, slow and eased: a warning, not a strobe.
-  const pulse = opts.pulse
-    ? `<animate attributeName="stroke-opacity" values="1;0.55;1" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" dur="2s" begin="${phaseBegin(opts.now ?? 0, 2000)}" repeatCount="indefinite"/>`
-    : ''
+  const arc = (Math.max(0, Math.min(100, percent)) / 100) * c
   // A disc tinted the arc's colour fills the middle, and the icon fills the disc: big enough
   // to read at a glance, so the gauge reads as one piece.
   const disc = `<circle cx="22" cy="22" r="${opts.bigIcon ? 17 : 15}" fill="${color}" fill-opacity="0.13"/>`
   const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/>`
   const fill =
     arc > 0
-      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${arc.toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)">${grow}${pulse}</circle>`
+      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${arc.toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>`
       : ''
   const iconPx = opts.bigIcon ? 25 : 20
   const mark = opts.icon ? iconGroup(opts.icon, color, 22 - iconPx / 2, 22 - iconPx / 2, iconPx, opts.bigIcon ? 2.3 : 2.1) : ''
@@ -229,75 +186,26 @@ export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 
 
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 
-// What the stat figures were last drawn as: an animation plays only when a value changes.
-
-/** How long a figure counts as "just changed": its roll plays inside this window, and after
- * it the picture is still, so a redraw or a reloaded image never replays an old change. */
-export const CHANGE_MS = 1200
-const changes = new Map<string, { value: unknown; from?: unknown; at: number; drawnAgo?: number }>()
-// When the freshest change ends, and whether a redraw is already booked for then.
-let freshUntil = 0
-let settleBooked = false
-
-/**
- * Notes the figure drawn under `key` and returns the value it changed from, while that change
- * is fresh (within CHANGE_MS); otherwise `from` is undefined and the figure draws still.
- * `counts` says which changes deserve motion (the tool counter: only growth); `first` makes
- * the first sight itself a change from that value (a ring grows in from 0).
- */
-export const noteChange = <T,>(
-  key: string,
-  value: T,
-  now: number,
-  opts: { counts?: (from: T, to: T) => boolean; first?: T } = {},
-): { from?: T; ago?: number } => {
-  const seen = changes.get(key)
-  if (!seen) changes.set(key, opts.first === undefined ? { value, at: -Infinity } : { value, from: opts.first, at: now })
-  else if (seen.value !== value)
-    changes.set(key, (opts.counts ?? ((a, b) => a !== b))(seen.value as T, value) ? { value, from: seen.value, at: now } : { value, at: -Infinity })
-  const c = changes.get(key)!
-  if (now - c.at >= CHANGE_MS) return {}
-  freshUntil = Math.max(freshUntil, c.at + CHANGE_MS)
-  // The roll is drawn once, from where it stood at its first draw: a redraw inside the window
-  // gives the same picture, which the surface keeps (see holdFirst).
-  c.drawnAgo ??= now - c.at
-  return { from: c.from as T, ago: c.drawnAgo }
-}
-
-/** Drops what noteChange remembers under `prefix` for every id not in `keep` (agents gone). */
-export const forgetChanges = (prefix: string, keep: Set<string>) => {
-  for (const key of changes.keys()) if (key.startsWith(prefix) && !keep.has(key.slice(prefix.length))) changes.delete(key)
-}
-
-type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban'; minWidth?: number; fx?: PillFx }
+type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban'; minWidth?: number }
 
 const PILL_GLYPH = { check: '✓', cross: '✕', ban: '⊘' }
 
 /** A status pill: a capsule where the surface draws SVG, else a tinted text block. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pillEl = (els: { Text: any; Svg: any }, p: PillSpec, now = 0) => {
+const pillEl = (els: { Text: any; Svg: any }, p: PillSpec) => {
   const { Text, Svg } = els
   if (!Svg) {
     const label = p.icon ? `${PILL_GLYPH[p.icon]} ${p.text}` : p.text
     return <Text backgroundColor={p.bg} color={p.fg} bold>{` ${label} `}</Text>
   }
-  const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon, now, p.minWidth, p.fx)
+  const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon, p.minWidth)
   // An image, never a frame: a frame reloads (and blanks) whenever its picture changes.
   return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
 }
 
-/**
- * The busy pill of a running row. Where the surface draws SVG, the same capsule as a finished
- * row's, its dots lighting in turn (phase-locked to `now`, so a redraw carries the wave on). A
- * `Client` gets only the terminal's elements, no `Svg`, so it cannot draw that capsule: on the
- * terminal, a spinner it turns on its own clock (spinner.tsx). `key` names that instance.
- */
+/** The busy pill of a running row. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const runningPill = (els: { Text: any; Svg: any; Client: any }, key: string, now: number) => {
-  const { Svg, Client } = els
-  if (!Svg && Client) return <Client key={key} module="./spinner.tsx" props={{ color: PILL.busy.fg, bg: PILL.busy.bg, label: 'running' }} />
-  return pillEl(els, { text: 'running', running: true, ...PILL.busy }, now)
-}
+const runningPill = (els: { Text: any; Svg: any }) => pillEl(els, { text: 'running', running: true, ...PILL.busy })
 
 /** A small icon where the surface draws SVG, else a plain glyph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -317,11 +225,6 @@ const CHAT = {
   diffEdge: INK.line,
 }
 
-// When each notification row was first drawn, and when this process loaded: a row first seen
-// well after the load is news, and plays its arrival once.
-const rowSeen = new Map<string, number>()
-let loadedAt = Infinity
-
 type RowSpec = {
   color: string
   icon: IconName
@@ -330,10 +233,7 @@ type RowSpec = {
   target: string
   /** The target is a file or a pattern: set in the surface's monospaced face. */
   mono?: boolean
-  spins?: boolean
-  now?: number
-  /** How long ago the row finished, while its finish plays. */
-  done?: number
+  running?: boolean
   status: unknown
   ms?: number
 }
@@ -350,7 +250,7 @@ const toolRow = (els: { Box: any; Text: any; Svg: any }, r: RowSpec) => {
     <Box justifyContent="space-between" alignItems="center" gap={1}>
       <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
         {Svg ? (
-          <Svg source={badgeSvg(r.color, r.icon, ROW.tile, r.spins === true, r.now ?? 0, r.done)} alt={r.verb} width={ROW.tile} height={ROW.tile} />
+          <Svg source={badgeSvg(r.color, r.icon, ROW.tile, r.running === true)} alt={r.verb} width={ROW.tile} height={ROW.tile} />
         ) : (
           <Text color={r.color} bold>{` ${r.glyph} `}</Text>
         )}
@@ -368,14 +268,14 @@ const toolRow = (els: { Box: any; Text: any; Svg: any }, r: RowSpec) => {
   )
 }
 
-/** What a file write changed, as two pills that count up as they pop in: +added, −removed. */
+/** What a file write changed, as two pills: +added, −removed. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const changePills = (els: { Box: any; Text: any; Svg: any }, added: number, removed: number, enter: number | undefined) => {
+const changePills = (els: { Box: any; Text: any; Svg: any }, added: number, removed: number) => {
   const { Box } = els
   return (
     <Box gap={1} alignItems="center">
-      {added > 0 ? pillEl(els, { text: `+${added}`, ...PILL.ok, fx: { enter, count: { n: added, word: '', prefix: '+' } } }) : null}
-      {removed > 0 ? pillEl(els, { text: `−${removed}`, ...PILL.bad, fx: { enter, count: { n: removed, word: '', prefix: '−' } } }) : null}
+      {added > 0 ? pillEl(els, { text: `+${added}`, ...PILL.ok }) : null}
+      {removed > 0 ? pillEl(els, { text: `−${removed}`, ...PILL.bad }) : null}
     </Box>
   )
 }
@@ -421,49 +321,6 @@ const diffCard = (els: { Box: any; Text: any }, d: { rows: DiffRow[]; more: numb
     </Box>
   )
 }
-
-/** A running row's loops open at phase 0 (see LOOP_LEAD_MS): the row's picture stays the same across redraws. */
-const LOOP_STILL = 0
-
-/** How long ago a row's finish began, while it still plays; else undefined (still). */
-const finishes = finishClock()
-const finishAgo = (ids: ReadonlyArray<string>, isRunning: boolean, now: number) =>
-  finishes.ago(ids, isRunning, now, id => endedAt.get(id))
-// What each one-shot was first drawn with (see holdFirst): a row redrawn while its finish
-// plays, as rows around it come and go, keeps the picture it has instead of blinking.
-const held = holdFirst<number>()
-/** A row's finish as drawn (held at its first draw) and as it really stands (for the settle). */
-const finish = (key: string, ids: ReadonlyArray<string>, isRunning: boolean, now: number) => {
-  const real = finishAgo(ids, isRunning, now)
-  return { real, draw: held(`finish:${key}`, real) }
-}
-
-// When the booked settle redraw fires: one timer covers every row finishing before it.
-let settleRowsAt = -Infinity
-
-/**
- * While a row's finish plays (`ago` ms in), ties the row to `settle` and books its bump for when
- * the motion ends, so the row's last picture is the still one.
- */
-const settleRow = async ($: EngineInterface, ago: number | undefined, now: number) => {
-  if (ago === undefined) return
-  await read($, settle)
-  const at = now - ago + ENTER_MS + 60
-  if (at <= settleRowsAt) return
-  settleRowsAt = at
-  $.clock.after(at - now, () => {
-    if (settleRowsAt === at) settleRowsAt = -Infinity
-    void update($, settle, n => (n ?? 0) + 1)
-  })
-}
-
-// The main turn that ended last, and when the latest prompt went in: a closing line pops in once,
-// for a turn of this process, and the older ones (and history) stay still.
-let lastTurn = { at: -Infinity, durationMs: -1 }
-let lastSubmitAt = -Infinity
-// When each closing line (by its duration) was first drawn: its pop is timed from then when it
-// is drawn before turn.complete has noted the turn.
-const turnLineSeen = new Map<string, number>()
 
 // A second beat while an agent runs: it can outlive the turn that started it.
 let agentTicker: { cancel: () => void } | null = null
@@ -522,7 +379,6 @@ export const register: Register = on => {
   let charsPerToken = 4
 
   on('session.start', async ($, e, next) => {
-    loadedAt = await $.clock.now()
     await locate($)
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
     const fresh = await $.session.usage().catch(() => null)
@@ -552,7 +408,6 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     startedAt = await $.clock.now()
-    lastSubmitAt = startedAt
     // A beat every second while the turn runs, so the clock and figures move live.
     ticker?.cancel()
     let beats = 0
@@ -635,7 +490,6 @@ export const register: Register = on => {
     const result = await next(e)
     const t1 = await $.clock.now()
     remember(durations, e.tool_use_id, t1 - t0)
-    remember(endedAt, e.tool_use_id, t1)
 
     // The Agent tool's own record carries the id and the model (a launch the spawn hook missed
     // is caught here), and, for a foreground agent, that it is already done.
@@ -778,7 +632,6 @@ export const register: Register = on => {
     ticker?.cancel()
     ticker = null
     const nowMs = await $.clock.now()
-    lastTurn = { at: nowMs, durationMs: (e as unknown as { durationMs?: number }).durationMs ?? -1 }
     if (startedAt > 0) {
       // No prompt.submit seen (e.g. a reload mid-turn): startedAt is 0 and the span would be epoch seconds.
       const s = Math.round((nowMs - startedAt) / 1000)
@@ -810,10 +663,6 @@ export const register: Register = on => {
     ])
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
-    // Every loop on the band (the bar, the dots, a ring's pulse) opens at phase 0 (see
-    // LOOP_LEAD_MS): a cell whose figure has not changed is the same picture on every redraw,
-    // so the surface never swaps it and its loop never blinks.
-    const loopAt = LOOP_STILL
     const { Box, Text } = $.ui.resolve(e)
 
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
@@ -829,37 +678,18 @@ export const register: Register = on => {
     const cards = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c' },
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7' },
-      // Whole seconds, floored: the same second the odometer shows, so text and digits agree.
-      { label: 'Time', value: fmtClock(Math.floor(((run ?? 0) + liveMs) / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
+      // The finished turns' total: it moves when a turn ends, so the card's picture is not
+      // swapped every second (the live count is the text clock on the top line).
+      { label: 'Time', value: fmtClock(Math.floor((run ?? 0) / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
     ]
 
-    // A card rolls only in the moment its value changes; the clock ticks and never flashes.
-    const cardFrom = new Map<string, { from?: string; ago?: number }>()
-    for (const c of cards) if (c.label !== 'Time') cardFrom.set(c.label, noteChange(`card:${c.label}`, c.value, nowMs))
-    // While a turn runs only the Time card moves: its tile breathes and its digits roll.
-    const ticking = e.props.isWorking && startedAt > 0
-    const clockMs = (run ?? 0) + liveMs
-    const cardArt = cards.map(c => {
-      if (c.label === 'Time' && ticking)
-        return cardSvg(c.label, c.value, { icon: c.icon, iconColor: c.color, live: { now: clockMs }, clock: { elapsedMs: clockMs } })
-      const { from, ago } = cardFrom.get(c.label) ?? {}
-      return cardSvg(c.label, c.value, {
-        changed: from !== undefined,
-        from,
-        ago,
-        accent: THEME.accent,
-        icon: c.icon,
-        iconColor: c.color,
-      })
-    })
+    const cardArt = cards.map(c => cardSvg(c.label, c.value, { icon: c.icon, iconColor: c.color }))
 
-    // The tool counter flashes only when it grows (a reset to 0 at a new prompt stays quiet).
-    const tools = noteChange('tools', st.tools, nowMs, { counts: (a, b) => b > a })
     // Room for three digits, so the count growing never shifts the version after it.
-    const countArt = countSvg(st.tools, { changed: tools.from !== undefined, from: tools.from, ago: tools.ago, minWidth: countSvg(999).width })
+    const countArt = countSvg(st.tools, { minWidth: countSvg(999).width })
 
     // The compact band's top-line chips: status, tool count and version in the stats' own tile
     // look. Status is held as wide as 'working' and the count as wide as three digits, so
@@ -868,13 +698,13 @@ export const register: Register = on => {
     const statusChip = (working: boolean) =>
       chipSvg(
         working
-          ? { color: THEME.accent, label: 'working', dots: true, strong: true, now: loopAt }
+          ? { color: THEME.accent, label: 'working', dots: true, strong: true }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, strong: true, quiet: true },
       )
     const chips = [
       { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
         ...(e.props.isWorking
-          ? { color: THEME.accent, label: 'working', dots: true, now: loopAt }
+          ? { color: THEME.accent, label: 'working', dots: true }
           : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, quiet: true }),
         strong: true,
         minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
@@ -884,9 +714,6 @@ export const register: Register = on => {
         icon: 'bolt',
         value: String(st.tools),
         label: toolWord,
-        changed: tools.from !== undefined,
-        from: tools.from === undefined ? undefined : String(tools.from),
-        ago: tools.ago,
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
       }) },
@@ -915,48 +742,9 @@ export const register: Register = on => {
     const versionChip = chips.find(c => c.key === 'version')
     const showVersion = !(THEME.compact && stacked && versionChip && rightPx > topRoomPx)
 
-    // The agent strip: who is shown, and who bounces in or flashes. A card keeps its "just
-    // appeared" look for a moment, so a redraw in that moment does not cut the motion short.
+    // The agent strip: running agents first, then the ones that finished lately.
     const crew = visibleAgents(asList(roster), nowMs, { max: THEME.listAgents, keepMs: THEME.keepFinishedMs })
-    // Forget agents that can no longer be shown (finished and past their keep time), so the
-    // per-agent memory stays as small as the strip instead of growing for the whole session.
-    const live = new Set(
-      asList(roster)
-        .filter(a => a.status === 'running' || (a.endedAt !== null && nowMs - a.endedAt <= THEME.keepFinishedMs))
-        .map(a => a.id),
-    )
-    forgetChanges('agent:', live)
-    for (const m of [firstSeenAt, statusAt]) for (const id of m.keys()) if (!live.has(id)) m.delete(id)
-    const crewCards = crew.shown.map(a => {
-      if (!firstSeenAt.has(a.id)) firstSeenAt.set(a.id, nowMs)
-      const seen = statusAt.get(a.id)
-      if (!seen || seen.status !== a.status) statusAt.set(a.id, { status: a.status, at: nowMs })
-      const pop = nowMs - (firstSeenAt.get(a.id) ?? nowMs) < 1200
-      const changed = statusAt.get(a.id)
-      const flash = a.status !== 'running' && seen !== undefined && changed !== undefined && nowMs - changed.at < 1500
-      // Every motion on the card is drawn at the point it has reached by now (loops by phase,
-      // the bounce, the flash and the stats roll by time since they began), so a redraw
-      // carries each one on instead of starting it over.
-      const sc = noteChange(`agent:${a.id}`, agentStats(a), nowMs)
-      // The card carries its own bar and spinner. They are drawn at the phase reached when the
-      // card's picture last changed for its own sake (its stats, its status, its bounce or its
-      // flash beginning or ending), held between those: the band redraws every second, and a
-      // card that only moved its phase would be a new picture, swapped in with a blink, every
-      // second. A card that does change carries its loops on from where the old one was.
-      const look = [a.status, agentStats(a), a.model ?? '', a.effort ?? '', pop, flash].join('|')
-      const phaseAt = held(`agent-phase:${a.id}:${look}`, nowMs + LOOP_LEAD_MS)
-      const art = agentCardSvg(a, phaseAt, {
-        pop,
-        flash,
-        padBottom: THEME.stripGap,
-        fromStats: sc.from,
-        statsAgo: sc.ago,
-        // Held at their first draw, as a row's finish is: the bounce and the flash play once.
-        popAgo: held(`agent-pop:${a.id}`, nowMs - (firstSeenAt.get(a.id) ?? nowMs)),
-        flashAgo: changed ? held(`agent-flash:${a.id}:${changed.at}`, nowMs - changed.at) : 0,
-      })
-      return { a, pop, flash, art }
-    })
+    const crewCards = crew.shown.map(a => ({ a, art: agentCardSvg(a, { padBottom: THEME.stripGap }) }))
 
     // Stat tiles: a ring when the figure is a percentage, else the icon.
     const tiles: Tile[] = [
@@ -995,38 +783,13 @@ export const register: Register = on => {
         calm: true,
       },
     ]
-    const ringFrom = new Map<string, number>()
-    const ringAgo = new Map<string, number | undefined>()
-    for (const t of tiles) {
-      if (t.percent === null) continue
-      // The arc grows (in from 0 the first time) only in the moment the figure changes.
-      const rc = noteChange(`ring:${t.key}`, t.percent, nowMs, { first: 0 })
-      ringFrom.set(t.key, rc.from ?? t.percent)
-      ringAgo.set(t.key, rc.ago)
-    }
-    // Once the last change has played, draw once more so every picture settles still, even
-    // when nothing else would redraw the band (an idle session).
-    if (freshUntil > nowMs && !settleBooked) {
-      settleBooked = true
-      $.clock.after(freshUntil - nowMs + 50, () => {
-        settleBooked = false
-        void update($, tick, n => (n ?? 0) + 1)
-      })
-    }
-
     // A tile's ring (or, where pictures are not drawn, a glyph of it), at either size.
     const ringEl = (t: Tile, size: number) =>
       t.percent === null ? (
         <Text>{t.icon}</Text>
       ) : Svg ? (
         <Svg
-          source={ringSvg(t.percent, t.color ?? ringColor(t.percent), size, {
-            from: ringFrom.get(t.key) ?? 0,
-            ago: ringAgo.get(t.key),
-            now: loopAt,
-            pulse: !t.calm && t.percent >= 85,
-            icon: t.icon,
-          })}
+          source={ringSvg(t.percent, t.color ?? ringColor(t.percent), size, { icon: t.icon })}
           alt={`${t.big} ${t.caption}`}
           width={size}
           height={size}
@@ -1065,27 +828,17 @@ export const register: Register = on => {
           width,
           // Speed is no share of a limit: a speedometer whose needle follows the stream.
           ...(t.key === 'speed'
-            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph, { from: (ringFrom.get(t.key) ?? 0) / 100, ago: ringAgo.get(t.key) }) }
+            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph) }
             : t.percent === null
             ? { icon: t.icon, color: t.color ?? THEME.accent }
             : {
-                ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, {
-                  from: ringFrom.get(t.key) ?? 0,
-                  ago: ringAgo.get(t.key),
-                  now: loopAt,
-                  pulse: t.percent >= 85,
-                  icon: t.icon,
-                  bigIcon: true,
-                }),
+                ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, { icon: t.icon, bigIcon: true }),
               }),
         })
       },
     }))
     const figureCells: Cell[] = cards.map(c => {
       const label = c.label.toLowerCase()
-      const { from, ago } = cardFrom.get(c.label) ?? {}
-      const motion =
-        c.label === 'Time' && ticking ? { live: { now: clockMs }, clock: { elapsedMs: clockMs } } : { changed: from !== undefined, from, ago }
       return {
         key: `card-${c.label}`,
         alt: `${c.label} ${c.value}`,
@@ -1096,7 +849,7 @@ export const register: Register = on => {
         draw: (width, mode = 'line') => {
           const under = mode === 'stack' || mode === 'tall'
           // Plain and muted: the figures are the quiet row, so the meter and the gauges lead.
-          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, ...(under ? { stack: [label] } : {}), ...motion })
+          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, ...(under ? { stack: [label] } : {}) })
         },
       }
     })
@@ -1110,14 +863,10 @@ export const register: Register = on => {
     const roomPx = e.props.bodyColumns * 8 - 4 * 8 - 16
     // The hero line: the context figure at 20px and its meter, the one thing drawn big. On a
     // band too narrow for the figure, meter and words on one line, the meter goes under.
-    const ctxPulse = use.percent !== null && use.percent >= 85
     const ctxOpts = {
       left: contextLeft(use.tokens, use.window, use.percent),
       window: use.window !== null ? `${fmtTokens(use.window)} window` : null,
-      from: ringFrom.get('context') ?? 0,
-      ago: ringAgo.get('context'),
-      pulse: ctxPulse,
-      now: loopAt,
+      warn: use.percent !== null && use.percent >= 85,
     }
     const ctxColor = ringColor(use.percent ?? 0)
     const ctxLine = contextSvg(use.percent, ctxColor, ctxOpts)
@@ -1153,7 +902,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
           {crewCards.length > 0 ? (
             <Box columnGap={2} rowGap={1} alignItems="center" flexWrap="wrap">
-              {crewCards.map(({ a, pop, flash, art }) =>
+              {crewCards.map(({ a, art }) =>
                 Svg ? (
                   <Svg
                     key={`agent-${a.id}`}
@@ -1177,7 +926,7 @@ export const register: Register = on => {
         <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'stretch' : 'center'}>
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, loopAt)} alt="" width={14} height={14} />
+              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14)} alt="" width={14} height={14} />
             ) : (
               <Text color={THEME.accent}>●</Text>
             )}
@@ -1200,7 +949,6 @@ export const register: Register = on => {
                     source={loadingSvg(THEME.barPx, THEME.barHeight, THEME.accent, {
                       live: e.props.isWorking,
                       padBottom: THEME.barGap,
-                      now: loopAt,
                       open: true,
                     })}
                     alt={e.props.isWorking ? 'Working' : 'Idle'}
@@ -1232,7 +980,6 @@ export const register: Register = on => {
                 e.props.isWorking
                   ? { text: 'working', running: true, ...PILL.busy }
                   : { text: 'idle', fg: '#8a8480', bg: '#2a2727', minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
-                loopAt,
               )}
               {Svg ? (
                 <Svg source={countArt.svg} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
@@ -1295,8 +1042,7 @@ export const register: Register = on => {
 
         <Box gap={1} marginTop={1} alignItems="flex-start" flexWrap="nowrap">
           {/* Cards are images, not interactive frames: a frame reloads (and blanks) on every
-              new picture, an image swaps in place. Their roll and tick still play where the
-              surface animates images; elsewhere each picture already shows the right value. */}
+              new picture, an image swaps in place. */}
           {cards.map((c, i) =>
             Svg && cardArt[i] ? (
               <Svg
@@ -1349,14 +1095,6 @@ export const register: Register = on => {
     const task = e.props.task
     if (e.props.origin.kind !== 'task-notification' || !task) return next(e)
     const kind = taskKind(task.type)
-    // A notification drawn after the session loaded is news: its pill pops in once, timed from
-    // its first sight. One drawn as the transcript loads is history, and still.
-    const now = await $.clock.now()
-    if (!rowSeen.has(e.requestId)) remember(rowSeen, e.requestId, now)
-    const seen = rowSeen.get(e.requestId) ?? now
-    const real = seen - loadedAt > 3000 && now - seen < ENTER_MS ? now - seen : undefined
-    await settleRow($, real, now)
-    const ago = held(`note:${e.requestId}`, real)
     const verb = kind === 'run' ? 'Task' : 'Agent'
     return toolRow({ Box, Text, Svg }, {
       color: KIND_COLOR[kind],
@@ -1364,9 +1102,7 @@ export const register: Register = on => {
       glyph: KIND_GLYPH[kind],
       verb,
       target: clip(taskSummary(e.props.text, verb), 96),
-      now: LOOP_STILL,
-      done: ago,
-      status: pillEl({ Text, Svg }, { ...taskPill(task.status), fx: { enter: ago, alive: true } }),
+      status: pillEl({ Text, Svg }, taskPill(task.status)),
       ms: task.durationMs,
     })
   })
@@ -1377,18 +1113,9 @@ export const register: Register = on => {
     const p = e.props
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
     const ms = durations.get(p.tool_use_id)
-    // Only a running row loops (the light round its tile, the busy pill), at phase 0: the
-    // running picture is the same on every redraw (see LOOP_LEAD_MS).
-    const now = LOOP_STILL
-    // Just finished: the pill turns from running to its state and the tile sends out one ripple.
-    const clock = await $.clock.now()
-    const fin = finish(p.tool_use_id, [p.tool_use_id], p.isRunning, clock)
-    await settleRow($, fin.real, clock)
-    const done = fin.draw
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
-    const Client = 'Client' in table ? table.Client : null
     const els = { Text, Svg }
 
     // What the call changed, when it is a file write that landed. Drawn here, in the row, so it
@@ -1397,10 +1124,10 @@ export const register: Register = on => {
     const expanded = (p as { isExpanded?: boolean }).isExpanded === true
     const change = !p.isRunning && !p.isErrored && !p.isInterrupted && !expanded ? fileChange(p.tool, p.output) : null
     const status = p.isRunning
-      ? runningPill({ Text, Svg, Client }, `spin-${p.tool_use_id}`, now)
+      ? runningPill(els)
       : change && change.added + change.removed > 0
-        ? changePills({ Box, Text, Svg }, change.added, change.removed, done)
-        : pillEl(els, { ...statusPill(p.tool, p), fx: { enter: done, alive: true, morph: PILL.busy } })
+        ? changePills({ Box, Text, Svg }, change.added, change.removed)
+        : pillEl(els, statusPill(p.tool, p))
     const row = toolRow({ Box, Text, Svg }, {
       color: KIND_COLOR[d.kind],
       icon: KIND_ICON[d.kind],
@@ -1408,11 +1135,7 @@ export const register: Register = on => {
       verb: d.verb,
       target: d.target,
       mono: d.kind === 'read' || d.kind === 'edit' || d.kind === 'write' || d.kind === 'delete',
-      // Where a `Client` is offered (Desktop, the terminal) the pill carries the motion, so the
-      // tile stays still: one motion.
-      spins: p.isRunning && !Client,
-      now,
-      done,
+      running: p.isRunning,
       status,
       ms: p.isRunning ? undefined : ms,
     })
@@ -1450,20 +1173,12 @@ export const register: Register = on => {
       .join(' · ')
     const isRunning = calls.some(c => c.isRunning)
     const isErrored = calls.some(c => c.isErrored)
-    const now = LOOP_STILL
-    // The run's last call just ended: the group's pill turns, its tile ripples.
-    const clock = await $.clock.now()
-    const ids = calls.flatMap(c => (c.tool_use_id ? [c.tool_use_id] : []))
-    const fin = finish(`group:${ids.join(',')}`, ids, isRunning, clock)
-    await settleRow($, fin.real, clock)
-    const done = fin.draw
     const pill = isErrored
       ? { text: 'error', icon: 'cross' as const, ...PILL.bad }
       : { text: `${calls.length} calls`, icon: 'check' as const, ...PILL.ok }
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
-    const Client = 'Client' in table ? table.Client : null
 
     return toolRow({ Box, Text, Svg }, {
       color: KIND_COLOR.search,
@@ -1471,12 +1186,8 @@ export const register: Register = on => {
       glyph: KIND_GLYPH.search,
       verb: 'Explore',
       target: summary,
-      spins: isRunning && !Client,
-      now,
-      done,
-      status: isRunning
-        ? runningPill({ Text, Svg, Client }, `spin-group-${calls[0]?.tool_use_id ?? ''}`, now)
-        : pillEl({ Text, Svg }, { ...pill, fx: { enter: done, alive: true, morph: PILL.busy } }),
+      running: isRunning,
+      status: isRunning ? runningPill({ Text, Svg }) : pillEl({ Text, Svg }, pill),
     })
   })
 
@@ -1495,24 +1206,9 @@ export const register: Register = on => {
     const table = $.ui.resolve(e)
     const { Box, Text } = table
     const Svg = 'Svg' in table ? table.Svg : null
-    // The turn that just ended pops its pill in and writes its check; older lines stay still.
-    // The line's duration is the turn's, give or take its rounding.
-    const now = await $.clock.now()
-    const key = String(e.props.durationMs)
-    // A line of a turn this process ran (its prompt went in no longer ago than the turn took).
-    const ours = now - lastSubmitAt <= e.props.durationMs + 5000
-    if (ours && !turnLineSeen.has(key)) remember(turnLineSeen, key, now)
-    const at = [
-      ours ? turnLineSeen.get(key) : undefined,
-      Math.abs(e.props.durationMs - lastTurn.durationMs) < 1000 ? lastTurn.at : undefined,
-    ].filter((v): v is number => v !== undefined)
-    const ago = at.length > 0 ? now - Math.min(...at) : Infinity
-    const real = ago >= 0 && ago < ENTER_MS ? ago : undefined
-    await settleRow($, real, now)
-    const enter = held(`turn:${key}`, real)
     return (
       <Box gap={1} alignItems="center">
-        {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok, fx: { enter } })}
+        {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok })}
         <Text dimColor>{fmtDuration(e.props.durationMs)}</Text>
       </Box>
     )

@@ -23,14 +23,14 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 | | Feature | What it does |
 | :-: | :-- | :-- |
-| 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar that sweeps while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
-| ▮▮▮ | **Context meter** | Context used as one big figure with a 30-block meter beside it, the one thing drawn large; what is left and the window's size follow. It turns red and breathes past 85%. |
+| 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar that lights up while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
+| ▮▮▮ | **Context meter** | Context used as one big figure with a 30-block meter beside it, the one thing drawn large; what is left and the window's size follow. It turns red past 85%. |
 | ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed as small rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
-| 💰 | **Totals** | Cost, tokens, time and model as a quiet row of figures; a value animates only at the moment it changes. |
+| 💰 | **Totals** | Cost, tokens, time and model as a quiet row of figures. Time is the finished turns' total; the live count is the clock on the top line. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
 | 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), a status pill and the time. Deleting files with `rm` shows as a red **Delete** row. |
 | ✏️ | **Code changes inline** | An Edit or Write shows its change right under its row: numbered lines, added ones on green, removed ones on red, a `⋯` where the patch skips lines, and `+N` / `−N` pills in place of `saved`. The full view (ctrl+o) keeps the engine's own. |
-| 🎞️ | **Motion** | Only where work runs or something just changed. While a call runs, the pill's dots wave (or a light runs round the tile). When it finishes, the pill turns from running to its state with no pop: its colour changes, the dots gather where the check then writes itself, and an error's cross gives one short shake. The tile sends out one ripple, and a change's `+N` / `−N` count up from 0. A finished pill's icon keeps a slow breath. A redraw while a motion plays (a new row arriving, the band's beat) draws the same picture, so nothing blinks or starts over. |
+| 🎞️ | **No motion** | Every picture is still: a running call shows three dots in its pill, a finished one its check or cross. A redraw that changes nothing draws the same picture, so nothing blinks. |
 | 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
@@ -194,7 +194,6 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 
 ## 🧪 Requirements and notes
 
-- Animation needs a surface that plays SVG (SMIL); elsewhere everything is static.
 - This is an interface mod (`modules` in `hooks/hooks.json`) and needs a Claude Code build that supports mods.
 - A change hot-reloads when a turn ends. If it does not, look for a `reload failed` line in the transcript.
 
@@ -212,11 +211,9 @@ Pure functions live in `hooks/chat.ts` and friends and have tests (`hooks/*.test
 hooks/
   hooks.json      module registration
   register.tsx    the hooks (band, transcript, agents)
-  chat.ts         pure display helpers (SVG, formats, the transcript's MOTION)
+  chat.ts         pure display helpers (SVG, formats, charts)
   agents.ts       agent cards, price table
   icons.ts        the line-icon set
-  spinner.tsx     running spinner Desktop turns itself (a Client)
-  shimmer.tsx     the working bar's light, moved by Desktop (a Client)
 scripts/
   test-preload.ts engine stand-ins for bun test
   preview.ts      draws docs/preview.svg

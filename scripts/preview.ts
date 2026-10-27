@@ -37,7 +37,7 @@ const parts: string[] = []
 parts.push(`<rect width="${W}" height="${H}" rx="18" fill="#171515"/>`)
 // agent strip, above the band as in a session
 agents.forEach((a, i) => {
-  const art = agentCardSvg(a, now, {})
+  const art = agentCardSvg(a, {})
   parts.push(nest(art, 28 + i * (CARD_W + 14), 24))
 })
 // the band's frame

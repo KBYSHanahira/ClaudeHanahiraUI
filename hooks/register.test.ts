@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CHANGE_MS, DANGEROUS, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, forgetChanges, noteChange, ringSvg, tone, top } from './register'
+import { DANGEROUS, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -99,16 +99,9 @@ describe('rings', () => {
 })
 
 
-describe('ring motion', () => {
-  test('grows from the last drawn value', () => {
-    const svg = ringSvg(60, '#e8825f', 38, { from: 20 })
-    const c = 2 * Math.PI * 19.5
-    expect(svg).toContain(`attributeName="stroke-dasharray" from="${(c * 0.2).toFixed(2)} ${c.toFixed(2)}" to="${(c * 0.6).toFixed(2)} ${c.toFixed(2)}"`)
-  })
-
-  test('an unchanged ring is still; a pulsing one breathes', () => {
-    expect(ringSvg(60, '#e8825f', 38, { from: 60 })).not.toContain('<animate')
-    expect(ringSvg(90, '#f2736b', 38, { from: 90, pulse: true })).toContain('values="1;0.55;1"')
+describe('ring', () => {
+  test('is a still picture, near the limit too', () => {
+    expect(ringSvg(90, '#f2736b', 38)).not.toContain('<animate')
   })
 })
 
@@ -120,48 +113,5 @@ describe('asList', () => {
 
   test('turns anything else a stored value might be into an empty list', () => {
     for (const bad of [undefined, null, 0, 5, 'x', {}, { length: 2 }, true]) expect(asList(bad)).toEqual([])
-  })
-})
-
-describe('noteChange', () => {
-  test('a figure rolls only in the moment it changes, never again on a later redraw', () => {
-    expect(noteChange('t:a', '$1', 0).from).toBeUndefined() // first sight: still
-    expect(noteChange('t:a', '$1', 500).from).toBeUndefined() // same value: still
-    expect(noteChange('t:a', '$2', 1_000).from).toBe('$1') // changed: rolls from $1
-    expect(noteChange('t:a', '$2', 1_000 + CHANGE_MS - 1).from).toBe('$1') // a redraw inside the window: same picture
-    expect(noteChange('t:a', '$2', 1_000 + CHANGE_MS).from).toBeUndefined() // after it: still for good
-    expect(noteChange('t:a', '$2', 60_000).from).toBeUndefined()
-  })
-
-  test('a redraw inside the window draws the very same picture: the motion is not restarted', () => {
-    noteChange('t:h', 1, 0)
-    const first = noteChange('t:h', 2, 1_000)
-    // Redrawn 200 and 700 ms later: the roll was drawn once and the surface keeps that picture,
-    // so these draws must give it the same `ago`, not a new one each time (a new picture blinks).
-    expect(noteChange('t:h', 2, 1_200)).toEqual(first)
-    expect(noteChange('t:h', 2, 1_700)).toEqual(first)
-  })
-
-  test('only the changes that count move: the tool counter rolls when it grows, not when it resets', () => {
-    const grows = { counts: (a: number, b: number) => b > a }
-    noteChange('t:n', 4, 0, grows)
-    expect(noteChange('t:n', 5, 100, grows).from).toBe(4)
-    expect(noteChange('t:n', 0, 5_000, grows).from).toBeUndefined()
-  })
-
-  test('first makes the first sight a change: a ring grows in from 0, once', () => {
-    expect(noteChange('t:r', 40, 0, { first: 0 }).from).toBe(0)
-    expect(noteChange('t:r', 40, CHANGE_MS).from).toBeUndefined()
-  })
-})
-
-describe('forgetChanges', () => {
-  test('drops what it remembers for agents that are gone, keeps the rest', () => {
-    noteChange('agent:gone', 'a', 0)
-    noteChange('agent:kept', 'a', 0)
-    forgetChanges('agent:', new Set(['kept']))
-    // A forgotten agent is new again: its next figure is a first sight, so it does not roll.
-    expect(noteChange('agent:gone', 'b', 100).from).toBeUndefined()
-    expect(noteChange('agent:kept', 'b', 100).from).toBe('a')
   })
 })

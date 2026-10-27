@@ -1,7 +1,7 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { CARD_ROLL_S, SPIN_S, clip, fmtClock, fmtTokens, phaseBegin, sinceBegin } from './chat'
+import { clip, fmtClock, fmtTokens } from './chat'
 import { iconGroup } from './icons'
 
 const EFFORT_COLOR: Record<string, string> = {
@@ -153,29 +153,15 @@ export const agentStats = (a: Agent) => {
 }
 
 /**
- * One agent as a card, all in one SVG so it can move as one piece. `pop` makes it bounce in
- * (it just appeared); `flash` washes its border green once (it just finished). A running
- * card wears its accent on the border, turns a small spinner where the check will go, and
- * glides a light along its bar: one direction, eased. Given `fromStats`, the old stats line
- * rolls up and out as the new one rolls in. The loops start at the phase they have reached
- * since the agent started, so a new picture carries on the motion of the one it replaces.
+ * One agent as a card, all in one SVG. A running card wears its accent on the border, a
+ * part-drawn ring where the check will go, and a lit stretch on its bar; a finished one, its
+ * mark and a full bar.
  */
 export const agentCardSvg = (
   a: Agent,
-  now: number,
   opts: {
-    pop?: boolean
-    flash?: boolean
     padBottom?: number
-    fromStats?: string
-    /** How long ago it appeared, finished, and its stats changed: a redraw carries each motion on. */
-    popAgo?: number
-    flashAgo?: number
-    statsAgo?: number
-    /**
-     * The surface moves the card's busy signs itself (a `Client` under the card): the
-     * spinner stands still, and the bar is left out, the card a little shorter for it.
-     */
+    /** The bar is left out, the card a little shorter for it. */
     barless?: boolean
   } = {},
 ) => {
@@ -184,9 +170,6 @@ export const agentCardSvg = (
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0)) // transparent room under the card, in px
   const accent = accentFor(a.effort, a.model)
   const running = a.status === 'running'
-  // The spinner and the bar are drawn at the phase reached since the agent started: a picture
-  // set again starts its loops over, so each redraw must carry on where the last one was.
-  const since = Math.max(0, now - a.startedAt)
   const nameFull = clip(a.name, 24)
   const name = esc(nameFull)
   // The name must stop short of the status mark: pin it to the room it has.
@@ -201,20 +184,15 @@ export const agentCardSvg = (
   const stats = esc(statsText)
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
 
-  // A running card's border holds its accent, still: the spinner and the bar already say "busy".
+  // A running card's border holds its accent: with the ring and the bar, it says "busy".
   const edge = running ? accent : '#3a3836'
   const edgeOpacity = running ? 0.55 : 1
-  const border = !running && opts.flash ? `<animate attributeName="stroke" from="#7bd88f" to="#3a3836" dur="1.2s" begin="${sinceBegin(opts.flashAgo)}" fill="freeze"/>` : ''
 
   const sr = 6
   const sc = 2 * Math.PI * sr
   const mark = running
     ? `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2.2"/>` +
-      `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}">` +
-      (opts.barless
-        ? ''
-        : `<animateTransform attributeName="transform" type="rotate" from="0 ${W - 21} 17" to="360 ${W - 21} 17" dur="${SPIN_S}s" begin="${phaseBegin(since, SPIN_S * 1000)}" repeatCount="indefinite"/>`) +
-      `</circle>`
+      `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}"/>`
     : a.status === 'done'
       ? iconGroup('check', '#7bd88f', W - 29, 9, 16, 3)
       : a.status === 'error'
@@ -224,54 +202,23 @@ export const agentCardSvg = (
   const barX = 10
   const barW = W - 20
   const barY = H - 12
-  const seg = Math.round(barW * 0.3)
-  const uid = `ab${a.id.replace(/[^A-Za-z0-9_-]/g, '')}`
   const bar = opts.barless
     ? ''
     : `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="#2b2827"/>` +
-    (running
-      ? `<defs><clipPath id="${uid}"><rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2"/></clipPath>` +
-        `<linearGradient id="${uid}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity="0"/><stop offset="0.75" stop-color="${accent}"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></linearGradient></defs>` +
-        `<g clip-path="url(#${uid})"><rect x="${barX - seg}" y="${barY}" width="${seg}" height="4" fill="url(#${uid}g)">` +
-        `<animate attributeName="x" from="${barX - seg}" to="${barX + barW}" dur="1.6s" begin="${phaseBegin(since, 1600)}" repeatCount="indefinite" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"/></rect></g>`
-      : `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="${accent}"/>`)
-
-  // The stats line sits in a window one line tall; a changed line rolls through it.
-  const statsAt = (y: number, text: string) => `<text x="58" y="${y}" ${font} font-size="10.5" fill="#8f8985">${text}</text>`
-  const ease = `dur="${CARD_ROLL_S}s" begin="${sinceBegin(opts.statsAgo)}" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1"`
-  const roll = (y0: number, y1: number, o0: number, o1: number) =>
-    `<animateTransform attributeName="transform" type="translate" from="0 ${y0}" to="0 ${y1}" ${ease}/>` +
-    `<animate attributeName="opacity" from="${o0}" to="${o1}" ${ease}/>`
-  const statsLine =
-    opts.fromStats !== undefined && opts.fromStats !== statsText
-      ? `<defs><clipPath id="${uid}s"><rect x="56" y="43" width="${W - 66}" height="14"/></clipPath></defs>` +
-        `<g clip-path="url(#${uid}s)">` +
-        `<g opacity="0">${roll(0, -14, 1, 0)}${statsAt(53, esc(opts.fromStats))}</g>` +
-        `<g>${roll(14, 0, 0, 1)}${statsAt(53, stats)}</g></g>`
-      : statsAt(53, stats)
+      `<rect x="${barX}" y="${barY}" width="${running ? Math.round(barW * 0.3) : barW}" height="4" rx="2" fill="${accent}"/>`
 
   const card =
-    `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5">${border}</rect>` +
+    `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5"/>` +
     `<svg x="10" y="9" width="38" height="38" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>` +
     `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ece7e4"${nameFit}>${name}</text>` +
     `<text x="58" y="38" ${font} font-size="11" fill="#b9b3af">${model}</text>` +
     (effort ? `<text x="${58 + modelW + 7}" y="38" ${font} font-size="11" font-weight="700" fill="${accent}">${effort}</text>` : '') +
-    statsLine +
+    `<text x="58" y="53" ${font} font-size="10.5" fill="#8f8985">${stats}</text>` +
     mark +
     bar
 
-  // Bounce in about the centre: grow past full size, settle back, fade up.
-  const cx = W / 2
-  const cy = H / 2
-  const body = opts.pop
-    ? `<g transform="translate(${cx} ${cy})"><g>` +
-      `<animateTransform attributeName="transform" type="scale" values="0.82;1.06;1" keyTimes="0;0.6;1" dur="0.5s" begin="${sinceBegin(opts.popAgo)}" fill="freeze" calcMode="spline" keySplines="0.3 0 0.2 1;0.4 0 0.4 1"/>` +
-      `<animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="${sinceBegin(opts.popAgo)}" fill="freeze"/>` +
-      `<g transform="translate(${-cx} ${-cy})">${card}</g></g></g>`
-    : card
-
   return {
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H + pad}" width="${W}" height="${H + pad}">${body}</svg>`,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H + pad}" width="${W}" height="${H + pad}">${card}</svg>`,
     width: W,
     height: H + pad,
   }

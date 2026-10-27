@@ -106,26 +106,23 @@ run('your prompt is a card, on every surface', async ($, on) => {
 const pictures = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
   (await ui.findAll({ type: 'Svg' })).map((s, i) => `${i}:${String(s.props.alt)}=${String(s.props.source)}`)
 
-run('a row redrawn while its finish plays keeps its picture: no swap, no blink, no replay', async ($, on) => {
+run('a finished row is a still picture: a redraw never swaps it', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const row = (isRunning: boolean) => ({
     tool_use_id: 'fin-1', tool: 'Bash', input: { command: 'echo fin' }, isRunning, isErrored: false, isInterrupted: false,
     ...(isRunning ? {} : { output: { stdout: 'ok', stderr: '' } }),
   })
   const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'desktop', component: 'ToolUse', requestId: 'fin-1', props: row(true) })
+  expect((await pictures(ui)).join()).not.toContain('<animate')
   await ui.redraw(row(false))
   const finished = await pictures(ui)
-  expect(finished.join()).toContain('fill="freeze"') // the finish is playing
-  // Rows around it come and go: the surface draws it again, 200 ms apart, inside the finish.
+  expect(finished.join()).not.toContain('<animate')
+  // Rows around it come and go: the surface draws it again, and gets the same picture.
   for (let i = 0; i < 3; i++) {
-    await clock.advance(200)
+    await clock.advance(400)
     await ui.redraw()
     expect(await pictures(ui)).toEqual(finished)
   }
-  // Once the finish has played, it settles on a still picture.
-  await clock.advance(1000)
-  await ui.redraw()
-  expect((await pictures(ui)).join()).not.toContain('fill="freeze"')
   await ui.unmount()
 })
 
@@ -145,7 +142,7 @@ run('a running agent card is not swapped on every beat of the band', async ($, o
     props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} } as never,
   })
   const card = async () => (await pictures(band)).find(p => p.includes(':code-reviewer, running='))
-  await clock.advance(2000) // past its bounce in
+  await clock.advance(2000)
   const settled = await card()
   expect(settled).toBeDefined()
   // The band beats every second while the agent runs; nothing on the card changed.

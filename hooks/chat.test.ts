@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CARD_BREATHE_MS, base, clockOdometer, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, phaseBegin, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, countUp, ENTER_MS, finishClock, BREATH_S, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, holdFirst } from './chat'
+import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -255,107 +255,29 @@ describe('pillSvg', () => {
   })
 })
 
-describe('finish motion', () => {
-  test('an entering pill pops and traces its icon; past ENTER_MS, or never entered, it is still', () => {
-    const enter = pillSvg('done', '#a9e6b4', '#2d4232', 24, false, 'check', 0, 0, { enter: 100 })
-    expect(enter.svg).toContain('type="scale"')
-    expect(enter.svg).toContain('attributeName="stroke-dashoffset"')
-    expect(enter.svg).toContain('begin="-0.100s"') // carried on from where a redraw finds it
-    for (const still of [pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { enter: ENTER_MS }), pillSvg('done', '#fff', '#000', 24, false, 'check')])
-      expect(still.svg).not.toContain('<animate')
-  })
-
-  test('an alive done/error pill keeps breathing after its finish, and only then', () => {
-    for (const icon of ['check', 'cross'] as const) {
-      const settled = pillSvg('done', '#fff', '#000', 24, false, icon, 0, 0, { alive: true })
-      expect(settled.svg).toContain(`dur="${BREATH_S}s" begin="0.000s" repeatCount="indefinite"`)
-      expect(settled.svg).toContain('values="1;0.5;1"') // starts and rests at full: a remount does not jump
-      expect(settled.svg).not.toContain('type="scale"')
+describe('pills and tiles are still', () => {
+  test('no pill or tile carries an animation, running or not', () => {
+    for (const svg of [
+      pillSvg('running', '#c4baff', '#2d3a3f', 24, true).svg,
+      pillSvg('done', PILL.ok.fg, PILL.ok.bg, 22, false, 'check').svg,
+      pillSvg('error', PILL.bad.fg, PILL.bad.bg, 22, false, 'cross').svg,
+      badgeSvg('#7cb7ff', 'file', 32, true),
+      badgeSvg('#7cb7ff', 'file', 32, false),
+    ]) {
+      expect(svg).not.toContain('<animate')
+      expect(svg).not.toContain('<set ')
     }
-    // Entering, the breath waits for the pop and the trace to finish.
-    const entering = pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { enter: 300, alive: true })
-    expect(entering.svg).toContain('type="scale"')
-    expect(entering.svg).toContain(`begin="${((ENTER_MS - 300) / 1000).toFixed(3)}s" repeatCount="indefinite"`)
-    // A tag that repeats an attribute is not XML: the surface shows a broken image instead.
-    for (const svg of [pillSvg('done', '#fff', '#000', 24, false, 'check', 0, 0, { alive: true }).svg, entering.svg]) {
-      for (const tag of svg.match(/<[a-zA-Z][^>]*>/g) ?? []) {
-        const names = [...tag.matchAll(/\s([\w:-]+)=/g)].map(m => m[1])
-        expect(names.length).toBe(new Set(names).size)
-      }
-    }
-    // Not alive, interrupted, or no icon: still.
-    for (const still of [
-      pillSvg('done', '#fff', '#000', 24, false, 'check'),
-      pillSvg('interrupted', '#fff', '#000', 24, false, 'ban', 0, 0, { alive: true }),
-      pillSvg('3 added', '#fff', '#000', 24, false, undefined, 0, 0, { alive: true }),
-    ])
-      expect(still.svg).not.toContain('<animate')
   })
 
-  test('entering does not change the pill\'s size', () => {
-    const a = pillSvg('12 added', '#fff', '#000', 24, false, undefined, 0, 0, { enter: 0, count: { n: 12, word: 'added' } })
-    const b = pillSvg('12 added', '#fff', '#000')
-    expect([a.width, a.height]).toEqual([b.width, b.height])
-  })
-
-  test('a count rises from 0 to n, eased, and rests on n', () => {
-    const out = countUp(12, v => `<t>${v}</t>`, 0.5, '0s')
-    const seen = [...out.matchAll(/<t>(\d+)<\/t>/g)].map(m => Number(m[1]))
-    expect(seen[0]).toBe(0)
-    expect(seen[seen.length - 1]).toBe(12)
-    expect(seen).toEqual([...seen].sort((x, y) => x - y))
-    // Only the last frame rests visible: a surface without SMIL shows the true count.
-    expect(out.match(/<g opacity="0">/g)?.length).toBe(seen.length - 1)
-  })
-
-  test('a count of one has nothing to rise through', () => {
-    expect(countUp(1, v => `<t>${v}</t>`, 0.5, '0s')).toContain('<t>')
-    expect(countUp(0, v => `<t>${v}</t>`, 0.5, '0s')).toBe('<t>0</t>')
-  })
-
-  test('a tile that just finished ripples once; a running or settled one does not', () => {
-    expect(badgeSvg('#7cb7ff', 'file', 32, false, 0, 50)).toContain('type="scale"')
-    expect(badgeSvg('#7cb7ff', 'file', 32, false, 0, ENTER_MS)).not.toContain('type="scale"')
-    expect(badgeSvg('#7cb7ff', 'file', 32, true, 0, 50)).not.toContain('type="scale"')
-  })
-
-  test('the ripple stays inside the picture: the tile leaves it room to grow', () => {
-    const svg = badgeSvg('#7cb7ff', 'file', 32, false, 0, 50)
-    const to = Number(/type="scale" from="[\d.]+" to="([\d.]+)"/.exec(svg)?.[1])
-    expect((12.5 + 0.8) * to).toBeLessThanOrEqual(16) // half the tile and half its stroke, both scaled
-  })
-
-  test('a finishing pill turns from the running colours: no pop, the dots gather, the word fades up', () => {
-    const m = pillSvg('done', PILL.ok.fg, PILL.ok.bg, 22, false, 'check', 0, 0, { enter: 0, morph: PILL.busy })
-    expect(m.svg).toContain(`attributeName="fill" from="${PILL.busy.bg}" to="${PILL.ok.bg}"`)
-    expect(m.svg).toContain('attributeName="cx"')
-    expect(m.svg).toContain('values="1;1.06;1"')
-    expect(m.svg).not.toContain('values="0.78;1.03;1"')
-    expect(m.svg).toContain('attributeName="stroke-dashoffset"') // the check still writes itself
-    // Settled, the same pill is still: the morph is a one-shot.
-    expect(pillSvg('done', PILL.ok.fg, PILL.ok.bg, 22, false, 'check', 0, 0, { enter: ENTER_MS, morph: PILL.busy }).svg).not.toContain('<animate')
-  })
-
-  test('only a failure shakes, once, inside the capsule, after the morph', () => {
-    const bad = pillSvg('error', PILL.bad.fg, PILL.bad.bg, 22, false, 'cross', 0, 0, { enter: 0, morph: PILL.busy }).svg
-    expect(bad).toContain(`type="translate" values="0 0;-1.6 0`)
-    expect(bad).toContain(`begin="${MOTION.morphS.toFixed(3)}s"`)
-    expect(pillSvg('done', '#fff', '#000', 22, false, 'check', 0, 0, { enter: 0, morph: PILL.busy }).svg).not.toContain('type="translate" values')
-    expect(pillSvg('error', '#fff', '#000', 22, false, 'cross', 0, 0, { enter: 0 }).svg).not.toContain('type="translate" values')
-  })
-
-  test('a count with a prefix rises as +n and rests on its text', () => {
-    const p = pillSvg('+12', '#fff', '#000', 22, false, undefined, 0, 0, { enter: 0, count: { n: 12, word: '', prefix: '+' } }).svg
-    expect(p).toContain('>+0</text>')
-    expect(p).toContain('>+12</text>')
-    expect(p).not.toContain('+12 <')
+  test('the dots make room: a running capsule is wider', () => {
+    expect(pillSvg('running', '#fff', '#000', 24, true).width).toBeGreaterThan(pillSvg('running', '#fff', '#000', 24, false).width)
   })
 
   test('every picture is well-formed: no tag repeats an attribute', () => {
     const all = [
-      pillSvg('error', '#fff', '#000', 22, false, 'cross', 0, 0, { enter: 100, morph: PILL.busy, alive: true }).svg,
-      pillSvg('done', '#fff', '#000', 22, false, 'check', 0, 0, { enter: 100, morph: PILL.busy, alive: true }).svg,
-      badgeSvg('#fff', 'file', 32, false, 0, 100),
+      pillSvg('error', '#fff', '#000', 22, false, 'cross').svg,
+      pillSvg('running', '#fff', '#000', 22, true).svg,
+      badgeSvg('#fff', 'file', 32, false),
       badgeSvg('#fff', 'file', 32, true),
     ]
     for (const svg of all)
@@ -366,74 +288,6 @@ describe('finish motion', () => {
   })
 })
 
-describe('holdFirst', () => {
-  test('a key keeps what it was first drawn with, so a redraw gives the same picture', () => {
-    const hold = holdFirst<number>()
-    expect(hold('row:a', 120)).toBe(120)
-    expect(hold('row:a', 320)).toBe(120)
-    expect(hold('row:a', 820)).toBe(120)
-    expect(hold('row:b', 40)).toBe(40)
-  })
-
-  test('nothing to hold stays nothing, and does not take the key', () => {
-    const hold = holdFirst<number>()
-    expect(hold('row:c', undefined)).toBeUndefined()
-    expect(hold('row:c', 10)).toBe(10)
-  })
-
-  test('it keeps only its latest keys', () => {
-    const hold = holdFirst<number>(2)
-    hold('a', 1)
-    hold('b', 2)
-    hold('c', 3)
-    expect(hold('a', 9)).toBe(9) // forgotten: held anew
-  })
-})
-
-describe('finishClock', () => {
-  const none = () => undefined
-
-  test('a row drawn finished before its end time is noted still plays, from that draw', () => {
-    const f = finishClock()
-    expect(f.ago(['a'], true, 1000, none)).toBeUndefined()
-    expect(f.ago(['a'], false, 2000, none)).toBe(0)
-    expect(f.ago(['a'], false, 2300, none)).toBe(300)
-    // The end time arrives later: the earlier origin still wins, so the motion does not jump.
-    expect(f.ago(['a'], false, 2400, () => 2100)).toBe(400)
-  })
-
-  test('history (never drawn running, no end time) stays still', () => {
-    expect(finishClock().ago(['h'], false, 5000, none)).toBeUndefined()
-  })
-
-  test('an end time alone is enough, and the motion stops after ENTER_MS', () => {
-    const f = finishClock()
-    expect(f.ago(['b'], false, 1100, () => 1000)).toBe(100)
-    expect(f.ago(['b'], false, 1000 + ENTER_MS, () => 1000)).toBeUndefined()
-  })
-
-  test('a group plays from its last call to finish', () => {
-    const f = finishClock()
-    expect(f.ago(['x', 'y'], false, 3000, id => (id === 'x' ? 2000 : 2900))).toBe(100)
-  })
-})
-
-describe('running pill animation', () => {
-  test('a running capsule waves its dots and keeps the capsule still; a settled one stays still', () => {
-    const run = pillSvg('running', '#c4baff', '#2d3a3f', 24, true)
-    expect(run.svg).toContain('<animate ')
-    expect(run.svg).toContain('repeatCount="indefinite"')
-    expect(run.svg).not.toContain('attributeName="fill-opacity"')
-    expect(pillSvg('done', '#fff', '#000', 24, false).svg).not.toContain('animate')
-  })
-
-  test('the spinner makes room: a running capsule is wider', () => {
-    expect(pillSvg('running', '#fff', '#000', 24, true).width).toBeGreaterThan(pillSvg('running', '#fff', '#000', 24, false).width)
-  })
-})
-
-
-
 describe('loadingSvg', () => {
   test('idle is a quiet track: no animation, no mask', () => {
     const svg = loadingSvg(500, 18, '#9b8cf7')
@@ -442,11 +296,10 @@ describe('loadingSvg', () => {
     expect(svg).not.toContain('<mask')
   })
 
-  test('live sweeps a soft glow across the track', () => {
+  test('live lights the dots across the track, still', () => {
     const svg = loadingSvg(500, 18, '#9b8cf7', { live: true })
-    expect(svg).toContain('<mask id="l500_18m"')
-    expect(svg).toContain('<animate attributeName="x" from="-200" to="500"')
-    expect(svg).toContain('repeatCount="indefinite"')
+    expect(svg).toContain('fill-opacity="0.95"')
+    expect(svg).not.toContain('<animate')
   })
 
   test('draws no number: no label, no pill', () => {
@@ -478,66 +331,16 @@ describe('loadingSvg', () => {
   })
 })
 
-describe('more motion', () => {
-  test('a running tile runs a light round its edge; a settled one is still', () => {
-    expect(badgeSvg('#ffd166', '>_', 32, true)).toContain('attributeName="stroke-dashoffset" from="0" to="-100"')
-    expect(badgeSvg('#ffd166', '>_', 32, true)).not.toContain('type="scale"')
-    expect(badgeSvg('#ffd166', '>_', 32, false)).not.toContain('<animate')
+describe('band pictures', () => {
+  test('the status dot wears a halo while live, and nothing moves', () => {
+    expect(dotSvg('#9b8cf7', true).match(/<circle/g)?.length).toBe(2)
+    expect(dotSvg('#9b8cf7', false).match(/<circle/g)?.length).toBe(1)
+    expect(dotSvg('#9b8cf7', true)).not.toContain('<animate')
   })
 
-  test('the status dot ripples only while live', () => {
-    expect(dotSvg('#9b8cf7', true)).toContain('repeatCount="indefinite"')
-    expect(dotSvg('#9b8cf7', false)).not.toContain('<animate')
-  })
-
-  test('a changed card rolls the old value out and the new one in, and flashes its own colour', () => {
-    const moved = cardSvg('Cost', '≈$15.62', { changed: true, from: '≈$15.40', iconColor: '#f2c94c' }).svg
-    expect(moved).toContain('≈$15.40')
-    expect(moved).toContain('from="0 0" to="0 -22"') // the old value leaves upward
-    expect(moved).toContain('from="0 22" to="0 0"') // the new one arrives from below
-    expect(moved).toContain('attributeName="stroke" from="#f2c94c"')
-    expect(cardSvg('Cost', '≈$15.62').svg).not.toContain('<animate')
-  })
-
-  test('the frame, icon and label never fade when a value changes', () => {
-    const moved = cardSvg('Cost', '$2', { changed: true, from: '$1', icon: 'coin' }).svg
-    const opacityAnims = moved.match(/attributeName="opacity"/g) ?? []
-    expect(opacityAnims.length).toBe(2) // only the two value lines
-    expect(moved).toMatch(/<g clip-path="url\(#cvCost\)">/)
-  })
-
-  test('the clock is a self-running odometer: same markup every second of a turn', () => {
-    const a = cardSvg('Time', '1:06', { icon: 'stopwatch', clock: { elapsedMs: 66_000 } })
-    expect(a.svg).toContain('repeatCount="indefinite"')
-    expect(a.svg).toContain('dur="10s"') // seconds
-    expect(a.svg).toContain('dur="60s"') // tens of seconds
-    expect(a.svg).toContain('dur="600s"') // minutes
-    // The redraws reuse the art drawn at the start, so nothing in it depends on the moment.
-    expect(cardSvg('Time', '1:06', { icon: 'stopwatch', clock: { elapsedMs: 66_000 } }).svg).toBe(a.svg)
-  })
-
-  test('the odometer stands at the right numerals without SMIL', () => {
-    const { markup } = clockOdometer(66_000, 0, 40, 17, 22)
-    // 1:06 → minutes at 1 (strip index 2), tens at 0 (index 1), seconds at 6 (index 7).
-    expect(markup).toContain('translate(0 -44)')
-    expect(markup).toContain('translate(0 -22)')
-    expect(markup).toContain('translate(0 -154)')
-    expect(markup).toContain('begin="-6.000s"')
-    expect(markup).toContain('begin="-66.000s"')
-  })
-
-  test('a live card breathes, with no sweep; an idle one stays still', () => {
-    const live = cardSvg('Cost', '$1', { icon: 'coin', live: { now: 1_000 } }).svg
-    expect(live).toContain('attributeName="fill-opacity" values="0.14;0.3;0.14"')
-    expect(live).toContain(`begin="${phaseBegin(1_000, CARD_BREATHE_MS)}"`)
-    expect(live).not.toContain('attributeName="x"')
-    expect(cardSvg('Cost', '$1', { icon: 'coin' }).svg).not.toContain('<animate')
-  })
-
-  test('phaseBegin wraps and never goes positive', () => {
-    expect(phaseBegin(0, 3600)).toBe('0.000s')
-    expect(phaseBegin(3700, 3600)).toBe('-0.100s')
-    expect(phaseBegin(-100, 3600)).toBe('-3.500s')
+  test('a card is a still picture', () => {
+    expect(cardSvg('Cost', '≈$15.62', { icon: 'coin', iconColor: '#f2c94c' }).svg).not.toContain('<animate')
+    expect(cardSvg('Time', '1:06', { icon: 'stopwatch' }).svg).toContain('>1:06</text>')
   })
 
   test('a card carries its label and value, escaped, and grows with the value', () => {
@@ -573,54 +376,16 @@ describe('more motion', () => {
     expect(speedScale(5000)).toBe(6000)
   })
 
-  test('the speedometer sweeps its needle from where it was drawn', () => {
+  test('the speedometer points its needle at the fraction', () => {
     expect(speedoSvg(0.5, '#9b8cf7', 22)).toContain('rotate(0.0 22 22)')
     expect(speedoSvg(0.5, '#9b8cf7', 22)).not.toContain('<animate')
-    const moving = speedoSvg(1, '#9b8cf7', 22, { from: 0 })
-    expect(moving).toContain('from="-135.0 22 22" to="135.0 22 22"')
-    expect(moving).toContain('attributeName="stroke-dasharray"')
     expect(speedoSvg(3, '#fff', 22)).toContain('rotate(135.0 22 22)')
   })
 
-  test('a stat takes a ring in the glyph slot, and rolls a changed value', () => {
+  test('a stat takes a ring in the glyph slot, and is still', () => {
     const ring = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"></svg>'
     expect(statSvg('9%', '5-hour limit', { ring }).svg).toContain(`<g transform="translate(0 ${(STAT.height - STAT.glyph) / 2})">${ring}</g>`)
-    expect(statSvg('$2', 'cost', { changed: true, from: '$1' }).svg).toContain('<animateTransform')
     expect(statSvg('$2', 'cost').svg).not.toContain('<animate')
-  })
-})
-
-describe('icons', () => {
-  test('every tool kind has a drawn icon, and the tile centres it', () => {
-    for (const icon of Object.values(KIND_ICON)) {
-      const svg = badgeSvg('#ffd166', icon, 32)
-      expect(svg).toContain('translate(8 8) scale(0.6667)') // 16px mark, top-left at 8, 8: dead centre in 32
-      expect(svg).not.toContain('<text')
-    }
-  })
-
-  test('an unknown name still falls back to a typed glyph', () => {
-    expect(badgeSvg('#fff', '?', 30)).toContain('<text')
-  })
-
-  test('a pill icon makes room and sits on the left', () => {
-    const plain = pillSvg('done', '#fff', '#000', 24)
-    const withIcon = pillSvg('done', '#fff', '#000', 24, false, 'check')
-    expect(withIcon.width).toBeGreaterThan(plain.width)
-    expect(withIcon.svg).toContain('<g transform="translate(10.08')
-  })
-
-  test('a card with an icon puts it in a tile and sets the text beside it', () => {
-    const svg = cardSvg('Cost', '$1', { icon: 'coin' }).svg
-    expect(svg).toContain('<rect x="8" y="8" width="36" height="36" rx="10"')
-    expect(svg).toContain('translate(15 15) scale(0.9167)') // 22px icon, centred in the tile
-    expect(svg).toContain('x="54" y="21"')
-    expect(cardSvg('Cost', '$1').svg).toContain('x="14" y="21"')
-  })
-
-  test('the card carries the halftone texture in its own colour', () => {
-    const svg = cardSvg('Cost', '$1', { icon: 'coin', iconColor: '#f2c94c' }).svg
-    expect(svg).toMatch(/<path d="M[^"]*h2v2h-2z[^"]*" fill="#f2c94c" fill-opacity="0.22"\/>/)
   })
 })
 
@@ -633,15 +398,6 @@ describe('countSvg', () => {
 
   test('has a hover title explaining itself', () => {
     expect(countSvg(3).svg).toContain('<title>Tool calls this turn</title>')
-  })
-
-  test('flashes and rolls the old number out only when the count grew', () => {
-    const grew = countSvg(5, { changed: true, from: 4 }).svg
-    expect(grew).toContain('attributeName="fill"')
-    expect(grew).toContain('>4</text>')
-    expect(grew).toContain('from="0 0" to="0 -14"')
-    expect(grew).toContain('from="0 14" to="0 0"')
-    expect(countSvg(5).svg).not.toContain('<animate')
   })
 
   test('grows wider with more digits and a longer word', () => {
@@ -678,39 +434,6 @@ describe('fmtReset', () => {
   })
 })
 
-describe('redraws carry motion on', () => {
-  test('loops start at the phase the clock has reached, so a new picture continues the old', () => {
-    expect(loadingSvg(400, 18, '#9b8cf7', { live: true, now: 2_500 })).toContain(`begin="${phaseBegin(2_500, 1900)}"`)
-    expect(dotSvg('#9b8cf7', true, 14, 700)).toContain(`begin="${phaseBegin(700, 1400)}"`)
-    expect(badgeSvg('#9b8cf7', 'search', 30, true, 300)).toContain(`begin="${phaseBegin(300, 1100)}"`)
-    expect(pillSvg('working', '#fff', '#000', 24, true, undefined, 1_000).svg).toContain(`begin="${phaseBegin(1_000 - 180, 1200)}"`)
-  })
-
-  test('one-shots resume from the time since they began, never from the start', () => {
-    expect(cardSvg('Cost', '$2', { changed: true, from: '$1', ago: 300 }).svg).toContain('begin="-0.300s"')
-    expect(countSvg(5, { changed: true, from: 4, ago: 250 }).svg).toContain('begin="-0.250s"')
-  })
-})
-
-describe('cards hold their width', () => {
-  test('a card is as wide while it rolls as once it settles', () => {
-    const rolling = cardSvg('Model', 'Opus 5.5', { changed: true, from: 'Sonnet 5.5', icon: 'bot' })
-    const still = cardSvg('Model', 'Opus 5.5', { icon: 'bot' })
-    expect(rolling.width).toBe(still.width)
-  })
-
-  test('the Time card is as wide ticking as it is still', () => {
-    const ticking = cardSvg('Time', '12:39', { icon: 'stopwatch', clock: { elapsedMs: 759_000 } })
-    const still = cardSvg('Time', '12:39', { icon: 'stopwatch' })
-    expect(ticking.width).toBe(still.width)
-  })
-
-  test('the odometer lays out the second it shows: no leading 0 just before 10:00', () => {
-    const { markup } = clockOdometer(599_600, 0, 40, 17, 22)
-    expect(markup.match(/<g transform=/g)?.length).toBe(3) // 9:59 — three digits, not 09:59
-  })
-})
-
 describe('base', () => {
   test('takes the last part of POSIX and Windows paths alike', () => {
     expect(base('/home/me/work/app')).toBe('app')
@@ -723,7 +446,7 @@ describe('base', () => {
 describe('steady widths', () => {
   test('a pill and the tool counter hold a minimum width, so what follows them never shifts', () => {
     const working = pillSvg('working', '#fff', '#000', 24, true).width
-    expect(pillSvg('idle', '#fff', '#000', 24, false, undefined, 0, working).width).toBe(working)
+    expect(pillSvg('idle', '#fff', '#000', 24, false, undefined, working).width).toBe(working)
     expect(pillSvg('idle', '#fff', '#000').width).toBeLessThan(working)
     const room = countSvg(999).width
     expect(countSvg(3, { minWidth: room }).width).toBe(room)
@@ -740,10 +463,10 @@ describe('chipSvg', () => {
     expect(c.svg).toContain('dx="5">tools</tspan>')
   })
 
-  test('minWidth holds a chip as wide as another state, and a changed value rolls', () => {
+  test('minWidth holds a chip as wide as another state, and nothing on it moves', () => {
     const wide = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).natural
     expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
-    expect(chipSvg({ color: '#fff', value: '3', label: 'tools', changed: true, from: '2' }).svg).toContain('animateTransform')
+    expect(chipSvg({ color: '#9b8cf7', label: 'working', dots: true }).svg).not.toContain('<animate')
     expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('<animate')
   })
 })
@@ -753,17 +476,13 @@ describe('meterSvg', () => {
     const m = meterSvg(11, '#e8825f')
     expect(m.width).toBe(METER.segs * (METER.w + METER.gap) - METER.gap)
     expect(m.svg).toContain('shape-rendering="crispEdges"')
-    // 11% of 30 blocks is 3: the lit window ends at the third block's right edge.
-    expect(m.svg).toContain(`<rect x="0" y="0" width="${3 * (METER.w + METER.gap) - METER.gap}"`)
-    expect(meterSvg(1, '#fff').svg).toContain(`width="${METER.w}" height="${METER.h}"></rect>`)
-    expect(meterSvg(0, '#fff').svg).not.toContain('clip-path="url(#meterlit)"')
-    expect(meterSvg(null, '#fff').svg).not.toContain('clip-path="url(#meterlit)"')
-  })
-
-  test('the lit edge moves from where it was; still otherwise; breathes near the limit', () => {
-    expect(meterSvg(40, '#fff', { from: 20 }).svg).toContain('<animate attributeName="width" from="46" to="94"')
-    expect(meterSvg(40, '#fff').svg).not.toContain('<animate')
-    expect(meterSvg(90, '#f2736b', { pulse: true, now: 500 }).svg).toContain('attributeName="fill-opacity" values="1;0.55;1"')
+    const lit = (svg: string) => (/<path d="([^"]*)" fill="#e8825f"/.exec(svg)?.[1]?.match(/M/g) ?? []).length
+    // 11% of 30 blocks is 3.
+    expect(lit(m.svg)).toBe(3)
+    expect(lit(meterSvg(1, '#e8825f').svg)).toBe(1)
+    expect(lit(meterSvg(0, '#e8825f').svg)).toBe(0)
+    expect(lit(meterSvg(null, '#e8825f').svg)).toBe(0)
+    expect(meterSvg(90, '#e8825f').svg).not.toContain('<animate')
   })
 })
 
@@ -787,7 +506,7 @@ describe('contextSvg', () => {
 
   test('unknown usage draws a dash and an empty meter; near the limit the figure takes the colour', () => {
     expect(contextSvg(null, '#e8825f').svg).toContain('>—</text>')
-    expect(contextSvg(90, '#f2736b', { pulse: true }).svg).toContain('fill="#f2736b">90%</text>')
+    expect(contextSvg(90, '#f2736b', { warn: true }).svg).toContain('fill="#f2736b">90%</text>')
   })
 })
 
@@ -799,9 +518,6 @@ describe('chipSvg quiet', () => {
     expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, quiet: true }).svg).toContain('font-weight="700" fill="#a39b96"')
   })
 
-  test('a growing count still flashes the tint once, back to none', () => {
-    expect(chipSvg({ color: '#f2c94c', value: '3', label: 'tools', quiet: true, changed: true, from: '2' }).svg).toContain('from="0.4" to="0"')
-  })
 })
 
 describe('statSvg plain', () => {
