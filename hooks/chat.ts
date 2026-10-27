@@ -271,14 +271,15 @@ export const taskKind = (type: string | undefined): Kind => (/bash|shell|command
 /**
  * What a notification row says, from its summary: the first line, less what the row already
  * says, the verb in front (`Agent`) and the ending behind (`completed`, which the pill shows),
- * and the quotes round a name left on its own.
+ * and the quotes round a name left on its own. A name that opens with the verb drops it too:
+ * `Agent` + `Agent smoke test` would say it twice.
  */
 export const taskSummary = (text: string, verb: string) => {
   let s = (text.split('\n').find(l => l.trim()) ?? '').trim()
   if (s.toLowerCase().startsWith(`${verb.toLowerCase()} `)) s = s.slice(verb.length + 1).trim()
   s = s.replace(/\s+(?:has\s+|was\s+)?(?:completed|finished|failed|stopped|killed|cancell?ed|done)\.?$/i, '').trim()
   const quoted = /^"([^"]+)"$/.exec(s)
-  return quoted ? quoted[1]! : s
+  return quoted ? unsaid(quoted[1]!, new RegExp(`^${verb}\\s+`, 'i')) : s
 }
 
 /** A background task's ending as a pill: done, failed or stopped; a status not known reads as itself. */

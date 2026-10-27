@@ -157,10 +157,19 @@ describe('task rows', () => {
   })
 
   test('the summary drops what the row already says: the verb, the ending, the quotes', () => {
-    expect(taskSummary('Agent "Agent smoke test" completed', 'Agent')).toBe('Agent smoke test')
+    expect(taskSummary('Agent "Agent smoke test" completed', 'Agent')).toBe('smoke test')
     expect(taskSummary('Background command "bun test" failed\nmore', 'Task')).toBe('Background command "bun test"')
     expect(taskSummary('\n  "lint" was stopped.', 'Task')).toBe('lint')
     expect(taskSummary('Done reading', 'Agent')).toBe('Done reading')
+  })
+
+  test('a name that opens with the verb drops it too, so the row never says it twice', () => {
+    expect(taskSummary('Agent "Agent smoke test" completed', 'Agent')).toBe('smoke test')
+    expect(taskSummary('Agent "agent smoke test" completed', 'Agent')).toBe('smoke test')
+    expect(taskSummary('"Task lint" was stopped.', 'Task')).toBe('lint')
+    // Only a whole word, and never the whole name.
+    expect(taskSummary('Agent "Agentic search" completed', 'Agent')).toBe('Agentic search')
+    expect(taskSummary('Agent "Agent" completed', 'Agent')).toBe('Agent')
   })
 
   test('the ending reads as done, failed or stopped; anything else as itself', () => {
