@@ -24,7 +24,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 | | Feature | What it does |
 | :-: | :-- | :-- |
 | 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar that lights up while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
-| ▮▮▮ | **Context meter** | Context used as one big figure with a 30-block meter beside it, the one thing drawn large; what is left and the window's size follow. It turns red past 85%. |
+| ▮▮▮ | **Context meter** | Context used as one big figure with a meter beside it drawn like the loading bar (a round, dotted track, lit over the share used), the one thing drawn large; what is left and the window's size follow. It turns red past 85%. |
 | ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed as small rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
 | 💰 | **Totals** | Cost, tokens, time and model as a quiet row of figures. Time is the finished turns' total; the live count is the clock on the top line. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |

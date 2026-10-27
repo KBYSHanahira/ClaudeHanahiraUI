@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, popLift } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, barCapSvg, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, popLift, INK } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -535,17 +535,31 @@ describe('chipSvg', () => {
 })
 
 describe('meterSvg', () => {
-  test('METER.segs crisp blocks, the first share of them lit, any use at all lighting one', () => {
-    const m = meterSvg(11, '#e8825f')
-    expect(m.width).toBe(METER.segs * (METER.w + METER.gap) - METER.gap)
-    expect(m.svg).toContain('shape-rendering="crispEdges"')
-    const lit = (svg: string) => (/<path d="([^"]*)" fill="#e8825f"/.exec(svg)?.[1]?.match(/M/g) ?? []).length
-    // 11% of 30 blocks is 3.
-    expect(lit(m.svg)).toBe(3)
-    expect(lit(meterSvg(1, '#e8825f').svg)).toBe(1)
-    expect(lit(meterSvg(0, '#e8825f').svg)).toBe(0)
-    expect(lit(meterSvg(null, '#e8825f').svg)).toBe(0)
+  test('the loading bar\'s look: a round track, the first share of it lit, any use at all lighting a round stub', () => {
+    const m = meterSvg(25, '#e8825f')
+    expect(m.width).toBe(METER.w)
+    expect(m.height).toBe(METER.h)
+    expect(m.svg).toContain(`<rect width="${METER.w}" height="${METER.h}" rx="${METER.h / 2}" fill="${INK.track}"/>`)
+    expect(m.litW).toBe(Math.round(0.25 * METER.w))
+    expect(m.svg).toContain(`<rect width="${m.litW}" height="${METER.h}" rx="${METER.h / 2}" fill="#e8825f" fill-opacity="0.2"/>`)
+    // The lit dots, as the loading bar's: bright and dim, cut to the lit share.
+    expect(m.svg).toContain('fill="#e8825f" fill-opacity="0.95"')
+    expect(m.svg).toContain('clip-path="url(#meter-lit)"')
+    expect(meterSvg(1, '#e8825f').litW).toBe(METER.h)
+    expect(meterSvg(100, '#e8825f').litW).toBe(METER.w)
+    expect(meterSvg(140, '#e8825f').litW).toBe(METER.w)
+    for (const p of [0, null, NaN]) {
+      const empty = meterSvg(p, '#e8825f')
+      expect(empty.litW).toBe(0)
+      expect(empty.svg).not.toContain('meter-lit')
+    }
     expect(meterSvg(90, '#e8825f').svg).not.toContain('<animate')
+  })
+
+  test('the meter\'s dots are the loading bar\'s, on a track of the same height', () => {
+    const dots = (svg: string) => /<path d="([^"]*)" fill="#e8825f" fill-opacity="0.95"/.exec(svg)![1]!
+    const bar = loadingSvg(METER.w, METER.h, '#e8825f', { live: true })
+    expect(dots(meterSvg(100, '#e8825f').svg)).toBe(dots(bar))
   })
 })
 
@@ -557,7 +571,7 @@ describe('contextSvg', () => {
     expect(c.svg).toContain('>context</tspan>')
     expect(c.svg).toContain('> · 889k left</tspan>')
     expect(c.svg).toContain('> · 1M window</tspan>')
-    expect(c.svg).toContain('shape-rendering="crispEdges"')
+    expect(c.svg).toContain(meterSvg(11, '#e8825f').svg)
   })
 
   test('stacked: the meter under the figure, in a taller, narrower picture', () => {
