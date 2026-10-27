@@ -229,3 +229,52 @@ run('a figure that changes glides to its new value, lands on it, then holds stil
   expect(await pictures(ui)).toEqual(settled)
   await ui.unmount()
 })
+
+/** The Time figure and the top line's clock, as the band draws them now. */
+const clocks = async (ui: any) => {
+  const time = (await pictures(ui)).map(p => /:Time ([^=]+)=/.exec(p)?.[1]).find(Boolean)
+  const texts = (await ui.findAll({ type: 'Text' })).map((t: { text: string }) => t.text)
+  return { time, top: texts.find((t: string) => /^\d+(m \d+)?s$|^\d+m \d+s$/.test(t)) }
+}
+/** What the engine answers beneath the plugin for a turn's events. */
+const turns = (on: any) => {
+  on('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
+  on('turn.start', (_: unknown, e: { turnId: string }) => ({ turnId: e.turnId }))
+  on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
+}
+const working = { hasSurvey: false, isWorking: true, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} }
+const idle = { ...working, isWorking: false }
+
+run('a turn started without a typed prompt runs the clocks live, and Time adds the turn as it ends', async ($, on) => {
+  const clock = mock.clock(on, { now: 3_000_000 })
+  turns(on)
+  const ui = await band($, on, { percent: 20, usd: 1 }, false)
+  await ($ as any).turn.start({ text: '', turnId: 't1' })
+  await ui.redraw(working)
+  await clock.advance(3000)
+  await ui.redraw(working)
+  expect(await clocks(ui)).toEqual({ time: '0:03', top: '3s' })
+  await clock.advance(2000)
+  await ($ as any).turn.complete({ turnId: 't1', answer: '', durationMs: 5000, isAborted: false, reason: 'answer' })
+  await ui.redraw(idle)
+  expect((await clocks(ui)).time).toBe('0:05')
+  await ui.unmount()
+})
+
+run('a prompt typed while a turn runs neither restarts its clock nor clears its tool count', async ($, on) => {
+  const clock = mock.clock(on, { now: 4_000_000 })
+  turns(on)
+  on('tool.call', () => ({ result: {} }) as never)
+  const ui = await band($, on, { percent: 20, usd: 1 }, true)
+  await ($ as any).prompt.submit({ text: 'go' })
+  await ($ as any).turn.start({ text: 'go', turnId: 't2' })
+  await ($ as any).tool.call({ tool: 'Bash', command: 'ls' })
+  const toolCount = async () => (await pictures(ui)).map(p => /:(\d+) tool calls=/.exec(p)?.[1]).find(Boolean)
+  await clock.advance(5000)
+  await ($ as any).prompt.submit({ text: 'and this too' })
+  await clock.advance(1000)
+  await ui.redraw(working)
+  expect(await clocks(ui)).toEqual({ time: '0:06', top: '6s' })
+  expect(await toolCount()).toBe('1')
+  await ui.unmount()
+})

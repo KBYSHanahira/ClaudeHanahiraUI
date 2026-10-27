@@ -519,7 +519,11 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('prompt.submit', async ($, e, next) => {
+  // The main turn starts: the clock and the beat start here, not at prompt.submit, which a
+  // turn begun without a typed prompt (a continuation) never raises, and which a prompt typed
+  // while a turn runs raises mid-turn.
+  on('turn.start', async ($, e, next) => {
+    if ((e as unknown as { agentId?: string }).agentId !== undefined) return next(e)
     startedAt = await $.clock.now()
     // A beat every second while the turn runs, so the clock and figures move live.
     ticker?.cancel()
@@ -735,12 +739,13 @@ export const register: Register = on => {
     }
     ticker?.cancel()
     ticker = null
+    // The turn's length as the engine reports it; failing that, from the start this module heard
+    // (none after a reload mid-turn: startedAt is 0 and the span would be epoch seconds).
     const nowMs = await $.clock.now()
-    if (startedAt > 0) {
-      // No prompt.submit seen (e.g. a reload mid-turn): startedAt is 0 and the span would be epoch seconds.
-      const s = Math.round((nowMs - startedAt) / 1000)
-      await update($, seconds, () => s)
-      await update($, runMs, t => (t ?? 0) + (nowMs - startedAt))
+    const ran = Number.isFinite(e.durationMs) && e.durationMs >= 0 ? e.durationMs : startedAt > 0 ? nowMs - startedAt : null
+    if (ran !== null) {
+      await update($, seconds, () => Math.round(ran / 1000))
+      await update($, runMs, t => (t ?? 0) + ran)
     }
     startedAt = 0
     await locate($).catch(() => undefined)
@@ -780,7 +785,6 @@ export const register: Register = on => {
       })),
     }
     const sp = { ...spNow, tps: glide('tps', spNow.tps, exact) }
-    const runShown = glide('time', run ?? 0) ?? 0
     if (glides.active(nowMs)) {
       glideBeats = Math.ceil(MOTION.glideMs / MOTION.glideStepMs) + 2
       glidePump ??= $.clock.every(MOTION.glideStepMs, () => {
@@ -800,6 +804,8 @@ export const register: Register = on => {
     // so they go back to plain images and the motion stops.
     const loop = e.props.isWorking ? { isInteractive: true } : {}
     const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
+    // Time spent running: the finished turns, and the running one as it goes.
+    const runShown = (run ?? 0) + liveMs
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
     const { Box, Text } = $.ui.resolve(e)
 
@@ -817,9 +823,9 @@ export const register: Register = on => {
     const cards: { label: string; value: string; icon: IconName; color: string; glide?: string }[] = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', glide: 'usd' },
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7', glide: 'tokens' },
-      // The finished turns' total: it moves when a turn ends, so the card's picture is not
-      // swapped every second (the live count is the text clock on the top line).
-      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f', glide: 'time' },
+      // Live: it counts every second while a turn runs, on the band's beat (no glide or pop:
+      // a figure that moves every second would never be still).
+      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
