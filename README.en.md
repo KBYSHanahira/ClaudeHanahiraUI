@@ -112,6 +112,8 @@ cd ClaudeHanahiraUI
 scripts/install-ssh.sh
 ```
 
+This copy carries only the hooks: the skills reach the remote with Desktop's synced copy, so they keep their usual `hanahira-claude-ui:` names and appear once.
+
 Then open a **new session** in Desktop (open sessions do not pick it up). After a `git pull`, run `scripts/install-ssh.sh` again. Using it on your local machine needs none of this; Option 1 works as is.
 
 ## 🔄 Updating

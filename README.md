@@ -112,6 +112,8 @@ cd ClaudeHanahiraUI
 scripts/install-ssh.sh
 ```
 
+このコピーに入るのは hooks だけです。スキルは Desktop が同期するコピーで接続先に届くため、いつもの `hanahira-claude-ui:` の名前のまま 1 回だけ表示されます。
+
 その後、Desktop で **新しいセッション** を開きます（開いているセッションには反映されません）。`git pull` で更新したら、もう一度 `scripts/install-ssh.sh` を実行してください。手元のマシン（ローカル）で使う場合はこの手順は不要で、方法 1 のままで動きます。
 
 ## 🔄 アップデート
