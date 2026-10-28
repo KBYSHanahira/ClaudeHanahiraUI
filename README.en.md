@@ -69,7 +69,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 In the Claude Code **terminal** (not the desktop app's chat box):
 
 ```text
-/plugin install HanahiraClaudeUI --marketplace KBYSHanahira/ClaudeHanahiraUI
+/plugin install hanahira-claude-ui --marketplace KBYSHanahira/ClaudeHanahiraUI
 ```
 
 1. Answer `y` when asked to add the marketplace.
@@ -80,31 +80,31 @@ In the Claude Code **terminal** (not the desktop app's chat box):
 
 ### Option 2: upload the ZIP / `.plugin` file
 
-**Settings → Plugins → Upload a plugin**, then choose `HanahiraClaudeUI.zip` (or `.plugin`).
+**Settings → Plugins → Upload a plugin**, then choose `hanahira-claude-ui.zip` (or `.plugin`).
 
 ### Option 3: point at the folder (development, trying it out)
 
 ```bash
-claude --plugin-dir /path/to/HanahiraClaudeUI
+claude --plugin-dir /path/to/hanahira-claude-ui
 ```
 
-**Hot reload on an SSH host (Desktop).** Desktop syncs an empty `HanahiraClaudeUI` into every session, and it loads before a `--plugin-dir` of the same name, so the repo cannot be loaded as it is. `scripts/dev.ts` keeps a renamed copy, `HanahiraClaudeUI-dev`, in `~/.claude/hanahira-dev/` in sync with every save:
+**Hot reload on an SSH host (Desktop).** Desktop syncs an empty `hanahira-claude-ui` into every session, and it loads before a `--plugin-dir` of the same name, so the repo cannot be loaded as it is. `scripts/dev.ts` keeps a renamed copy, `hanahira-claude-ui-dev`, in `~/.claude/hanahira-dev/` in sync with every save:
 
-1. In `~/.claude/settings.json`, add `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/HanahiraClaudeUI-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` (your home in place of `/root`) and set `"HanahiraClaudeUI-ssh@hanahira-ssh": false` under `enabledPlugins`, or two bands are drawn.
+1. In `~/.claude/settings.json`, add `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/hanahira-claude-ui-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` (your home in place of `/root`) and set `"hanahira-claude-ui-ssh@hanahira-ssh": false` under `enabledPlugins`, or two bands are drawn.
 2. Run `bun scripts/dev.ts` and leave it running, then start a new session once.
 3. Each save reloads the mod in the open session (an edit Claude makes reloads when its turn ends). To stop, remove the two `env` keys and turn `-ssh` back on.
 
 Or keep it on with an environment variable:
 
 ```bash
-export CLAUDE_CODE_PLUGIN_DIRS=/path/to/HanahiraClaudeUI
+export CLAUDE_CODE_PLUGIN_DIRS=/path/to/hanahira-claude-ui
 ```
 
 ### 🌐 Using it over SSH
 
 With Claude Code Desktop over SSH, Claude Code itself runs on the **remote machine**. Desktop syncs your local plugin to the remote, but **without its `hooks/` folder**, and that empty same-named copy overrides a real install on the remote, so a normal install shows nothing.
 
-So the remote gets its own copy under a **different name** (`HanahiraClaudeUI-ssh`). **On the remote machine**, clone this repository and run:
+So the remote gets its own copy under a **different name** (`hanahira-claude-ui-ssh`). **On the remote machine**, clone this repository and run:
 
 ```bash
 git clone https://github.com/KBYSHanahira/ClaudeHanahiraUI.git
@@ -132,10 +132,10 @@ In the Claude Code **terminal**, run these two in order:
 
 ```text
 /plugin marketplace update hanahira-plugins
-/plugin update HanahiraClaudeUI@hanahira-plugins
+/plugin update hanahira-claude-ui@hanahira-plugins
 ```
 
-Or open `/plugin`, go to **Marketplaces** → `hanahira-plugins` → **Update**, then **Installed** → `HanahiraClaudeUI` → **Update**.
+Or open `/plugin`, go to **Marketplaces** → `hanahira-plugins` → **Update**, then **Installed** → `hanahira-claude-ui` → **Update**.
 
 ### Installed from a ZIP / `.plugin` (Option 2)
 
@@ -146,7 +146,7 @@ Get the latest ZIP and upload it again under **Settings → Plugins → Upload a
 Just `git pull` in that folder:
 
 ```bash
-cd /path/to/HanahiraClaudeUI
+cd /path/to/hanahira-claude-ui
 git pull
 ```
 
@@ -200,8 +200,8 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 ## 🛠️ Development
 
 ```bash
-claude plugin validate /path/to/HanahiraClaudeUI
-claude --plugin-dir /path/to/HanahiraClaudeUI
+claude plugin validate /path/to/hanahira-claude-ui
+claude --plugin-dir /path/to/hanahira-claude-ui
 ```
 
 Pure functions live in `hooks/chat.ts` and friends and have tests (`hooks/*.test.ts`): run them with `bun test` (`scripts/test-preload.ts` stands in for the engine's modules; a CLI that has `claude plugin test` can run them there too). Layout:

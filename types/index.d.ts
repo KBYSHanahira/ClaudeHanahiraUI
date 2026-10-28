@@ -34,7 +34,7 @@ export type Agent = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'HanahiraClaudeUI': {
+    'hanahira-claude-ui': {
       stats: Stats
       usage: Usage
       tokens: Tokens

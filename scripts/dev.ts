@@ -1,18 +1,18 @@
-// Hot reload while developing: keeps a copy of this repo's mod, renamed HanahiraClaudeUI-dev,
+// Hot reload while developing: keeps a copy of this repo's mod, renamed hanahira-claude-ui-dev,
 // in sync on every save. Run: bun scripts/dev.ts   (Ctrl+C to stop)
 //
-// The repo cannot be loaded as it is: Desktop syncs an empty HanahiraClaudeUI (no hooks/)
+// The repo cannot be loaded as it is: Desktop syncs an empty hanahira-claude-ui (no hooks/)
 // into every session and that name loads first. A copy under its own name has no rival.
 // Sessions load the copy through ~/.claude/settings.json:
 //   "env": { "CLAUDE_CODE_PLUGIN_DIRS": "<DEST>", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }
-// and the engine reloads it each time this script writes to it. Turn HanahiraClaudeUI-ssh
+// and the engine reloads it each time this script writes to it. Turn hanahira-claude-ui-ssh
 // off meanwhile, or two bands are drawn.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 const SRC = resolve(import.meta.dir, '..')
-const NAME = 'HanahiraClaudeUI'
+const NAME = 'hanahira-claude-ui'
 const DEV_NAME = `${NAME}-dev`
 const DEST = process.env.HANAHIRA_DEV_DIR ?? join(homedir(), '.claude', 'hanahira-dev', DEV_NAME)
 

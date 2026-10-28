@@ -6,7 +6,7 @@ import { expect, mock, test } from 'claude-code/testing'
 const inEngine = typeof (globalThis as { Bun?: unknown }).Bun === 'undefined'
 const run = (inEngine ? test : (test as unknown as { skip: typeof test }).skip) as typeof test
 
-const PLUGIN = 'HanahiraClaudeUI'
+const PLUGIN = 'hanahira-claude-ui'
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 
 const EDIT = {
