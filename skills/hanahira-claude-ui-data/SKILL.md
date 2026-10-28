@@ -1,6 +1,6 @@
 ---
-name: "hanahira-data"
-description: Hanahira companion for database and data work on MySQL, PostgreSQL, SQLite, SQL Server and MongoDB — queries, schema migrations, backups and restores, indexing and query performance, bulk updates, anything that reads or modifies stored data. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever database or data work comes up.
+name: "hanahira-claude-ui-data"
+description: Hanahira companion for database and data work on MySQL, PostgreSQL, SQLite, SQL Server and MongoDB — queries, schema migrations, backups and restores, indexing and query performance, bulk updates, anything that reads or modifies stored data. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever database or data work comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
@@ -12,13 +12,13 @@ Terse mode for database work. Same discipline as the core: compress the packagin
 
 **Owns:** every read or change of stored data on MySQL, PostgreSQL, SQLite, SQL Server and MongoDB — queries, schema and migrations, indexes and query speed, backups and restores, bulk updates. The job is to keep data intact; speed comes second.
 
-**Hands off:** who may connect, credentials and network exposure of the database → `hanahira-security` (both sets of gates apply to grants). A query that fails or returns wrong rows for a reason not yet known → `hanahira-debug-test` leads the diagnosis while this file's gates still guard every write. Screens that show the data → `hanahira-design`, for the UI only.
+**Hands off:** who may connect, credentials and network exposure of the database → `hanahira-claude-ui-security` (both sets of gates apply to grants). A query that fails or returns wrong rows for a reason not yet known → `hanahira-claude-ui-debug-test` leads the diagnosis while this file's gates still guard every write. Screens that show the data → `hanahira-claude-ui-design`, for the UI only.
 
 **Helpers** may read schemas and run read-only queries for the lead; writes, migrations and restores are never delegated.
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Data** (compact: `Data`).
+Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Data** (compact: `Data`).
 
 ## The rule that outranks brevity
 

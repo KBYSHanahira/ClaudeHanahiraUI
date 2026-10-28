@@ -44,7 +44,7 @@ cause     <likely cause in one line — marked inferred>
 log       <path to the full output>
 ```
 
-Before saying anything is done I read the report and then the exit code and the end of the log myself; a pass counts only if they agree. A failure goes back into the normal flow — `hanahira-debug-test` when the cause isn't obvious.
+Before saying anything is done I read the report and then the exit code and the end of the log myself; a pass counts only if they agree. A failure goes back into the normal flow — `hanahira-claude-ui-debug-test` when the cause isn't obvious.
 
 ## Investigating in parallel
 

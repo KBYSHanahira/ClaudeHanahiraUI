@@ -1,6 +1,6 @@
 ---
-name: "hanahira-debug-test"
-description: Hanahira companion for debugging and failing tests — reproducing bugs, isolating root causes, stack traces and logs, flaky or failing suites, regression tests, verifying a fix. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever debugging or failing tests comes up.
+name: "hanahira-claude-ui-debug-test"
+description: Hanahira companion for debugging and failing tests — reproducing bugs, isolating root causes, stack traces and logs, flaky or failing suites, regression tests, verifying a fix. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever debugging or failing tests comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
@@ -12,17 +12,17 @@ Terse mode for debugging and verification. Compress the packaging, never the sub
 
 **Owns:** anything broken, crashing, flaky or failing — reproduce it, find the real cause, make the smallest fix, prove it — plus the quality of tests.
 
-**Hands off:** once the cause sits in stored data, security settings or the UI, the fix also follows `hanahira-data`, `hanahira-security` or `hanahira-design`. Refactors and failures spread across several components → `hanahira/references/work-in-order.md`.
+**Hands off:** once the cause sits in stored data, security settings or the UI, the fix also follows `hanahira-claude-ui-data`, `hanahira-claude-ui-security` or `hanahira-claude-ui-design`. Refactors and failures spread across several components → `hanahira-claude-ui/references/work-in-order.md`.
 
 **Helpers** may each investigate one independent failure in parallel and return the cause with its evidence, and a runner agent may run the slow reproduction or the full suite — only after the lead has passed the *Tests* gate below — and report the first failure as it happens; the lead confirms every fix by rerunning the original symptom.
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Debug-Test** (compact: `Debug-Test`).
+Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Debug-Test** (compact: `Debug-Test`).
 
 ## The core rule
 
-**Reproduce before fixing. Confirm the cause before changing code.** This file owns single-bug discipline. Refactors, failures across several components, and what "done" needs: `hanahira/references/work-in-order.md`.
+**Reproduce before fixing. Confirm the cause before changing code.** This file owns single-bug discipline. Refactors, failures across several components, and what "done" needs: `hanahira-claude-ui/references/work-in-order.md`.
 
 - **Reproduce where it's safe** — local or staging. **Gate:** never reproduce on prod by triggering real side effects (charges, emails, SMS, deletes, third-party webhooks); use logs, a replay against a copy, or a test double.
 - **Not reproduced yet → gather the evidence yourself first:** run it, read logs and traces, check recent changes. Ask only for what you can't reach — one question, last, with the default you'd take. Still can't reproduce (rare, prod-only) → state the leading hypothesis as unverified, add logging at the suspect boundary, and name the event that would confirm it.
@@ -44,13 +44,13 @@ Runs only when Hanahira is ON per the core's **Activation** (`hanahira/SKILL.md`
 7. Regress       full suite — nothing else broke
 ```
 
-System not mapped yet in this chat → learn it first (`hanahira/references/learn-system.md`): how it runs and tests, and which code owns the failing behavior. Steps 1–4 stay internal unless the user must run them; report cause, fix, verification.
+System not mapped yet in this chat → learn it first (`hanahira-claude-ui/references/learn-system.md`): how it runs and tests, and which code owns the failing behavior. Steps 1–4 stay internal unless the user must run them; report cause, fix, verification.
 
 - **Isolate**, cheapest first: binary-search the input, comment out half, `git bisect` once a known-good commit exists, log at the boundary between working and broken state.
 - **Locate:** a breakpoint or REPL at the suspect frame (pdb, `node --inspect`, dlv, gdb/lldb, the IDE debugger) is often cheaper than adding logging.
 - **Verify an intermittent bug:** measure the failure rate first (loop N runs, or the runner's repeat/stress flag), then show 0 failures in enough runs to beat that rate. Pin and record the seed when the runner shuffles order. One passing run proves nothing.
 
-Deep cases — an error far from where the bad value came from, a test that leaves state behind, flaky timing — `hanahira/references/debugging-deep.md`. Read only when the task matches.
+Deep cases — an error far from where the bad value came from, a test that leaves state behind, flaky timing — `hanahira-claude-ui/references/debugging-deep.md`. Read only when the task matches.
 
 ## Never cut
 
@@ -87,7 +87,7 @@ Cut: debugging-is-methodical preamble, explaining what a stack trace is, several
 
 ## Tests
 
-How to write tests: `hanahira/references/testing.md`. Bug fix → regression test first; it must fail for the right reason before the fix and pass after.
+How to write tests: `hanahira-claude-ui/references/testing.md`. Bug fix → regression test first; it must fail for the right reason before the fix and pass after.
 
 **Gate — check where tests point before running them.** Suites truncate or seed tables: confirm from config that `DATABASE_URL` / `DB_NAME` / `.env.test` target a test database, never prod or a shared dev DB someone else relies on. Can't confirm → ask before running. No real calls to paid or production services.
 

@@ -1,6 +1,6 @@
 ---
-name: "hanahira-project-create"
-description: Hanahira companion that scaffolds a Hono + Vite + TypeScript project on Bun as one Docker container in host network mode connected to the host's MySQL — app, docker/ folder, .env, CLAUDE.md, optional ufw rule; can also dockerize an existing project. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever scaffolding or containerizing a project comes up.
+name: "hanahira-claude-ui-project-create"
+description: Hanahira companion that scaffolds a Hono + Vite + TypeScript project on Bun as one Docker container in host network mode connected to the host's MySQL — app, docker/ folder, .env, CLAUDE.md, optional ufw rule; can also dockerize an existing project. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever scaffolding or containerizing a project comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
@@ -12,13 +12,13 @@ Scaffolds a production-mode Hono + Vite + TypeScript project on Bun, in one Dock
 
 **Owns:** a new Hono + Vite + TypeScript project on Bun in one Docker container on the host network, connected to the host's MySQL — or containerizing an existing project the same way.
 
-**Hands off:** other stacks → the core's `planning.md` and `ops.md`. Creating the database user and its grants → `hanahira-data`. Firewall changes → this file's steps under `hanahira-security`'s lockout rules. A service that already runs and misbehaves → `ops.md` or `hanahira-debug-test`.
+**Hands off:** other stacks → the core's `planning.md` and `ops.md`. Creating the database user and its grants → `hanahira-claude-ui-data`. Firewall changes → this file's steps under `hanahira-claude-ui-security`'s lockout rules. A service that already runs and misbehaves → `ops.md` or `hanahira-claude-ui-debug-test`.
 
 **Helpers** aren't needed to generate files — the work follows templates and is faster done directly. Once the user has approved it, the container build and health check may go to a runner agent (core *Who does the work*) so a failed build is reported the moment it happens.
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Project-Create** (compact: `Project-Create`).
+Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Project-Create** (compact: `Project-Create`).
 
 This skill replaces `planning.md` for a new Hono/Bun/Vite project or containerizing one, and `ops.md` for the new container (ops.md is for services that already exist).
 

@@ -1,6 +1,6 @@
 # Harder debugging cases
 
-Read when an error surfaces far from where the bad value was created, when tests are flaky or rely on fixed sleeps, or when something appears during a test run and no one knows which test caused it. Works with `hanahira-debug-test` and `references/work-in-order.md`.
+Read when an error surfaces far from where the bad value was created, when tests are flaky or rely on fixed sleeps, or when something appears during a test run and no one knows which test caused it. Works with `hanahira-claude-ui-debug-test` and `references/work-in-order.md`.
 
 ## 1. Walk back to where the value went wrong
 

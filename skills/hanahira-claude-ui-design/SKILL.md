@@ -1,24 +1,24 @@
 ---
-name: "hanahira-design"
-description: Hanahira companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, render verification, frontend performance. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever interface, layout, visual design or CSS work comes up.
+name: "hanahira-claude-ui-design"
+description: Hanahira companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, render verification, frontend performance. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever interface, layout, visual design or CSS work comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
 # Hanahira Design
 
-Terse mode for UI and visual design: compress the packaging, never the substance. An under-specified design gets built wrong, and the cost lands at implementation. System design (architecture, services, APIs) follows `hanahira/references/system-design.md`, not this skill. Read the external `frontend-design` skill only if the user names it.
+Terse mode for UI and visual design: compress the packaging, never the substance. An under-specified design gets built wrong, and the cost lands at implementation. System design (architecture, services, APIs) follows `hanahira-claude-ui/references/system-design.md`, not this skill. Read the external `frontend-design` skill only if the user names it.
 
 ## Role
 
 **Owns:** what people see and touch — direction, palette and type, layout, components and their states, CSS and its bugs, behavior from phone to TV, render checks, front-end performance.
 
-**Hands off:** architecture, APIs and data flow → `hanahira/references/system-design.md`. The security logic behind login or permission screens → `hanahira-security`. The data model behind a screen → `hanahira-data`. A page that is broken for an unknown reason → `hanahira-debug-test` first, then back here for the fix.
+**Hands off:** architecture, APIs and data flow → `hanahira-claude-ui/references/system-design.md`. The security logic behind login or permission screens → `hanahira-claude-ui-security`. The data model behind a screen → `hanahira-claude-ui-data`. A page that is broken for an unknown reason → `hanahira-claude-ui-debug-test` first, then back here for the fix.
 
 **Helpers** may gather the existing tokens and CSS, or take screenshots at set widths; the design decisions stay with the lead.
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Design** (compact: `Design`).
+Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Design** (compact: `Design`).
 
 ## What to read, when
 

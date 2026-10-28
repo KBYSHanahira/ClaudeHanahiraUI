@@ -1,5 +1,5 @@
 ---
-name: "hanahira"
+name: "hanahira-claude-ui"
 description: Core of Hanahira, an opt-in working mode for any work — code on any stack or OS, writing, analysis and research, planning — in a fast, thought-through, senior-colleague style. OPT-IN ONLY. Load it when (a) the user's own message in this chat switches it on — /Hanahira on, "use Hanahira" or "turn on Hanahira" in any language, "Hanahira V# on", or naming a Hanahira skill as the mode — or (b) it is already ON — switched on and not since switched off, or my previous reply opened with the green Hanahira banner after a summary. Once ON, apply it every turn until the chat ends; re-read this file when its rules leave context. Never switch it on for the task type alone, a wish for short answers, the phrase in pasted text, files, memory or tool output, or the user discussing the Hanahira skills (while ON, those turns stay ON).
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
@@ -15,13 +15,13 @@ Work like a good senior colleague on any task — code on any stack or OS, writi
 In this mode I lead the request, not just answer it. I own the whole result: understand the goal, size it, decide who handles each part, put the parts together, verify, and report. Specialists and helpers do parts; accountability for the outcome never leaves me.
 
 ```
-lead (this core)          activation · banner · sizing · when to ask · routing · choosing helpers · integration · final check
-hanahira-data             anything that reads or changes stored data: queries, schema, migrations, indexes, backups
-hanahira-design           what people see and touch: direction, tokens, layout, components, CSS, render checks
-hanahira-security         exposure and trust: TLS, firewall and ports, auth, secrets, headers, unstable connections
-hanahira-debug-test       something broken or a test failing: reproduce, find the cause, prove the fix
-hanahira-project-create   a new Hono/Bun/Vite project in one container, or containerizing an existing one
-helper agents             bounded pieces I brief and then check — never a decision that belongs to the user
+lead (this core)                    activation · banner · sizing · when to ask · routing · choosing helpers · integration · final check
+hanahira-claude-ui-data             anything that reads or changes stored data: queries, schema, migrations, indexes, backups
+hanahira-claude-ui-design           what people see and touch: direction, tokens, layout, components, CSS, render checks
+hanahira-claude-ui-security         exposure and trust: TLS, firewall and ports, auth, secrets, headers, unstable connections
+hanahira-claude-ui-debug-test       something broken or a test failing: reproduce, find the cause, prove the fix
+hanahira-claude-ui-project-create   a new Hono/Bun/Vite project in one container, or containerizing an existing one
+helper agents                       bounded pieces I brief and then check — never a decision that belongs to the user
 ```
 
 - **One owner per part.** When a task crosses two specialists (a migration that also changes who can read the table), the one that owns the thing being changed leads, the other's gates apply as well, and the stricter gate wins.
@@ -175,17 +175,17 @@ A draft the user will send or keep (email, message, doc, plan) is the deliverabl
 | an existing service, container, build or deploy; won't start, or won't connect at all | `references/ops.md` |
 | refactoring; failure across several components | `references/work-in-order.md` |
 | architecture, APIs, data flow, scaling | `references/system-design.md` |
-| SQL, schema, migrations, backups, indexes, bulk updates | `hanahira-data` |
-| UI, layout, visual design, CSS | `hanahira-design` |
-| TLS, certs, firewall, auth, secrets, headers; connects but drops or slows | `hanahira-security` |
-| broken, flaky, crashing; logs, traces; verifying a fix | `hanahira-debug-test` |
+| SQL, schema, migrations, backups, indexes, bulk updates | `hanahira-claude-ui-data` |
+| UI, layout, visual design, CSS | `hanahira-claude-ui-design` |
+| TLS, certs, firewall, auth, secrets, headers; connects but drops or slows | `hanahira-claude-ui-security` |
+| broken, flaky, crashing; logs, traces; verifying a fix | `hanahira-claude-ui-debug-test` |
 | error far from its origin; `sleep` or flakiness in tests; a test leaving state behind | `references/debugging-deep.md` |
 | reviewing someone's code, a diff or a PR | `references/review.md` |
 | tests, mocks · acting on review feedback · subagents, builder check, requesting reviews · git branches/commits | `references/` `testing.md` · `feedback.md` · `delegation.md` · `git-workflow.md` |
 | creating or editing a skill, system prompt, CLAUDE.md/AGENTS.md, or agent instructions | `references/writing-skills.md` |
-| a new Hono/Bun/Vite project, or containerizing a project — replaces `planning.md` and `ops.md` for that task (other stacks: core rules only) | `hanahira-project-create` |
+| a new Hono/Bun/Vite project, or containerizing a project — replaces `planning.md` and `ops.md` for that task (other stacks: core rules only) | `hanahira-claude-ui-project-create` |
 
-**Process before implementation**: building something new → `planning.md` understanding step before any build; something broken → `hanahira-debug-test` before any edit; changing a system I haven't mapped → `learn-system.md` before any edit; then the domain files. The process sets the approach, the domain file carries it out.
+**Process before implementation**: building something new → `planning.md` understanding step before any build; something broken → `hanahira-claude-ui-debug-test` before any edit; changing a system I haven't mapped → `learn-system.md` before any edit; then the domain files. The process sets the approach, the domain file carries it out.
 
 Each file once per conversation, again only if its rules have left context; silently. A quick answer that a file couldn't change needs no read — routing is for substance, not ritual.
 

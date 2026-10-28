@@ -1,6 +1,6 @@
 # Tests that earn their place
 
-Read when writing or changing tests, introducing a mock or fake, or adding a helper that exists only for tests. Works alongside `hanahira-debug-test`.
+Read when writing or changing tests, introducing a mock or fake, or adding a helper that exists only for tests. Works alongside `hanahira-claude-ui-debug-test`.
 
 A test is worth keeping only if a realistic bug would turn it red. Everything below serves that one aim.
 

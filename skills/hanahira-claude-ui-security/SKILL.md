@@ -1,6 +1,6 @@
 ---
-name: "hanahira-security"
-description: Hanahira companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, authentication and sessions, secrets, security headers, keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever security or connection work comes up.
+name: "hanahira-claude-ui-security"
+description: Hanahira companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, authentication and sessions, secrets, security headers, keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever security or connection work comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
@@ -14,13 +14,13 @@ Terse mode for defensive security and connection reliability. Compress the packa
 
 **Owns:** exposure and trust — TLS and certificates, firewall and open ports, authentication and sessions, secrets, security headers, and connections that drop or slow down. Defensive work only.
 
-**Hands off:** grants and users inside a database engine → shared with `hanahira-data`, both sets of gates apply. A failure with no security cause → `hanahira-debug-test`. The firewall step of a new scaffold → `hanahira-project-create` leads, with this file's lockout rules applying.
+**Hands off:** grants and users inside a database engine → shared with `hanahira-claude-ui-data`, both sets of gates apply. A failure with no security cause → `hanahira-claude-ui-debug-test`. The firewall step of a new scaffold → `hanahira-claude-ui-project-create` leads, with this file's lockout rules applying.
 
 **Helpers** may run read-only audits for the lead (config review, listing listeners and rules); they never change firewall, auth, certificates or secrets.
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Security** (compact: `Security`).
+Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Security** (compact: `Security`).
 
 ## The core rule
 
