@@ -3,7 +3,7 @@
 // and loads every *.test.ts it finds, so these are named *.spec.ts to stay out of its way).
 import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { VERSION } from '../hooks/version'
 
 const file = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url))
@@ -19,4 +19,13 @@ test('the preview shows this version, and the PNG was drawn from that SVG', () =
   const svg = file('docs/preview.svg')
   expect(svg.toString()).toContain(`v${VERSION}`)
   expect(file('docs/preview.png.sha256').toString().trim()).toBe(createHash('sha256').update(svg).digest('hex'))
+})
+
+// Each skill is found by its folder, and the engine names it by the `name:` in its SKILL.md.
+test('every skill folder holds a SKILL.md named after it', () => {
+  const dirs = readdirSync(new URL('../skills', import.meta.url), { withFileTypes: true }).filter(d => d.isDirectory())
+  expect(dirs.length).toBeGreaterThan(0)
+  for (const { name } of dirs) {
+    expect(file(`skills/${name}/SKILL.md`).toString()).toMatch(new RegExp(`^---\\nname: "?${name}"?\\n`))
+  }
 })

@@ -3,7 +3,7 @@
 #
 # Desktop syncs a plugin to the SSH host without its hooks/ folder, and that empty copy
 # (same name) overrides anything installed on the host. So the host gets its own copy
-# under a different name, hanahira-claude-ui-ssh, which the synced copy cannot override.
+# under a different name, HanahiraClaudeUI-ssh, which the synced copy cannot override.
 #
 # Run it ON THE SSH HOST, from a clone of this repository:
 #   scripts/install-ssh.sh            # install or refresh
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NAME=hanahira-claude-ui
+NAME=HanahiraClaudeUI
 SSH_NAME=$NAME-ssh
 MARKET=hanahira-ssh
 DEST="${HANAHIRA_SSH_DIR:-$HOME/.claude/hanahira-ssh}"
@@ -29,6 +29,7 @@ mkdir -p "$P/.claude-plugin" "$P/hooks" "$P/types" "$DEST/.claude-plugin"
 cp "$SRC"/hooks/*.ts "$SRC"/hooks/*.tsx "$SRC"/hooks/hooks.json "$P/hooks/"
 rm -f "$P"/hooks/*.test.ts "$P"/hooks/*.test.tsx
 cp "$SRC/types/index.d.ts" "$P/types/"
+cp -r "$SRC/skills" "$P/"
 # Values in $.state belong to the plugin by name, so the name inside the code follows it.
 sed -i "s/$NAME/$SSH_NAME/g" "$P/hooks/register.tsx" "$P/types/index.d.ts"
 
@@ -51,6 +52,8 @@ J
 
 cd /tmp
 "$CLAUDE" plugin uninstall "$SSH_NAME@$MARKET" --scope user >/dev/null 2>&1 || true
+# The copy installed before the rename to HanahiraClaudeUI, which would draw a second band.
+"$CLAUDE" plugin uninstall "hanahira-claude-ui-ssh@$MARKET" --scope user >/dev/null 2>&1 || true
 "$CLAUDE" plugin marketplace remove "$MARKET" >/dev/null 2>&1 || true
 "$CLAUDE" plugin marketplace add "$DEST"
 "$CLAUDE" plugin install "$SSH_NAME@$MARKET" --scope user

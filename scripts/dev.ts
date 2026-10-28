@@ -1,18 +1,18 @@
-// Hot reload while developing: keeps a copy of this repo's mod, renamed hanahira-claude-ui-dev,
+// Hot reload while developing: keeps a copy of this repo's mod, renamed HanahiraClaudeUI-dev,
 // in sync on every save. Run: bun scripts/dev.ts   (Ctrl+C to stop)
 //
-// The repo cannot be loaded as it is: Desktop syncs an empty hanahira-claude-ui (no hooks/)
+// The repo cannot be loaded as it is: Desktop syncs an empty HanahiraClaudeUI (no hooks/)
 // into every session and that name loads first. A copy under its own name has no rival.
 // Sessions load the copy through ~/.claude/settings.json:
 //   "env": { "CLAUDE_CODE_PLUGIN_DIRS": "<DEST>", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }
-// and the engine reloads it each time this script writes to it. Turn hanahira-claude-ui-ssh
+// and the engine reloads it each time this script writes to it. Turn HanahiraClaudeUI-ssh
 // off meanwhile, or two bands are drawn.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const SRC = resolve(import.meta.dir, '..')
-const NAME = 'hanahira-claude-ui'
+const NAME = 'HanahiraClaudeUI'
 const DEV_NAME = `${NAME}-dev`
 const DEST = process.env.HANAHIRA_DEV_DIR ?? join(homedir(), '.claude', 'hanahira-dev', DEV_NAME)
 
@@ -31,6 +31,7 @@ const sync = () => {
   mkdirSync(join(DEST, '.claude-plugin'), { recursive: true })
   mkdirSync(join(DEST, 'hooks'), { recursive: true })
   mkdirSync(join(DEST, 'types'), { recursive: true })
+  mkdirSync(join(DEST, 'skills'), { recursive: true })
   const changed: string[] = []
 
   const hooks = readdirSync(join(SRC, 'hooks')).filter(
@@ -48,6 +49,22 @@ const sync = () => {
   }
   if (put(join(DEST, 'types', 'index.d.ts'), rename(readFileSync(join(SRC, 'types', 'index.d.ts'), 'utf8')))) {
     changed.push('types/index.d.ts')
+  }
+
+  // Skills are copied as they are: their names are the skills' own, not the plugin's.
+  const skills = readdirSync(join(SRC, 'skills'), { recursive: true, encoding: 'utf8' }).filter(f =>
+    statSync(join(SRC, 'skills', f)).isFile(),
+  )
+  for (const f of skills) {
+    mkdirSync(dirname(join(DEST, 'skills', f)), { recursive: true })
+    if (put(join(DEST, 'skills', f), readFileSync(join(SRC, 'skills', f), 'utf8'))) changed.push(`skills/${f}`)
+  }
+  for (const f of readdirSync(join(DEST, 'skills'), { recursive: true, encoding: 'utf8' })) {
+    const path = join(DEST, 'skills', f)
+    if (statSync(path).isFile() && !skills.includes(f)) {
+      rmSync(path)
+      changed.push(`-skills/${f}`)
+    }
   }
 
   const { version } = JSON.parse(readFileSync(join(SRC, '.claude-plugin', 'plugin.json'), 'utf8'))
@@ -76,12 +93,12 @@ const run = () => {
 }
 
 run()
-console.log(`Watching ${SRC}/{hooks,types,.claude-plugin} -> ${DEST}`)
+console.log(`Watching ${SRC}/{hooks,types,skills,.claude-plugin} -> ${DEST}`)
 
 // Editors save in bursts (write, rename, chmod): one sync per burst.
 let timer: ReturnType<typeof setTimeout> | undefined
-for (const dir of ['hooks', 'types', '.claude-plugin']) {
-  watch(join(SRC, dir), () => {
+for (const dir of ['hooks', 'types', 'skills', '.claude-plugin']) {
+  watch(join(SRC, dir), { recursive: true }, () => {
     clearTimeout(timer)
     timer = setTimeout(run, 100)
   })

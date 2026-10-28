@@ -11,7 +11,7 @@ set -euo pipefail
 
 # Piped from curl there is no script path, hence no clone to pull.
 SRC="$( [ -n "${BASH_SOURCE[0]:-}" ] && cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || true )"
-PLUGIN=hanahira-claude-ui
+PLUGIN=HanahiraClaudeUI
 MARKET=hanahira-plugins
 SSH_DIR="${HANAHIRA_SSH_DIR:-$HOME/.claude/hanahira-ssh}"
 
@@ -26,5 +26,10 @@ fi
 
 [ -x "${CLAUDE:-}" ] || { echo "claude CLI not found; set CLAUDE=/path/to/claude" >&2; exit 1; }
 "$CLAUDE" plugin marketplace update "$MARKET"
-"$CLAUDE" plugin update "$PLUGIN@$MARKET"
+# Installed under the name it had before the rename: swap it for the new one.
+if "$CLAUDE" plugin uninstall "hanahira-claude-ui@$MARKET" >/dev/null 2>&1; then
+  "$CLAUDE" plugin install "$PLUGIN@$MARKET"
+else
+  "$CLAUDE" plugin update "$PLUGIN@$MARKET"
+fi
 echo "Done. Start a new session to use the new version."

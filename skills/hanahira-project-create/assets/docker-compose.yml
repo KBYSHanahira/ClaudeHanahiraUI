@@ -1,0 +1,34 @@
+# Explicit project name. Without it Compose names the project after this
+# folder ("docker"), so two projects on one host would replace each other's
+# container on `up` and remove it on `down`.
+name: <name>
+
+services:
+  app:
+    build:
+      # Context is the project root so the build can see src/ and package.json.
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: <name>
+    restart: unless-stopped
+
+    # Host networking: the container shares the host's network namespace.
+    # No port mapping is used or possible — the app binds PORT on the host
+    # directly. A `ports:` block here would be silently ignored.
+    # Needs a native Linux engine. Docker Desktop (any OS, Linux included) runs
+    # the engine in a VM, so "host" there is the VM, not this machine.
+    network_mode: host
+
+    env_file:
+      - ../.env
+
+    healthcheck:
+      # Port read from env (exec healthchecks inherit env_file), so changing
+      # PORT in .env can't leave the check probing the old port.
+      # fetch() only throws on network errors; a 503 from /health must fail the
+      # check too, so the exit code follows the HTTP status.
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:' + process.env.PORT + '/health'); process.exit(r.ok ? 0 : 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

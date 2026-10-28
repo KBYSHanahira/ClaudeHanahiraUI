@@ -81,24 +81,24 @@ export const addUsage = <T extends Partial<Tokens>>(t: T, u: UsageCounts | null 
     cacheWrite: n(t.cacheWrite) + n(u?.cache_creation_input_tokens),
   }
 }
-const tokens = atom({ plugin: 'hanahira-claude-ui', key: 'tokens' } as const, NO_TOKENS)
+const tokens = atom({ plugin: 'HanahiraClaudeUI', key: 'tokens' } as const, NO_TOKENS)
 
 const EMPTY: Stats = { tools: 0, byTool: {}, files: [], last: null }
 const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, limits: [] }
 
 type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
-const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
+const speed = atom({ plugin: 'HanahiraClaudeUI', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
 const LIVE_SPEED_MS = 250
-const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
+const usage = atom({ plugin: 'HanahiraClaudeUI', key: 'usage' } as const, NO_USAGE)
 // The model the main thread last answered with, as the API reported it.
-const model = atom({ plugin: 'hanahira-claude-ui', key: 'model' } as const, null as string | null)
+const model = atom({ plugin: 'HanahiraClaudeUI', key: 'model' } as const, null as string | null)
 
-const stats = atom({ plugin: 'hanahira-claude-ui', key: 'stats' } as const, EMPTY)
+const stats = atom({ plugin: 'HanahiraClaudeUI', key: 'stats' } as const, EMPTY)
 /** A stored value is whatever an earlier version or a reload left behind: never trust its shape. */
 export const asList = (v: unknown): Agent[] => (Array.isArray(v) ? (v as Agent[]) : [])
-const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, [] as Agent[])
+const agents = atom({ plugin: 'HanahiraClaudeUI', key: 'agents' } as const, [] as Agent[])
 // The widest each compact-band column has been, per layout: a column only ever widens, so a
 // value that gains or loses a digit while a turn runs never moves its neighbours.
 const colMax = new Map<string, number>()
@@ -110,10 +110,10 @@ const glides = glider()
 let glidePump: { cancel: () => void } | null = null
 let glideBeats = 0
 
-const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
-const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
-const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
-const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
+const tick = atom({ plugin: 'HanahiraClaudeUI', key: 'tick' } as const, 0)
+const runMs = atom({ plugin: 'HanahiraClaudeUI', key: 'runMs' } as const, 0)
+const seconds = atom({ plugin: 'HanahiraClaudeUI', key: 'seconds' } as const, null)
+const info = atom({ plugin: 'HanahiraClaudeUI', key: 'info' } as const, null)
 
 // Look and feel: edit these.
 // Ring size in px: also sets how close the two rows of tiles sit.

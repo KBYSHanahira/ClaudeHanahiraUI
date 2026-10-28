@@ -69,7 +69,7 @@
 Claude Code の **ターミナル** で次を入力します（デスクトップアプリのチャット欄ではありません）。
 
 ```text
-/plugin install hanahira-claude-ui --marketplace KBYSHanahira/ClaudeHanahiraUI
+/plugin install HanahiraClaudeUI --marketplace KBYSHanahira/ClaudeHanahiraUI
 ```
 
 1. マーケットプレイスを追加するか聞かれたら `y` と答えます。
@@ -80,31 +80,31 @@ Claude Code の **ターミナル** で次を入力します（デスクトッ�
 
 ### 方法 2：ZIP / `.plugin` ファイルをアップロード
 
-**設定 → Plugins → Upload a plugin** から `hanahira-claude-ui.zip`（または `.plugin`）を選びます。
+**設定 → Plugins → Upload a plugin** から `HanahiraClaudeUI.zip`（または `.plugin`）を選びます。
 
 ### 方法 3：フォルダを直接指定（開発・試用向け）
 
 ```bash
-claude --plugin-dir /path/to/hanahira-claude-ui
+claude --plugin-dir /path/to/HanahiraClaudeUI
 ```
 
-**SSH ホスト（Desktop）でのホットリロード。** Desktop はすべてのセッションに空の `hanahira-claude-ui` を同期し、それが同名の `--plugin-dir` より先に読み込まれるため、リポジトリをそのままでは読み込めません。`scripts/dev.ts` は名前を変えたコピー `hanahira-claude-ui-dev` を `~/.claude/hanahira-dev/` に置き、保存のたびに同期します。
+**SSH ホスト（Desktop）でのホットリロード。** Desktop はすべてのセッションに空の `HanahiraClaudeUI` を同期し、それが同名の `--plugin-dir` より先に読み込まれるため、リポジトリをそのままでは読み込めません。`scripts/dev.ts` は名前を変えたコピー `HanahiraClaudeUI-dev` を `~/.claude/hanahira-dev/` に置き、保存のたびに同期します。
 
-1. `~/.claude/settings.json` に `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/hanahira-claude-ui-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` を追加し（`/root` は自分のホームに）、`enabledPlugins` の `"hanahira-claude-ui-ssh@hanahira-ssh"` を `false` にします。そうしないとバンドが 2 つ表示されます。
+1. `~/.claude/settings.json` に `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/HanahiraClaudeUI-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` を追加し（`/root` は自分のホームに）、`enabledPlugins` の `"HanahiraClaudeUI-ssh@hanahira-ssh"` を `false` にします。そうしないとバンドが 2 つ表示されます。
 2. `bun scripts/dev.ts` を起動したままにし、新しいセッションを一度開きます。
 3. 保存するたびに、開いているセッションでモッドが再読み込みされます（Claude による編集はそのターンの終わりに）。やめるときは `env` の 2 つのキーを消し、`-ssh` を有効に戻します。
 
 環境変数で常時有効にすることもできます。
 
 ```bash
-export CLAUDE_CODE_PLUGIN_DIRS=/path/to/hanahira-claude-ui
+export CLAUDE_CODE_PLUGIN_DIRS=/path/to/HanahiraClaudeUI
 ```
 
 ### 🌐 SSH 接続先で使う場合
 
 Claude Code Desktop で SSH 接続先を使う場合、Claude Code 本体は **接続先のマシン** で動きます。Desktop は手元のプラグインを接続先へ同期しますが、**`hooks/` フォルダは同期されません**。しかも同期された（中身のない）同名のコピーが、接続先にインストールした本物を上書きしてしまうため、普通に入れても何も表示されません。
 
-そこで、接続先には **別名（`hanahira-claude-ui-ssh`）のコピー** を入れます。**接続先のマシンで**、このリポジトリをクローンして次を実行してください:
+そこで、接続先には **別名（`HanahiraClaudeUI-ssh`）のコピー** を入れます。**接続先のマシンで**、このリポジトリをクローンして次を実行してください:
 
 ```bash
 git clone https://github.com/KBYSHanahira/ClaudeHanahiraUI.git
@@ -132,10 +132,10 @@ Claude Code の **ターミナル** で、次の 2 つを順に入力します�
 
 ```text
 /plugin marketplace update hanahira-plugins
-/plugin update hanahira-claude-ui@hanahira-plugins
+/plugin update HanahiraClaudeUI@hanahira-plugins
 ```
 
-または、`/plugin` を開いて **Marketplaces** → `hanahira-plugins` → **Update**、続けて **Installed** → `hanahira-claude-ui` → **Update** でも更新できます。
+または、`/plugin` を開いて **Marketplaces** → `hanahira-plugins` → **Update**、続けて **Installed** → `HanahiraClaudeUI` → **Update** でも更新できます。
 
 ### ZIP / `.plugin` で入れた場合（方法 2）
 
@@ -146,7 +146,7 @@ Claude Code の **ターミナル** で、次の 2 つを順に入力します�
 そのフォルダで `git pull` するだけです。
 
 ```bash
-cd /path/to/hanahira-claude-ui
+cd /path/to/HanahiraClaudeUI
 git pull
 ```
 
@@ -200,8 +200,8 @@ scripts/install-ssh.sh
 ## 🛠️ 開発
 
 ```bash
-claude plugin validate /path/to/hanahira-claude-ui
-claude --plugin-dir /path/to/hanahira-claude-ui
+claude plugin validate /path/to/HanahiraClaudeUI
+claude --plugin-dir /path/to/HanahiraClaudeUI
 ```
 
 純粋関数は `hooks/chat.ts` などにまとめ、テスト（`hooks/*.test.ts`）があります。`bun test` で実行できます（`scripts/test-preload.ts` がエンジンのモジュールの代わりを務めます。`claude plugin test` のある CLI ではそちらでも）。構成：
