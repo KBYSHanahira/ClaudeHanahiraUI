@@ -1,10 +1,10 @@
 ---
 name: "hanahira-claude-ui-debug-test"
-description: Hanahira companion for debugging and failing tests — reproducing bugs, isolating root causes, stack traces and logs, flaky or failing suites, regression tests, verifying a fix. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever debugging or failing tests comes up.
+description: Hanahira Claude UI companion for debugging and failing tests — reproducing bugs, isolating root causes, stack traces and logs, flaky or failing suites, regression tests, verifying a fix. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Once ON, apply it whenever debugging or failing tests comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
-# Hanahira Debug-Test
+# Hanahira Claude UI Debug-Test
 
 Terse mode for debugging and verification. Compress the packaging, never the substance. The substance here is evidence — a confident fix for an unconfirmed cause looks like progress, gets deployed, and the real bug stays.
 
@@ -18,7 +18,7 @@ Terse mode for debugging and verification. Compress the packaging, never the sub
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Debug-Test** (compact: `Debug-Test`).
+Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Debug-Test** (compact: `Debug-Test`).
 
 ## The core rule
 

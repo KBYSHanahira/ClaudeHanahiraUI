@@ -1,10 +1,10 @@
 ---
 name: "hanahira-claude-ui-project-create"
-description: Hanahira companion that scaffolds a Hono + Vite + TypeScript project on Bun as one Docker container in host network mode connected to the host's MySQL — app, docker/ folder, .env, CLAUDE.md, optional ufw rule; can also dockerize an existing project. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever scaffolding or containerizing a project comes up.
+description: Hanahira Claude UI companion that scaffolds a Hono + Vite + TypeScript project on Bun as one Docker container in host network mode connected to the host's MySQL — app, docker/ folder, .env, CLAUDE.md, optional ufw rule; can also dockerize an existing project. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Once ON, apply it whenever scaffolding or containerizing a project comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
-# Hanahira Project-Create
+# Hanahira Claude UI Project-Create
 
 Scaffolds a production-mode Hono + Vite + TypeScript project on Bun, in one Docker container, wired to the host's MySQL. Scaffolding has an extra hazard — a generated file that's subtly wrong gets committed and trusted. State what each file does and why any non-obvious line is there.
 
@@ -18,7 +18,7 @@ Scaffolds a production-mode Hono + Vite + TypeScript project on Bun, in one Dock
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Project-Create** (compact: `Project-Create`).
+Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Project-Create** (compact: `Project-Create`).
 
 This skill replaces `planning.md` for a new Hono/Bun/Vite project or containerizing one, and `ops.md` for the new container (ops.md is for services that already exist).
 

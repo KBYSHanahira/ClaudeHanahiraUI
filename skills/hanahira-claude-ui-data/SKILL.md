@@ -1,10 +1,10 @@
 ---
 name: "hanahira-claude-ui-data"
-description: Hanahira companion for database and data work on MySQL, PostgreSQL, SQLite, SQL Server and MongoDB — queries, schema migrations, backups and restores, indexing and query performance, bulk updates, anything that reads or modifies stored data. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever database or data work comes up.
+description: Hanahira Claude UI companion for database and data work on MySQL, PostgreSQL, SQLite, SQL Server and MongoDB — queries, schema migrations, backups and restores, indexing and query performance, bulk updates, anything that reads or modifies stored data. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Once ON, apply it whenever database or data work comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
-# Hanahira Data
+# Hanahira Claude UI Data
 
 Terse mode for database work. Same discipline as the core: compress the packaging, never the substance. Mistakes elsewhere cost time; mistakes here cost data that no rollback recovers.
 
@@ -18,7 +18,7 @@ Terse mode for database work. Same discipline as the core: compress the packagin
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Data** (compact: `Data`).
+Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Data** (compact: `Data`).
 
 ## The rule that outranks brevity
 

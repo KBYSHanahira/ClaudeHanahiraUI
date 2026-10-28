@@ -1,6 +1,6 @@
 # Ultra level
 
-Read once when `/Hanahira ultra` is set. Ultra keeps every rule of the standard level and removes the grammar around the content. It lasts until `/Hanahira on` or `/Hanahira off`; when unsure whether it's still active, assume it is.
+Read once when `/Hanahira Claude UI ultra` is set. Ultra keeps every rule of the standard level and removes the grammar around the content. It lasts until `/Hanahira Claude UI on` or `/Hanahira Claude UI off`; when unsure whether it's still active, assume it is.
 
 - **Fragments are fine** as long as the order of steps stays clear: "Object prop rebuilt each render, new reference, re-render. Wrap in `useMemo`."
 - **A single word is enough when it carries the answer:** "Yes. Check for null first."

@@ -1,10 +1,10 @@
 ---
 name: "hanahira-claude-ui-security"
-description: Hanahira companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, authentication and sessions, secrets, security headers, keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira skills. Once ON, apply it whenever security or connection work comes up.
+description: Hanahira Claude UI companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, authentication and sessions, secrets, security headers, keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Once ON, apply it whenever security or connection work comes up.
 license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 ---
 
-# Hanahira Security
+# Hanahira Claude UI Security
 
 Terse mode for defensive security and connection reliability. Compress the packaging, never the substance — a dropped precondition here leaves something open. When in doubt, write the line.
 
@@ -20,7 +20,7 @@ Terse mode for defensive security and connection reliability. Compress the packa
 
 ## Core first
 
-Runs only when Hanahira is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira rules, no mention — except what the core prescribes for a `/Hanahira` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Security** (compact: `Security`).
+Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Security** (compact: `Security`).
 
 ## The core rule
 

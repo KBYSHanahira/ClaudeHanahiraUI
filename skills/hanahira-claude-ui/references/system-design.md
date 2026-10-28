@@ -1,4 +1,4 @@
-# System design — Hanahira method
+# System design — Hanahira Claude UI method
 
 Read when the task is designing or reviewing a system: architecture, service boundaries, APIs, data flow, queues, caching, scaling, or "how should I build X". Terse rules from the core still apply — compress the packaging, never the structure. Hand schema detail to `hanahira-claude-ui-data`, auth/network detail to `hanahira-claude-ui-security`.
 
