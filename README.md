@@ -10,7 +10,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-0.1.0-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.10.6-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 **🇯🇵 日本語（このページ）** ｜ [🇬🇧 English](README.en.md)
@@ -30,7 +30,7 @@
 | 🤖 | **エージェントカード** | バックグラウンドのサブエージェントを横並びのカードで表示。完了したカードは約 3 秒でチェックを見せて消えます。 |
 | 🧾 | **会話ログの装飾** | 自分のメッセージはバンドと同じ枠のカード。ツール呼び出し・まとめられた実行・バックグラウンドタスクの行はすべて同じ形です：種類タイル、色付き動詞、対象（ファイルは等幅）、ステータスピル、所要時間。`rm` によるファイル削除は赤い **Delete** 行になります。 |
 | ✏️ | **コード変更をその場で表示** | Edit・Write は変更内容を行のすぐ下に表示します：行番号つき、追加行は緑、削除行は赤の背景、パッチが飛ばした所は `⋯`。ピルは `saved` の代わりに `+N` / `−N`。全体表示（ctrl+o）ではエンジン本来の表示のままです。 |
-| 🎞️ | **リアルタイムの動き（点滅なし）** | 作業中はローディングバーのブロックの上を柔らかい光が流れ、working チップの点が波のように光り、ステータスの点が呼吸します。値が変わると（コンテキスト、リミット、tok/s、コスト、トークン、ツール数）新しい値へなめらかに動き、コスト・トークンはそのあいだ少し跳ねて元の位置に戻ります。ループの画像は動作中に変わらないため、再描画で動きが最初からやり直しになることはありません。トランスクリプトの行は静止のままです。 |
+| 🎞️ | **リアルタイムの動き（点滅なし）** | 作業中はローディングバーのブロックの上を柔らかい光が流れ、working チップがふわっと現れて点が波のように光り、ステータスの点が呼吸し、実行中のエージェントカードはリングが回りバーが途切れず行き来し、終わったカードはチェックが描かれてバーが端まで満ちて止まります。Hanahira のスパークルはモードがオンになると回転しながら現れ、オンの間は呼吸します。値が変わると（コンテキスト、リミット、コスト、トークン、ツール数、モデル）スロットのリールのように切り替わります。古い値が上へ抜け、新しい値が下から少し行き過ぎて入り、ぴたりと止まります。リングとメーターは新しい値へなめらかに動き、tok/s はストリームに合わせて動きます。動きは各画像内の CSS で時刻を含まないため、再描画でやり直しになることはなく、「視差効果を減らす」設定では止まります。トランスクリプトの行は静止のままです。 |
 | 🛡️ | **安全ガード** | Compose のボリュームを削除する Bash コマンド（`docker compose down -v` / `--volumes`、`docker-compose` も）と `ufw enable` をブロックします。 |
 
 > **正直さの原則：** エージェントカードの表示はすべて実際の値です。モデル名は API が返したもの、effort はエンジンが送った値だけを表示し、不明なものは推測せず省略するか `model pending` と表示します。エージェントごとの費用は価格表（`hooks/agents.ts`）からの **概算** で、`≈` を付けています。
@@ -91,8 +91,8 @@ claude --plugin-dir /path/to/hanahira-claude-ui
 **SSH ホスト（Desktop）でのホットリロード。** Desktop はすべてのセッションに空の `hanahira-claude-ui` を同期し、それが同名の `--plugin-dir` より先に読み込まれるため、リポジトリをそのままでは読み込めません。`scripts/dev.ts` は名前を変えたコピー `hanahira-claude-ui-dev` を `~/.claude/hanahira-dev/` に置き、保存のたびに同期します。
 
 1. `~/.claude/settings.json` に `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/hanahira-claude-ui-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` を追加し（`/root` は自分のホームに）、`enabledPlugins` の `"hanahira-claude-ui-ssh@hanahira-ssh"` を `false` にします。そうしないとバンドが 2 つ表示されます。
-2. `bun scripts/dev.ts` を起動したままにし、新しいセッションを一度開きます。
-3. 保存するたびに、開いているセッションでモッドが再読み込みされます（Claude による編集はそのターンの終わりに）。やめるときは `env` の 2 つのキーを消し、`-ssh` を有効に戻します。
+2. `bun scripts/dev.ts` を起動したままにし、新しいセッションを一度開きます。再起動後も動かし続けるには `scripts/systemd/hanahira-claude-ui-dev.service` を入れます（手順はファイル冒頭）。
+3. 保存したら、開いているセッションで `/reload-plugins` と入力すると読み込まれます。新しいセッションは不要です。Desktop のセッションはフォルダを自動では監視しません。SSH 経由で `CLAUDE_CODE_PLUGIN_DIR_WATCH` なしで起動され、`settings.json` のキーでは監視が有効にならないためです。やめるときは `env` の 2 つのキーを消し、`-ssh` を有効に戻します。
 
 環境変数で常時有効にすることもできます。
 
@@ -197,7 +197,7 @@ scripts/install-ssh.sh
 ## 🧪 動作要件と注意
 
 - 公式の Mod 機構（`hooks/hooks.json` の `modules`）を使うインターフェース Mod です。対応する Claude Code のビルドが必要です。
-- 変更はターン終了時にホットリロードされます。反映されないときは、会話ログの `reload failed` の行を確認してください。
+- 変更はターン終了時にホットリロードされます（SSH 経由の Desktop セッションでは代わりに `/reload-plugins` と入力します）。反映されないときは、会話ログの `reload failed` の行を確認してください。
 
 ## 🛠️ 開発
 
@@ -221,6 +221,7 @@ scripts/
   preview.ts      docs/preview.svg を描く
   preview-chat.ts docs/preview-chat.svg を描く
   dev.ts          ホットリロード用の名前を変えたコピー
+  systemd/        dev.ts を再起動後も動かし続ける
 types/index.d.ts  状態（$.state）の型
 ```
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { addUsage, dangerous, asList, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -143,7 +143,7 @@ describe('rings', () => {
 
 describe('ring', () => {
   test('is a still picture, near the limit too', () => {
-    expect(ringSvg(90, '#f2736b', 38)).not.toContain('<animate')
+    expect(ringSvg(90, '#f2736b', 38)).not.toContain('@keyframes')
   })
 })
 
@@ -173,5 +173,101 @@ describe('addUsage', () => {
 
   test('keeps the other fields of what it adds to', () => {
     expect(addUsage({ id: 'a1', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, { input_tokens: 2 })).toEqual({ id: 'a1', input: 2, output: 0, cacheRead: 0, cacheWrite: 0 })
+  })
+})
+
+describe('Hanahira Claude UI mode', () => {
+  test('names the part a skill is, under either plugin name', () => {
+    expect(hanahiraPart('hanahira-claude-ui:hanahira-claude-ui')).toBe('core')
+    expect(hanahiraPart('hanahira-claude-ui-dev:hanahira-claude-ui-design')).toBe('design')
+    expect(hanahiraPart('hanahira-claude-ui:hanahira-claude-ui-debug-test')).toBe('debug-test')
+    expect(hanahiraPart('hanahira-claude-ui')).toBe('core')
+  })
+
+  test('any other skill is no part of it', () => {
+    for (const name of ['commit', 'anthropic-skills:pdf', 'hanahira-claude-ui-dev:other', 'my-hanahira-claude-ui']) {
+      expect(hanahiraPart(name), name).toBe(null)
+    }
+  })
+
+  test('reads the switches, the last one winning', () => {
+    expect(modeSwitch('/Hanahira Claude UI on')).toBe('on')
+    expect(modeSwitch('/hanahira claude ui OFF')).toBe('off')
+    expect(modeSwitch('Hanahira Claude UI V20 on, then check this')).toBe('on')
+    expect(modeSwitch('turn on Hanahira Claude UI and review the config')).toBe('on')
+    expect(modeSwitch('use Hanahira Claude UI')).toBe('on')
+    expect(modeSwitch('/Hanahira Claude UI ultra')).toBe('on')
+    expect(modeSwitch('/Hanahira Claude UI on /Hanahira Claude UI off')).toBe('off')
+    expect(modeSwitch('turn off Hanahira Claude UI, then turn on Hanahira Claude UI')).toBe('on')
+  })
+
+  test('reads the Thai switches, and เปิด is no ปิด', () => {
+    expect(modeSwitch('เปิด Hanahira Claude UI ให้หน่อย')).toBe('on')
+    expect(modeSwitch('เปิดโหมด Hanahira Claude UI')).toBe('on')
+    expect(modeSwitch('ปิด Hanahira Claude UI')).toBe('off')
+  })
+
+  test('a question, a status, code or a quote switches nothing', () => {
+    expect(modeSwitch('is Hanahira Claude UI on?')).toBe(null)
+    expect(modeSwitch('/Hanahira Claude UI status')).toBe(null)
+    expect(modeSwitch('what can Hanahira Claude UI do')).toBe(null)
+    expect(modeSwitch('run `/Hanahira Claude UI off` later')).toBe(null)
+    expect(modeSwitch('```\n/Hanahira Claude UI on\n```')).toBe(null)
+    expect(modeSwitch('> /Hanahira Claude UI off\nwhat does this do')).toBe(null)
+    expect(modeSwitch('Hanahira Claude UI only')).toBe(null)
+  })
+
+  test('a typed skill command is the switch: its part, and off only when its argument says so', () => {
+    expect(skillCommand('/hanahira-claude-ui:hanahira-claude-ui')).toEqual({ part: 'core', on: true })
+    expect(skillCommand('/hanahira-claude-ui-dev:hanahira-claude-ui-design check the band')).toEqual({ part: 'design', on: true })
+    expect(skillCommand('/hanahira-claude-ui:hanahira-claude-ui off')).toEqual({ part: 'core', on: false })
+    expect(skillCommand('  /hanahira-claude-ui:hanahira-claude-ui ultra')).toEqual({ part: 'core', on: true })
+  })
+
+  test('the command as the engine names it, or wraps it in the text, is read too', () => {
+    expect(skillCommand('Base directory for this skill: …', { name: 'hanahira-claude-ui:hanahira-claude-ui', args: '' })).toEqual({ part: 'core', on: true })
+    expect(skillCommand('', { name: 'hanahira-claude-ui-dev:hanahira-claude-ui-data', args: 'off' })).toEqual({ part: 'data', on: false })
+    const wrapped = '<command-message>hanahira-claude-ui:hanahira-claude-ui</command-message>\n<command-name>/hanahira-claude-ui:hanahira-claude-ui</command-name>\n# Hanahira Claude UI'
+    expect(skillCommand(wrapped)).toEqual({ part: 'core', on: true })
+    expect(skillCommand('<command-name>/hanahira-claude-ui:hanahira-claude-ui</command-name><command-args>off</command-args>')).toEqual({ part: 'core', on: false })
+    expect(skillCommand('/hanahira-claude-ui:hanahira-claude-ui', { name: 'commit', args: '' })).toBe(null)
+  })
+
+  test('any other text or command is no skill switch', () => {
+    for (const text of ['/commit', '/reload-plugins', 'run /hanahira-claude-ui:hanahira-claude-ui later', 'hanahira-claude-ui', '']) {
+      expect(skillCommand(text), text).toBe(null)
+    }
+  })
+
+  test('a stored value of any shape reads as a mode', () => {
+    expect(asSkill({ on: true, loaded: ['core', 3, 'design'] })).toEqual({ on: true, loaded: ['core', 'design'] })
+    for (const bad of [undefined, null, 0, 'on', [], { on: 'yes', loaded: 'core' }]) {
+      expect(asSkill(bad)).toEqual({ on: false, loaded: [] })
+    }
+  })
+
+  test('the transcript gives the mode back: the last switch decides, a skill load turns it on', () => {
+    const user = (text: string) => ({ role: 'user', text, toolUses: [] })
+    const skillCall = (skill: string) => ({ role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill } }] })
+    expect(modeFrom([])).toEqual({ on: false, loaded: [] })
+    expect(modeFrom([user('<command-name>/hanahira-claude-ui:hanahira-claude-ui</command-name>'), skillCall('hanahira-claude-ui:hanahira-claude-ui-design')]))
+      .toEqual({ on: true, loaded: ['core', 'design'] })
+    expect(modeFrom([user('/Hanahira Claude UI on'), user('fix this'), user('/Hanahira Claude UI off')])).toEqual({ on: false, loaded: [] })
+  })
+
+  test('the skill loaded to say "off" switches nothing back on, until the person writes again', () => {
+    const rows = [
+      { role: 'user', text: '/Hanahira Claude UI off', toolUses: [] },
+      { role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'hanahira-claude-ui:hanahira-claude-ui' } }] },
+    ]
+    expect(modeFrom(rows).on).toBe(false)
+    expect(modeFrom([...rows, { role: 'user', text: 'thanks', toolUses: [] }, rows[1]!]).on).toBe(true)
+  })
+
+  test('a skill text, a reminder or a tool result in a user message is not the person switching', () => {
+    const body = 'Base directory for this skill: /x\n**Switch-on**: "use Hanahira Claude UI" / "turn off Hanahira Claude UI"'
+    expect(modeFrom([{ role: 'user', text: body }]).on).toBe(false)
+    expect(modeFrom([{ role: 'user', text: '<system-reminder>"turn on Hanahira Claude UI"</system-reminder>hi' }]).on).toBe(false)
+    expect(modeFrom([{ role: 'user', text: '/Hanahira Claude UI on' }, { role: 'user', text: 'turn off Hanahira Claude UI', toolResults: [{}] }]).on).toBe(true)
   })
 })

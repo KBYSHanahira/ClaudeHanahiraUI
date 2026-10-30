@@ -29,8 +29,9 @@ run('an Edit row counts its change and shows the lines under it, on every surfac
   mock.clock(on, { now: 1_000_000 })
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', requestId: EDIT.tool_use_id, props: EDIT })
-    expect(await ui.find({ type: 'Text', text: /new line/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /gone/ })).toBeDefined()
+    expect(await ui.find({ type: 'Code', text: /\+new line/ })).toBeDefined()
+    expect(await ui.find({ type: 'Code', text: /-gone/ })).toBeDefined()
+    // The file's path heads the change, from the session's folder.
     expect(await ui.find({ type: 'Text', text: /chat\.ts/ })).toBeDefined()
     await ui.unmount()
   }
@@ -46,7 +47,22 @@ run('the result block under an Edit draws nothing of its own: the row has the ch
       requestId: EDIT.tool_use_id,
       props: { tool_use_id: EDIT.tool_use_id, tool: 'Edit', output: EDIT.output, isErrored: false },
     })
-    expect(await ui.find({ type: 'Text', text: /new line/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Code', text: /new line/ })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+run('a Skill row names the skill, on every surface', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({
+      plugin: PLUGIN,
+      surface,
+      component: 'ToolUse',
+      requestId: 'skill-1',
+      props: { tool_use_id: 'skill-1', tool: 'Skill', input: { skill: 'plugin-authoring' }, isRunning: false, isErrored: false, isInterrupted: false },
+    })
+    expect(await ui.find({ type: 'Text', text: /plugin-authoring/ })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -113,10 +129,10 @@ run('a finished row is a still picture: a redraw never swaps it', async ($, on) 
     ...(isRunning ? {} : { output: { stdout: 'ok', stderr: '' } }),
   })
   const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'desktop', component: 'ToolUse', requestId: 'fin-1', props: row(true) })
-  expect((await pictures(ui)).join()).not.toContain('<animate')
+  expect((await pictures(ui)).join()).not.toContain('@keyframes')
   await ui.redraw(row(false))
   const finished = await pictures(ui)
-  expect(finished.join()).not.toContain('<animate')
+  expect(finished.join()).not.toContain('@keyframes')
   // Rows around it come and go: the surface draws it again, and gets the same picture.
   for (let i = 0; i < 3; i++) {
     await clock.advance(400)
@@ -171,7 +187,7 @@ const band = async ($: any, on: any, usage: { percent: number; usd: number }, is
 run('the band\'s loops keep their picture across beats, so they run on and never blink', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const ui = await band($, on, { percent: 20, usd: 1 }, true)
-  const loops = async () => (await pictures(ui)).filter(p => p.includes('<animate'))
+  const loops = async () => (await pictures(ui)).filter(p => p.includes('@keyframes'))
   const first = await loops()
   // The status dot, the loading bar and the working chip.
   expect(first.length).toBe(3)
@@ -182,46 +198,49 @@ run('the band\'s loops keep their picture across beats, so they run on and never
   }
   // Each loop is drawn in the surface's frame, where SMIL runs on its own between redraws.
   const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; isInteractive?: boolean } }[]
-  const looping = (await svgs()).filter(s => s.props.source.includes('<animate'))
+  const looping = (await svgs()).filter(s => s.props.source.includes('@keyframes'))
   expect(looping.length).toBe(3)
   expect(looping.every(s => s.props.isInteractive === true)).toBe(true)
   // Idle, nothing moves, and nothing is drawn in a frame.
   await ui.redraw({ hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} })
-  expect((await pictures(ui)).join()).not.toContain('<animate')
+  expect((await pictures(ui)).join()).not.toContain('@keyframes')
   expect((await svgs()).some(s => s.props.isInteractive)).toBe(false)
   await ui.unmount()
 })
 
-run('a figure that changes glides to its new value, lands on it, then holds still', async ($, on) => {
+run('a figure that changes rolls in like a slot reel while its meter glides, then holds still', async ($, on) => {
   const clock = mock.clock(on, { now: 2_000_000 })
   const usage = { percent: 20, usd: 1 }
   const ui = await band($, on, usage, false)
   const context = async () => (await pictures(ui)).find(p => /:\d+% context=/.test(p))!
-  const shown = async () => Number(/:(\d+)% context=/.exec(await context())![1])
-  expect(await shown()).toBe(20)
+  const cost = async () => (await pictures(ui)).find(p => /:Cost /.test(p))!
+  // How many of the meter's blocks are lit (the meter's colour), as the hero line draws it.
+  const lit = async () => (/<path d="([^"]*)" fill="#e8825f"\/>/.exec(await context())?.[1]?.match(/M/g) ?? []).length
+  expect(await context()).toMatch(/^\d+:20% context=/)
+  const litBefore = await lit()
   usage.percent = 60
   usage.usd = 5
   await ($ as any).session.measure({
     context: { percent: 60, tokens: 600000, window: 1000000 }, rateLimits: [], cost: { usd: 5 }, changed: ['context', 'cost'],
   })
-  const seen: number[] = []
-  // How high the cost's figure stands above its line in each picture on the way.
-  const costY = async () => Number(/:Cost [^=]*=[\s\S]*?<text x="[\d.]+" y="([\d.]+)"[^>]*font-weight="700"/.exec((await pictures(ui)).find(p => /:Cost /.test(p))!)![1])
-  const restY = await costY()
-  const lifts: number[] = []
+  const rolling: boolean[] = []
+  const meter: number[] = []
   for (let i = 0; i < 8; i++) {
     await clock.advance(100)
-    seen.push(await shown())
-    lifts.push(Math.round((restY - (await costY())) * 10) / 10)
+    const p = await context()
+    // The figure is the new one at once, for a reader; the picture rolls it in over the old.
+    expect(p).toMatch(/^\d+:60% context=/)
+    rolling.push(p.includes('clip-path="url(#slot)"'))
+    meter.push(await lit())
   }
-  // On its way: some steps between, never back, then the value itself.
-  expect(seen.some(v => v > 20 && v < 60)).toBe(true)
-  expect(seen).toEqual([...seen].sort((a, b) => a - b))
-  expect(seen[seen.length - 1]).toBe(60)
-  expect((await pictures(ui)).join()).toContain('≈$5.00')
-  // The figure popped up off its line on the way, and landed back on it.
-  expect(Math.max(...lifts)).toBeGreaterThan(0)
-  expect(lifts[lifts.length - 1]).toBe(0)
+  // It rolled (20% out, 60% in), then landed: the last pictures hold no roll.
+  expect(rolling.slice(0, 3).every(Boolean)).toBe(true)
+  expect(rolling[rolling.length - 1]).toBe(false)
+  // The meter glides: blocks light on the way, never back, and end at the new fill.
+  expect(meter.some(n => n > litBefore && n < meter[meter.length - 1]!)).toBe(true)
+  expect(meter).toEqual([...meter].sort((a, b) => a - b))
+  expect(await cost()).toContain('≈$5.00')
+  expect(await cost()).not.toContain('url(#slot)')
   // Landed: the band is still again, a redraw draws the same pictures.
   const settled = await pictures(ui)
   await clock.advance(1000)
@@ -276,5 +295,73 @@ run('a prompt typed while a turn runs neither restarts its clock nor clears its 
   await ui.redraw(working)
   expect(await clocks(ui)).toEqual({ time: '0:06', top: '6s' })
   expect(await toolCount()).toBe('1')
+  await ui.unmount()
+})
+
+run('the Hanahira tile turns in once as the mode switches on, breathes while Claude works, and rests idle', async ($, on) => {
+  const clock = mock.clock(on, { now: 5_000_000 })
+  turns(on)
+  const ui = await band($, on, { percent: 20, usd: 1 }, true)
+  const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string; isInteractive?: boolean } }[]
+  const tile = async () => (await svgs()).find(s => /^Hanahira /.test(s.props.alt))!
+  expect((await tile()).props.source).not.toContain('@keyframes')
+  await ($ as any).prompt.submit({ text: '/Hanahira Claude UI on' })
+  await ($ as any).turn.start({ text: '/Hanahira Claude UI on', turnId: 't3' })
+  await ui.redraw(working)
+  const arriving = await tile()
+  expect(arriving.props.alt).toBe('Hanahira Claude UI active')
+  expect(arriving.props.source).toContain('twinkle')
+  expect(arriving.props.isInteractive).toBe(true)
+  // The beats of the turn draw the same picture, so the turn-in plays once and the breath runs on.
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(1000)
+    await ui.redraw(working)
+    expect((await tile()).props.source).toBe(arriving.props.source)
+  }
+  await ($ as any).turn.complete({ turnId: 't3', answer: '', durationMs: 3000, isAborted: false, reason: 'answer' })
+  await ui.redraw(idle)
+  expect((await tile()).props.source).not.toContain('@keyframes')
+  expect((await tile()).props.isInteractive).toBeUndefined()
+  // The next turn breathes without turning in again.
+  await ($ as any).turn.start({ text: 'next', turnId: 't4' })
+  await ui.redraw(working)
+  expect((await tile()).props.source).toContain('animation:spark')
+  expect((await tile()).props.source).not.toContain('twinkle')
+  await ui.unmount()
+})
+
+run('a running agent card keeps its ring and bar pictures while its figures change, so they never blink', async ($, on) => {
+  const clock = mock.clock(on, { now: 6_000_000 })
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'main\n', stderr: '' } }) as never)
+  on('session.usage', () => ({ value: { cost: { usd: 1 }, context: { percent: 20, tokens: 200000, window: 1000000 }, rateLimits: [] } }) as never)
+  on('agent.list', () => ({ value: [{ id: 'ag9', status: 'running' }] }) as never)
+  on('agent.spawn', () => ({ agentId: 'ag9', model: 'claude-sonnet-5-5' }) as never)
+  on('tool.call', () => ({ result: {} }) as never)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
+  await ($ as any).agent.spawn({ description: 'bar-test', subagentType: 'general-purpose', background: true, prompt: 'x', tool_use_id: 'tu-9' })
+  const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'desktop', component: 'AbovePrompt', requestId: 'band', props: working as never })
+  const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string; isInteractive?: boolean } }[]
+  const part = async (alt: string) => (await svgs()).find(s => s.props.alt === alt)
+  await clock.advance(1000)
+  const strip = (await part('bar-test progress'))!
+  expect(strip.props.isInteractive).toBe(true)
+  expect(strip.props.source).toContain('animation:run')
+  const ring = (await part('bar-test working'))!
+  expect(ring.props.isInteractive).toBe(true)
+  expect(ring.props.source).toContain('animation:spin')
+  expect((await part('bar-test, running'))!.props.isInteractive).toBeUndefined()
+  const figures = async () => (await svgs()).find(s => / tools · /.test(s.props.alt))!
+  const before = (await figures()).props.source
+  expect((await figures()).props.isInteractive).toBeUndefined()
+  // The agent works on: its figures change, the ring's and the bar's pictures do not.
+  for (let i = 0; i < 3; i++) {
+    await ($ as any).tool.call({ tool: 'Bash', command: 'ls', agentId: 'ag9', tool_use_id: `t${i}` })
+    await clock.advance(1000)
+    expect((await part('bar-test progress'))!.props.source).toBe(strip.props.source)
+    expect((await part('bar-test working'))!.props.source).toBe(ring.props.source)
+  }
+  expect((await figures()).props.source).not.toBe(before)
   await ui.unmount()
 })

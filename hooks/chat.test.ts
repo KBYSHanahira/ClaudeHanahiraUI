@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, popLift, INK } from './chat'
+import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, diffSource, relPath, fmtClock, fmtCost, fmtDuration,
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, roller, reel, slotText, INK } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -15,6 +15,15 @@ describe('describe', () => {
   test('file tools show the file name', () => {
     expect(describeCall('Edit', { file_path: '/a/b/register.tsx' })).toEqual({ kind: 'edit', verb: 'Edit', target: 'register.tsx' })
     expect(describeCall('Read', { file_path: '/x/y.ts' }).target).toBe('y.ts')
+  })
+
+  test('a Skill row names the skill it used', () => {
+    expect(describeCall('Skill', { skill: 'hanahira-claude-ui:hanahira-claude-ui-design', args: 'x' })).toEqual({
+      kind: 'other',
+      verb: 'Skill',
+      target: 'hanahira-claude-ui:hanahira-claude-ui-design',
+    })
+    expect(describeCall('Skill', {}).target).toBe('skill')
   })
 
   test('removing files reads as a delete, named by the files', () => {
@@ -136,6 +145,42 @@ describe('diffRows', () => {
   })
 })
 
+describe('diffSource', () => {
+  test('writes each hunk with a header counting the lines it keeps', () => {
+    expect(diffSource([{ oldStart: 5, newStart: 5, lines: [' keep', '-old', '+new', '+new2', ' tail'] }])).toBe(
+      '@@ -5,3 +5,4 @@\n keep\n-old\n+new\n+new2\n tail',
+    )
+  })
+
+  test('a hunk cut short counts only what is left, and later hunks drop', () => {
+    const src = diffSource(
+      [
+        { oldStart: 1, newStart: 1, lines: [' a', '-b', '+c', ' d'] },
+        { oldStart: 40, newStart: 40, lines: ['+z'] },
+      ],
+      undefined,
+      2,
+    )
+    expect(src).toBe('@@ -1,2 +1,1 @@\n a\n-b')
+  })
+
+  test('a new file is one hunk of additions; the marker, control characters and empty lines read right', () => {
+    expect(diffSource([], 'x\ny\n')).toBe('@@ -0,0 +1,2 @@\n+x\n+y')
+    expect(diffSource([{ oldStart: 1, newStart: 1, lines: ['-a\r', '\\ No newline at end of file', '+a', ''] }])).toBe('@@ -1,2 +1,2 @@\n-a\n+a\n ')
+    expect(diffSource([])).toBe('')
+  })
+})
+
+describe('relPath', () => {
+  test('a file under the folder reads from it; anywhere else, whole', () => {
+    expect(relPath('/repo/static/shift.html', '/repo')).toBe('static/shift.html')
+    expect(relPath('/repo/static/shift.html', '/repo/')).toBe('static/shift.html')
+    expect(relPath('/repository/x.ts', '/repo')).toBe('/repository/x.ts')
+    expect(relPath('C:\\work\\app\\a.ts', 'C:\\work\\app')).toBe('a.ts')
+    expect(relPath('/x/y.ts', null)).toBe('/x/y.ts')
+  })
+})
+
 describe('fileChange', () => {
   test('an Edit gives its patch, a new file its content, anything else nothing', () => {
     expect(fileChange('Edit', { structuredPatch: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }] })).toMatchObject({ added: 1, removed: 1 })
@@ -146,6 +191,10 @@ describe('fileChange', () => {
     expect(fileChange('Write', { type: 'create', content: '\n', structuredPatch: [] })).toMatchObject({ added: 1 })
     expect(fileChange('Edit', 'Error: file not found')?.rows).toEqual([])
     expect(fileChange('Read', { file: {} })).toBeNull()
+    // The diff text shows the same file lines as the rows, so "more" counts alike.
+    const many = fileChange('Write', { type: 'create', content: Array.from({ length: 20 }, (_, i) => `l${i}`).join('\n'), filePath: '/r/a.ts' })
+    expect(many?.source.split('\n')).toHaveLength(1 + 14)
+    expect(many).toMatchObject({ more: 6, path: '/r/a.ts' })
   })
 })
 
@@ -329,7 +378,7 @@ describe('pills and tiles are still', () => {
       badgeSvg('#7cb7ff', 'file', 32, true),
       badgeSvg('#7cb7ff', 'file', 32, false),
     ]) {
-      expect(svg).not.toContain('<animate')
+      expect(svg).not.toContain('@keyframes')
       expect(svg).not.toContain('<set ')
     }
   })
@@ -369,14 +418,14 @@ describe('loadingSvg', () => {
     const svg = loadingSvg(500, 12, '#9b8cf7')
     expect(svg).toContain(`fill="${INK.track}"/>`)
     expect(svg).not.toContain('#9b8cf7')
-    expect(svg).not.toContain('<animate')
+    expect(svg).not.toContain('@keyframes')
   })
 
   test('live lights every block in the colour, still without motion', () => {
     const svg = loadingSvg(500, 12, '#9b8cf7', { live: true })
     expect(svg).toContain(`fill="#9b8cf7"/>`)
     expect(svg).not.toContain(INK.track)
-    expect(svg).not.toContain('<animate')
+    expect(svg).not.toContain('@keyframes')
   })
 
   test('draws no number: no label, no pill', () => {
@@ -402,11 +451,11 @@ describe('band pictures', () => {
   test('the status dot wears a halo while live, and nothing moves', () => {
     expect(dotSvg('#9b8cf7', true).match(/<circle/g)?.length).toBe(2)
     expect(dotSvg('#9b8cf7', false).match(/<circle/g)?.length).toBe(1)
-    expect(dotSvg('#9b8cf7', true)).not.toContain('<animate')
+    expect(dotSvg('#9b8cf7', true)).not.toContain('@keyframes')
   })
 
   test('a card is a still picture', () => {
-    expect(cardSvg('Cost', '≈$15.62', { icon: 'coin', iconColor: '#f2c94c' }).svg).not.toContain('<animate')
+    expect(cardSvg('Cost', '≈$15.62', { icon: 'coin', iconColor: '#f2c94c' }).svg).not.toContain('@keyframes')
     expect(cardSvg('Time', '1:06', { icon: 'stopwatch' }).svg).toContain('>1:06</text>')
   })
 
@@ -422,6 +471,14 @@ describe('band pictures', () => {
     expect(s.svg).toMatch(/fill-opacity="0">17%<\/tspan><tspan dx="5">context<\/tspan><tspan[^>]*> · 171k\/1M</)
     expect(statSvg('17%', 'context', { width: 400 }).width).toBe(400)
     expect(statSvg('17%', 'context', { width: 10 }).width).toBe(statSvg('17%', 'context').natural)
+  })
+
+  test('a tone colours the state: the label on one line, the first line under the value stacked', () => {
+    expect(statSvg('Hanahira', 'Active', { tone: '#34c38f' }).svg).toContain('<tspan dx="5" fill="#34c38f" font-weight="600">Active</tspan>')
+    const stacked = statSvg('Hanahira', '', { tone: '#f2736b', stack: ['Deactive', 'design'] }).svg
+    expect(stacked).toMatch(/fill="#f2736b" font-weight="600">Deactive<\/text>/)
+    expect(stacked).toMatch(/fill="#8f8782">design<\/text>/)
+    expect(statSvg('6%', '5h limit', { stack: ['94% left'] }).svg).not.toContain('font-weight="600"')
   })
 
   test('live speed is the rate over the recent window, in tokens', () => {
@@ -445,14 +502,14 @@ describe('band pictures', () => {
 
   test('the speedometer points its needle at the fraction', () => {
     expect(speedoSvg(0.5, '#9b8cf7', 22)).toContain('rotate(0.0 22 22)')
-    expect(speedoSvg(0.5, '#9b8cf7', 22)).not.toContain('<animate')
+    expect(speedoSvg(0.5, '#9b8cf7', 22)).not.toContain('@keyframes')
     expect(speedoSvg(3, '#fff', 22)).toContain('rotate(135.0 22 22)')
   })
 
   test('a stat takes a ring in the glyph slot, and is still', () => {
     const ring = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"></svg>'
     expect(statSvg('9%', '5-hour limit', { ring }).svg).toContain(`<g transform="translate(0 ${(STAT.height - STAT.glyph) / 2})">${ring}</g>`)
-    expect(statSvg('$2', 'cost').svg).not.toContain('<animate')
+    expect(statSvg('$2', 'cost').svg).not.toContain('@keyframes')
   })
 })
 
@@ -533,8 +590,8 @@ describe('chipSvg', () => {
   test('minWidth holds a chip as wide as another state, and nothing on it moves', () => {
     const wide = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).natural
     expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
-    expect(chipSvg({ color: '#9b8cf7', label: 'working', dots: true }).svg).not.toContain('<animate')
-    expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('<animate')
+    expect(chipSvg({ color: '#9b8cf7', label: 'working', dots: true }).svg).not.toContain('@keyframes')
+    expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('@keyframes')
   })
 })
 
@@ -549,7 +606,7 @@ describe('meterSvg', () => {
     expect(lit(meterSvg(1, '#e8825f').svg)).toBe(1)
     expect(lit(meterSvg(0, '#e8825f').svg)).toBe(0)
     expect(lit(meterSvg(null, '#e8825f').svg)).toBe(0)
-    expect(meterSvg(90, '#e8825f').svg).not.toContain('<animate')
+    expect(meterSvg(90, '#e8825f').svg).not.toContain('@keyframes')
   })
 })
 
@@ -624,56 +681,101 @@ describe('statSvg stacked', () => {
   })
 })
 
-// The band's motion (MOTION): loops that keep their picture, figures that glide.
+// The band's motion (MOTION): CSS in each picture that keeps its picture, figures that glide.
 describe('motion', () => {
-  /** A picture with its SMIL taken out: what a surface that plays none shows, and a loop's first frame. */
-  const still = (svg: string) =>
-    svg
-      .replace(/<animate(Transform)? [^>]*\/>/g, '')
-      .replace(/<(circle)( [^>]*)><\/circle>/g, '<$1$2/>')
+  /**
+   * A picture with its motion taken out: what a surface that plays none shows, and what a
+   * person who asks for reduced motion sees. The classes that run it, and its <style>, go.
+   */
+  const still = (svg: string) => {
+    let out = svg.replace(/<style>[\s\S]*?<\/style>/g, '')
+    // A <g> that only carries a motion class wraps the still markup: take it off, with its own </g>.
+    for (let at = out.search(/<g class="[^"]*">/); at >= 0; at = out.search(/<g class="[^"]*">/)) {
+      const open = out.indexOf('>', at) + 1
+      let depth = 1
+      let i = open
+      while (depth > 0) {
+        const next = out.slice(i).search(/<g[ >]|<\/g>/)
+        i += next
+        depth += out.startsWith('</g>', i) ? -1 : 1
+        i += out.startsWith('</g>', i) ? 4 : 2
+      }
+      out = out.slice(0, at) + out.slice(open, i - 4) + out.slice(i)
+    }
+    return out.replace(/ class="[^"]*"/g, '')
+  }
+
+  test('every motion stops under reduced motion', () => {
+    const pictures = [
+      loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true }),
+      chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true, motion: true }).svg,
+      dotSvg('#9b8cf7', true, 14, true),
+      statSvg('Hanahira', '', { icon: 'sparkle', color: '#34c38f', tone: '#34c38f', stack: ['Active'], spark: { pulse: true, enterFrom: '#f2736b' } }).svg,
+    ]
+    for (const svg of pictures) {
+      expect(svg).toContain('@keyframes')
+      expect(svg).toContain('@media (prefers-reduced-motion: reduce){*{animation:none!important}}')
+    }
+  })
 
   test('the bar lights glide only while live with motion, from where the still bar has them', () => {
     const moving = loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true })
-    expect(moving).toContain(`<animateTransform attributeName="transform" type="translate" from="0 0" to="${MOTION.barPeriod} 0"`)
-    expect(moving).toContain('repeatCount="indefinite"')
+    expect(moving).toContain(`@keyframes lights{to{transform:translateX(${MOTION.barPeriod}px)}}`)
+    expect(moving).toContain(`animation:lights ${MOTION.barMs}ms linear infinite`)
     // Over the lit blocks and cut to them alone, so no light shows in the gaps.
     expect(moving.indexOf('url(#bar-glow)')).toBeGreaterThan(moving.indexOf('fill="#9b8cf7"/>'))
     expect(moving).toMatch(/<clipPath id="bar-cut"><path d="M0 0h6v12h-6z[^"]+"\/><\/clipPath>/)
-    expect(loadingSvg(900, 12, '#9b8cf7', { live: false, motion: true })).not.toContain('<animate')
-    expect(loadingSvg(900, 12, '#9b8cf7', { live: true })).not.toContain('<animate')
-    // The first frame is the still bar.
-    expect(still(moving).replace(/<defs>[\s\S]*<\/defs><g clip-path="url\(#bar-cut\)">[\s\S]*<\/g><\/g>/, '')).toBe(loadingSvg(900, 12, '#9b8cf7', { live: true }))
+    expect(loadingSvg(900, 12, '#9b8cf7', { live: false, motion: true })).not.toContain('@keyframes')
+    expect(loadingSvg(900, 12, '#9b8cf7', { live: true })).not.toContain('@keyframes')
+    // At rest, the lights sit on the still bar.
+    expect(still(moving).replace(/<defs>[\s\S]*<\/defs><g clip-path="url\(#bar-cut\)">[\s\S]*<\/g>/, '')).toBe(loadingSvg(900, 12, '#9b8cf7', { live: true }))
   })
 
-  test('a loop holds no time: drawn again, it is the same picture', () => {
+  test('motion holds no time: drawn again, it is the same picture', () => {
     const draw = () =>
       loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true }) +
       chipSvg({ color: '#9b8cf7', label: 'working', dots: true, motion: true }).svg +
-      dotSvg('#9b8cf7', true, 14, true)
+      dotSvg('#9b8cf7', true, 14, true) +
+      statSvg('Hanahira', '', { icon: 'sparkle', color: '#34c38f', spark: { pulse: true, enterFrom: '#f2736b' } }).svg
     expect(draw()).toBe(draw())
   })
 
-  test('the working dots wave from their still look and come back to it', () => {
+  test('the working chip comes in once and its dots wave from their still look', () => {
     const moving = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true, motion: true }).svg
     const plain = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).svg
     expect(still(moving)).toBe(plain)
-    const waves = [...moving.matchAll(/opacity="([\d.]+)"><animate attributeName="opacity" values="([^"]+)"/g)]
-    expect(waves.length).toBe(3)
-    for (const [, at, values] of waves) {
-      const v = values!.split(';')
-      expect(v[0]).toBe(at)
-      expect(v[v.length - 1]).toBe(at)
-    }
-    // The brightest dot steps left to right: last, then first, then middle.
-    expect(waves.map(w => w[2]!.split(';')[1])).toEqual(['1.00', '0.30', '0.65'])
+    expect(moving).toContain(`animation:chip-in ${MOTION.chipInMs}ms`)
+    expect(moving).not.toMatch(/chip-in[^}]*infinite/)
+    // Each dot rests at its still brightness and passes through the other two; the brightest
+    // steps left to right.
+    const waves = [...moving.matchAll(/@keyframes d\d\{0%,100%\{opacity:([\d.]+)\}33\.3%\{opacity:([\d.]+)\}/g)]
+    expect(waves.map(w => w[1])).toEqual(['0.30', '0.65', '1.00'])
+    expect(waves.map(w => w[2])).toEqual(['1.00', '0.30', '0.65'])
+    expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('<style>')
   })
 
   test('the status dot breathes from its still halo, only with motion', () => {
     const moving = dotSvg('#9b8cf7', true, 14, true)
     expect(still(moving)).toBe(dotSvg('#9b8cf7', true, 14))
-    expect(moving).toContain('values="0.4;0.1;0.4"')
-    expect(moving).toContain('values="5.8;6.25;5.8"')
-    expect(dotSvg('#9b8cf7', false, 14, true)).not.toContain('<animate')
+    expect(moving).toContain(`animation:halo ${MOTION.haloMs}ms`)
+    expect(dotSvg('#9b8cf7', false, 14, true)).not.toContain('@keyframes')
+  })
+
+  test('the Hanahira sparkle turns in once from the old colour, then breathes; still, it is the tile', () => {
+    const opts = { icon: 'sparkle' as const, color: '#34c38f', tone: '#34c38f', stack: ['Active', ''] }
+    const plain = statSvg('Hanahira', '', opts).svg
+    const arriving = statSvg('Hanahira', '', { ...opts, spark: { pulse: true, enterFrom: '#f2736b' } }).svg
+    const on = statSvg('Hanahira', '', { ...opts, spark: { pulse: true } }).svg
+    expect(still(arriving)).toBe(plain)
+    expect(still(on)).toBe(plain)
+    expect(arriving).toContain('@keyframes tile{from{fill:#f2736b;stroke:#f2736b}}')
+    expect(arriving).toContain(`twinkle ${MOTION.twinkleMs}ms`)
+    // The breath waits for the turn-in to end.
+    expect(arriving).toContain(`spark ${MOTION.sparkMs}ms cubic-bezier(0.45, 0, 0.55, 1) ${MOTION.twinkleMs}ms infinite`)
+    expect(on).not.toContain('twinkle')
+    expect(on).toContain(`spark ${MOTION.sparkMs}ms cubic-bezier(0.45, 0, 0.55, 1) 0ms infinite`)
+    // A ring or a plain figure takes no spark.
+    expect(statSvg('9', 'x', { icon: 'coin', plain: true, spark: { pulse: true } }).svg).not.toContain('<style>')
   })
 
   test('easeOut runs 0 to 1, fast first, and holds past the ends', () => {
@@ -733,25 +835,62 @@ describe('motion', () => {
     expect(g.progress('unseen', 0)).toBe(null)
   })
 
-  test('a moving figure pops up off its line and lands back on it', () => {
-    expect(popLift(null)).toBe(0)
-    expect(popLift(0)).toBe(0)
-    expect(popLift(1)).toBe(0)
-    const path = [0.2, 0.4, 0.6, 0.8].map(popLift)
-    expect(Math.max(...path)).toBeLessThanOrEqual(MOTION.popPx)
-    expect(path.every(v => v > 0)).toBe(true)
-    // Up quickly, down to land: the highest point comes in the first half.
-    expect(path.indexOf(Math.max(...path))).toBeLessThan(2)
+  test('a roll starts on a new value, runs its time, and is gone once it lands', () => {
+    const r = roller(400)
+    expect(r.value('n', '20%', 0)).toBe(null)
+    expect(r.value('n', '20%', 50)).toBe(null)
+    expect(r.value('n', '60%', 1000)).toEqual({ from: '20%', t: 0 })
+    expect(r.value('n', '60%', 1100)).toEqual({ from: '20%', t: 0.25 })
+    expect(r.active(1100)).toBe(true)
+    expect(r.value('n', '60%', 1400)).toBe(null)
+    expect(r.active(1400)).toBe(false)
+    // A new value mid-roll rolls on from the one that was coming in.
+    r.value('n', '61%', 2000)
+    expect(r.value('n', '62%', 2100)).toEqual({ from: '61%', t: 0 })
   })
 
-  test('lift raises the value alone; the label holds its line', () => {
-    const still = statSvg('$1', 'cost', { plain: true, icon: 'coin' }).svg
-    const up = statSvg('$1', 'cost', { plain: true, icon: 'coin', lift: 2.5 }).svg
-    const valueY = (svg: string) => Number(/<text x="[\d.]+" y="([\d.]+)"[^>]*font-weight="700"/.exec(svg)![1])
-    expect(valueY(still)).toBe(STAT.baseline)
-    expect(valueY(up)).toBe(STAT.baseline - 2.5)
-    // Nothing else moved: put the value back on its line and it is the still picture.
-    expect(up.replace(`y="${STAT.baseline - 2.5}"`, `y="${STAT.baseline}"`)).toBe(still)
-    expect(up).not.toContain('<animate')
+  test('a reel turns up a line, a touch past it, then snaps onto its stop', () => {
+    expect(reel(0)).toBe(0)
+    expect(reel(1)).toBe(1)
+    // At the band's frames (every 100 ms of 450): on its way, past the line, then onto it.
+    const frames = [100, 200, 300, 400].map(ms => reel(ms / MOTION.rollMs))
+    expect(frames[0]).toBeGreaterThan(0.1)
+    expect(frames[0]).toBeLessThan(frames[1]!)
+    expect(Math.max(...frames)).toBeGreaterThan(1)
+    expect(Math.max(...frames)).toBeLessThanOrEqual(1.06)
+  })
+
+  test('a slot roll: the shared front stays, the old rest leaves upward, the new one rises in from below', () => {
+    const attrs = 'font-size="14" font-weight="700"'
+    expect(slotText(10, 20, 14, attrs, '≈$18.37')).toBe('<text x="10" y="20" font-size="14" font-weight="700">≈$18.37</text>')
+    expect(slotText(10, 20, 14, attrs, '≈$18.37', { from: '≈$18.37', t: 0.5 })).toBe(slotText(10, 20, 14, attrs, '≈$18.37'))
+    const mid = slotText(10, 20, 14, attrs, '≈$18.37', { from: '≈$18.01', t: 0.3 })
+    // '≈$18.' stays put; '01' leaves upward and '37' rises in, held at their place by an
+    // invisible copy of the front, cut to the figure's line.
+    expect(mid).toContain('<text x="10" y="20" font-size="14" font-weight="700">≈$18.</text>')
+    expect(mid).toMatch(/<tspan fill-opacity="0">≈\$18\.<\/tspan><tspan dy="-[\d.]+">01<\/tspan>/)
+    expect(mid).toMatch(/<tspan fill-opacity="0">≈\$18\.<\/tspan><tspan dy="[\d.]+">37<\/tspan>/)
+    expect(mid).toContain('clip-path="url(#slot)"')
+    // At the start the new value is a line below, out of the window, and the old one in place.
+    const start = slotText(10, 20, 14, attrs, '60%', { from: '20%', t: 0 })
+    expect(start).toContain('<tspan dy="0.0">20%</tspan>')
+    expect(start).toContain(`<tspan dy="${(14 * 1.2).toFixed(1)}">60%</tspan>`)
+    // Old and new are one strip, a line apart, whatever the moment.
+    for (const t of [0.2, 0.5, 0.8]) {
+      const [, up, rise] = /<tspan dy="(-?[\d.]+)">20%<\/tspan>[\s\S]*<tspan dy="(-?[\d.]+)">60%<\/tspan>/.exec(slotText(10, 20, 14, attrs, '60%', { from: '20%', t }))!
+      expect(Math.abs(Number(rise) - Number(up) - 14 * 1.2)).toBeLessThan(0.11)
+    }
+    // A figure that shares no front rolls whole.
+    expect(slotText(10, 20, 14, attrs, '10%', { from: '9%', t: 0.5 })).not.toMatch(/fill-opacity="0">/)
+  })
+
+  test('a stat rolls its value; the label is at the new value\'s place; no CSS motion', () => {
+    const still = statSvg('$2', 'cost', { plain: true, icon: 'coin' }).svg
+    const rolling = statSvg('$2', 'cost', { plain: true, icon: 'coin', roll: { from: '$1', t: 0.4 } }).svg
+    expect(rolling).toContain('clip-path="url(#slot)"')
+    expect(rolling).not.toContain('@keyframes')
+    expect(statSvg('$2', 'cost', { plain: true, icon: 'coin', roll: null }).svg).toBe(still)
+    expect(chipSvg({ color: '#fff', value: '4', label: 'tools', roll: { from: '3', t: 0.4 } }).svg).toContain('clip-path="url(#slot)"')
+    expect(contextSvg(40, '#e8825f', { value: '60%', roll: { from: '20%', t: 0.4 } }).svg).toContain('>60%</tspan>')
   })
 })

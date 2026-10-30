@@ -1,7 +1,7 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { clip, fmtClock, fmtTokens } from './chat'
+import { clip, EASE, fmtClock, fmtTokens, MOTION, motionStyle } from './chat'
 import { iconGroup } from './icons'
 
 const EFFORT_COLOR: Record<string, string> = {
@@ -160,19 +160,8 @@ export const agentStats = (a: Agent) => {
   return `${clip(`${a.tools} tools · ${tokens} · ${costText}`, 40 - tail.length)}${tail}`
 }
 
-/**
- * One agent as a card, all in one SVG. A running card wears its accent on the border, a
- * part-drawn ring where the check will go, and a lit stretch on its bar; a finished one, its
- * mark and a full bar.
- */
-export const agentCardSvg = (
-  a: Agent,
-  opts: {
-    padBottom?: number
-    /** The bar is left out, the card a little shorter for it. */
-    barless?: boolean
-  } = {},
-) => {
+/** The drawing of one card, in pieces: its frame, what it says, and its bar. */
+const cardPieces = (a: Agent, opts: { padBottom?: number; barless?: boolean }) => {
   const W = CARD_W
   const H = opts.barless ? CARD_H - BAR_ROOM : CARD_H
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0)) // transparent room under the card, in px
@@ -210,24 +199,92 @@ export const agentCardSvg = (
   const barX = 10
   const barW = W - 20
   const barY = H - 12
-  const bar = opts.barless
-    ? ''
-    : `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="#2b2827"/>` +
-      `<rect x="${barX}" y="${barY}" width="${running ? Math.round(barW * 0.3) : barW}" height="4" rx="2" fill="${accent}"/>`
+  const litW = running ? Math.round(barW * 0.3) : barW
+  const track = `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="#2b2827"/>`
+  const lit = (cls = '') => `<rect x="${barX}" y="${barY}" width="${litW}" height="4" rx="2" fill="${accent}"${cls ? ` class="${cls}"` : ''}/>`
 
-  const card =
-    `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5"/>` +
-    `<svg x="10" y="9" width="38" height="38" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>` +
-    `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ece7e4"${nameFit}>${name}</text>` +
+  const frame = `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5"/>`
+  const sprite = `<svg x="10" y="9" width="38" height="38" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
+  const nameLine = `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ece7e4"${nameFit}>${name}</text>`
+  const figures =
     `<text x="58" y="38" ${font} font-size="11" fill="#b9b3af">${model}</text>` +
     (effort ? `<text x="${58 + modelW + 7}" y="38" ${font} font-size="11" font-weight="700" fill="${accent}">${effort}</text>` : '') +
-    `<text x="58" y="53" ${font} font-size="10.5" fill="#8f8985">${stats}</text>` +
-    mark +
-    bar
+    `<text x="58" y="53" ${font} font-size="10.5" fill="#8f8985">${stats}</text>`
+  const body = sprite + nameLine + figures + mark
+  return { W, H, pad, running, accent, frame, sprite, nameLine, figures, mark, body, track, lit, barX, barY, barW, litW }
+}
 
+const svgBox = (W: number, y: number, h: number, inner: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${y} ${W} ${h}" width="${W}" height="${h}">${inner}</svg>`
+
+/**
+ * One agent as a card, all in one SVG. A running card wears its accent on the border, a
+ * part-drawn ring where the check will go, and a lit stretch on its bar; a finished one, its
+ * mark and a full bar.
+ */
+export const agentCardSvg = (
+  a: Agent,
+  opts: {
+    padBottom?: number
+    /** The bar is left out, the card a little shorter for it. */
+    barless?: boolean
+  } = {},
+) => {
+  const p = cardPieces(a, opts)
   return {
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H + pad}" width="${W}" height="${H + pad}">${card}</svg>`,
-    width: W,
-    height: H + pad,
+    svg: svgBox(p.W, 0, p.H + p.pad, p.frame + p.body + (opts.barless ? '' : p.track + p.lit())),
+    width: p.W,
+    height: p.H + p.pad,
+  }
+}
+
+/** A window of the card's one drawing, `w` by `h` from (`x`, `y`): pieces laid edge to edge make the card. */
+const svgWindow = (x: number, y: number, w: number, h: number, inner: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}">${inner}</svg>`
+
+/** Where the card is cut into its pieces (agentCardParts): under the name, left of the mark, above the bar. */
+export const CARD_CUT = { head: 27, mark: CARD_W - 30, bar: CARD_H - 15 }
+
+/**
+ * The same card as four pictures laid edge to edge, so what moves never blinks. A surface swaps
+ * a picture whose source changed, which blinks a frame and starts its motion over; so what moves
+ * gets a piece of its own whose picture holds for as long as the agent runs:
+ * - `head`, the name and the sprite's top: still.
+ * - `mark`, the corner with the ring: the ring turns while the agent runs (`motion`), and a
+ *   finished one draws its check in once.
+ * - `body`, the model and the figures, which change as the agent works: a plain image, swapped
+ *   cleanly.
+ * - `strip`, the bar: its lit stretch slides along it and back while the agent runs, and a
+ *   finished one fills to the end once, then rests.
+ * Each draws only what shows in its window, so a piece's source changes only with what it shows.
+ */
+export const agentCardParts = (a: Agent, opts: { padBottom?: number; motion?: boolean } = {}) => {
+  const p = cardPieces(a, opts)
+  const C = CARD_CUT
+  const motion = opts.motion === true
+  const markW = p.W - C.mark
+  const mark = motion
+    ? p.running
+      ? p.mark.replace(/(<circle [^>]*stroke-dasharray="[^"]*")\/>/, '$1 class="spin"/>') +
+        motionStyle(`@keyframes spin{to{transform:rotate(360deg)}}.spin{transform-box:fill-box;transform-origin:center;animation:spin ${MOTION.spinMs}ms linear infinite}`)
+      : a.status === 'done'
+        ? `<g class="tick">${p.mark}</g>` +
+          motionStyle(`@keyframes tick{from{stroke-dashoffset:24}}.tick path{stroke-dasharray:24;animation:tick ${MOTION.checkMs}ms ${EASE.out} both}`)
+        : p.mark
+    : p.mark
+  const strip = !motion
+    ? p.lit()
+    : p.running
+      ? p.lit('run') +
+        motionStyle(`@keyframes run{50%{transform:translateX(${p.barW - p.litW}px)}}.run{animation:run ${MOTION.agentBarMs * 2}ms ${EASE.inOut} infinite}`)
+      : p.lit('fill') +
+        motionStyle(`@keyframes fill{from{transform:scaleX(.3)}}.fill{transform-box:fill-box;transform-origin:left;animation:fill ${MOTION.agentFillMs}ms ${EASE.out} both}`)
+  const bodyH = C.bar - C.head
+  const stripH = p.H + p.pad - C.bar
+  return {
+    head: { svg: svgWindow(0, 0, C.mark, C.head, p.frame + p.sprite + p.nameLine), width: C.mark, height: C.head },
+    mark: { svg: svgWindow(C.mark, 0, markW, C.head, p.frame + mark), width: markW, height: C.head },
+    body: { svg: svgWindow(0, C.head, p.W, bodyH, p.frame + p.sprite + p.figures), width: p.W, height: bodyH },
+    strip: { svg: svgWindow(0, C.bar, p.W, stripH, p.frame + p.track + strip), width: p.W, height: stripH },
   }
 }

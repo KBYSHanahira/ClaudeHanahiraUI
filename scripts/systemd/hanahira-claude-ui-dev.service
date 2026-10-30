@@ -1,0 +1,23 @@
+# Keeps scripts/dev.ts (the hot reload copy) running, across reboots too.
+# Installed by hand (the repo does not own /etc):
+#   install -m 644 scripts/systemd/hanahira-claude-ui-dev.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now hanahira-claude-ui-dev.service
+# Log: ~/.claude/hanahira-dev/dev.log, the same file a hand-started dev.ts writes.
+[Unit]
+Description=Hanahira Claude UI — live renamed copy for hot reload (scripts/dev.ts)
+After=local-fs.target
+
+[Service]
+# User= gives dev.ts its HOME, where the copy goes (~/.claude/hanahira-dev).
+User=root
+WorkingDirectory=/home/hanahiranetwork/plugins/HanahiraClaudeUI
+ExecStartPre=/usr/bin/mkdir -p /root/.claude/hanahira-dev
+ExecStart=/usr/local/bin/bun scripts/dev.ts
+StandardOutput=append:/root/.claude/hanahira-dev/dev.log
+StandardError=append:/root/.claude/hanahira-dev/dev.log
+Restart=on-failure
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

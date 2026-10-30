@@ -10,7 +10,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-0.1.0-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.10.6-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 [🇯🇵 日本語](README.md) ｜ **🇬🇧 English (this page)**
@@ -30,7 +30,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
 | 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), a status pill and the time. Deleting files with `rm` shows as a red **Delete** row. |
 | ✏️ | **Code changes inline** | An Edit or Write shows its change right under its row: numbered lines, added ones on green, removed ones on red, a `⋯` where the patch skips lines, and `+N` / `−N` pills in place of `saved`. The full view (ctrl+o) keeps the engine's own. |
-| 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide over the loading bar's blocks, the working chip's dots light in a wave and the status dot breathes; a figure that changes (context, limits, tok/s, cost, tokens, tools) glides to its new value, and cost and tokens pop up off their line and land back on it as they do. A loop's picture never changes while it runs, so a redraw never restarts it; transcript rows stay still. |
+| 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide over the loading bar's blocks, the working chip comes in and its dots light in a wave, the status dot breathes, a running agent card's ring turns and its bar slides along it and back without a break, and a finished one draws its check in and fills its bar to the end, then stops; the Hanahira sparkle turns in as the mode switches on and breathes while it is on. A figure that changes (context, limits, cost, tokens, tools, model) rolls in like a slot reel: the old value turns up and out while the new one comes in from below, a touch past its line, and snaps onto it; rings and meters glide to the new value, and tok/s glides as it streams. Motion is CSS inside each picture with no time in it, so a redraw never restarts it, and it stops for anyone who asks for reduced motion; transcript rows stay still. |
 | 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
@@ -91,8 +91,8 @@ claude --plugin-dir /path/to/hanahira-claude-ui
 **Hot reload on an SSH host (Desktop).** Desktop syncs an empty `hanahira-claude-ui` into every session, and it loads before a `--plugin-dir` of the same name, so the repo cannot be loaded as it is. `scripts/dev.ts` keeps a renamed copy, `hanahira-claude-ui-dev`, in `~/.claude/hanahira-dev/` in sync with every save:
 
 1. In `~/.claude/settings.json`, add `"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/root/.claude/hanahira-dev/hanahira-claude-ui-dev", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }` (your home in place of `/root`) and set `"hanahira-claude-ui-ssh@hanahira-ssh": false` under `enabledPlugins`, or two bands are drawn.
-2. Run `bun scripts/dev.ts` and leave it running, then start a new session once.
-3. Each save reloads the mod in the open session (an edit Claude makes reloads when its turn ends). To stop, remove the two `env` keys and turn `-ssh` back on.
+2. Run `bun scripts/dev.ts` and leave it running, then start a new session once. To keep it running across reboots, install `scripts/systemd/hanahira-claude-ui-dev.service` (steps in the file's header).
+3. After a save, type `/reload-plugins` in the open session to load it; there is no need for a new session. A Desktop session does not watch the folder by itself: it is started over SSH without `CLAUDE_CODE_PLUGIN_DIR_WATCH`, and the key in `settings.json` does not turn the watch on. To stop, remove the two `env` keys and turn `-ssh` back on.
 
 Or keep it on with an environment variable:
 
@@ -197,7 +197,7 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 ## 🧪 Requirements and notes
 
 - This is an interface mod (`modules` in `hooks/hooks.json`) and needs a Claude Code build that supports mods.
-- A change hot-reloads when a turn ends. If it does not, look for a `reload failed` line in the transcript.
+- A change hot-reloads when a turn ends (in a Desktop session over SSH, type `/reload-plugins` instead). If it does not, look for a `reload failed` line in the transcript.
 
 ## 🛠️ Development
 
@@ -221,6 +221,7 @@ scripts/
   preview.ts      draws docs/preview.svg
   preview-chat.ts draws docs/preview-chat.svg
   dev.ts          live renamed copy for hot reload
+  systemd/        keeps dev.ts running across reboots
 types/index.d.ts  the shape of the state ($.state)
 ```
 

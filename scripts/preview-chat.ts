@@ -1,6 +1,7 @@
 // Renders docs/preview-chat.svg: the transcript rows (your card, tool rows, a change with its
-// diff, a delete, a folded run, a running call, a task notification, an error) drawn by the
-// plugin's own SVG builders, laid out the way the hooks lay them out. Run: bun scripts/preview-chat.ts
+// diff under its path, a skill, a delete, a folded run, a running call, a task notification, an
+// error) drawn by the plugin's own SVG builders, laid out the way the hooks lay them out.
+// Run: bun scripts/preview-chat.ts
 // With an output path as the argument, it writes the rows mid-finish instead (every row's
 // finish begins at time 0), for a browser to step through the motion.
 import { writeFileSync } from 'node:fs'
@@ -76,7 +77,9 @@ row('edit', 'Edit', 'chat.ts', [
   const cardX = X + 32
   const cardW = W - X - cardX
   const h = d.rows.length * lineH + 8
-  y -= 4
+  // The file's path heads the card, from the session's folder.
+  parts.push(`<text x="${cardX + 12}" y="${y + 10}" ${mono} font-size="12.5" fill="${INK.label}">${esc('hooks/chat.ts')}</text>`)
+  y += 18
   parts.push(`<rect x="${cardX}" y="${y}" width="${cardW}" height="${h}" rx="9" fill="none" stroke="${INK.line}" stroke-width="1.2"/>`)
   parts.push(`<clipPath id="card"><rect x="${cardX + 1}" y="${y + 1}" width="${cardW - 2}" height="${h - 2}" rx="8"/></clipPath><g clip-path="url(#card)">`)
   const gutter = String(Math.max(...d.rows.map(r => r.n ?? 0))).length
@@ -94,6 +97,10 @@ row('edit', 'Edit', 'chat.ts', [
   y += h + 12
 }
 
+{
+  const s = describe('Skill', { skill: 'hanahira-claude-ui:hanahira-claude-ui-design' })
+  row(s.kind, s.verb, s.target, [done(statusPill('Skill', idle))], 100)
+}
 row('delete', 'Delete', 'old.js build', [done(statusPill('Bash', idle))], 90, { mono: true })
 row('search', 'Explore', 'Read 3 · Search 2 · Find 1', [{ text: '6 calls', icon: 'check', ...PILL.ok }])
 row('run', 'Run', 'bun run build', [{ text: 'running', running: true, ...PILL.busy }], undefined, { running: true })

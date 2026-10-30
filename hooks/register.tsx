@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Agent, Info, Stats, Tokens, Usage } from '../types'
-import { agentCardSvg, agentStats, prettyModel, visibleAgents } from './agents'
+import type { Agent, Info, Skill, Stats, Tokens, Usage } from '../types'
+import { agentCardParts, agentStats, prettyModel, visibleAgents } from './agents'
 import {
   KIND_COLOR,
   KIND_GLYPH,
@@ -18,6 +18,7 @@ import {
   dotSvg,
   describe,
   fileChange,
+  relPath,
   fmtClock,
   fmtCost,
   fmtDuration,
@@ -26,7 +27,8 @@ import {
   fmtSpeed,
   fmtTokens,
   glider,
-  popLift,
+  roller,
+  reelHolder,
   loadingSvg,
   MOTION,
   pillSvg,
@@ -43,11 +45,11 @@ import {
   statusPill,
   tokensPerSec,
 } from './chat'
+import type { Roll } from './chat'
 export { clip }
 import { iconGroup, iconSvg } from './icons'
 import { VERSION } from './version'
 import type { IconName } from './icons'
-import type { DiffRow } from './chat'
 
 // Per-call facts the transcript rows read: how long a call took, which Bash
 // commands are repeats. Plain module state; a row redraws when its call resolves.
@@ -86,7 +88,9 @@ const tokens = atom({ plugin: 'hanahira-claude-ui', key: 'tokens' } as const, NO
 const EMPTY: Stats = { tools: 0, byTool: {}, files: [], last: null }
 const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, limits: [] }
 
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean }
+// `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
+// `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; roll?: Roll | null }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
@@ -99,6 +103,85 @@ const stats = atom({ plugin: 'hanahira-claude-ui', key: 'stats' } as const, EMPT
 /** A stored value is whatever an earlier version or a reload left behind: never trust its shape. */
 export const asList = (v: unknown): Agent[] => (Array.isArray(v) ? (v as Agent[]) : [])
 const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, [] as Agent[])
+
+// Hanahira Claude UI mode, shown after the speed: on while its skills are at work.
+const skill = atom({ plugin: 'hanahira-claude-ui', key: 'skill' } as const, { on: false, loaded: [] } as Skill)
+const SKILL_ON = '#34c38f' // the green of the mode's own banner
+const SKILL_OFF = '#f2736b' // the red of its switch-off box, as the rings' red
+export const asSkill = (v: unknown): Skill => {
+  const s = v as Partial<Skill> | null | undefined
+  const loaded = Array.isArray(s?.loaded) ? s.loaded.filter((x): x is string => typeof x === 'string') : []
+  return { on: s?.on === true, loaded }
+}
+/** Which part of Hanahira Claude UI a skill is ('core', 'design', ...), or null for any other skill. */
+export const hanahiraPart = (name: string): string | null => {
+  const m = /^hanahira-claude-ui(?:-([a-z][a-z-]*))?$/.exec(name.slice(name.lastIndexOf(':') + 1))
+  return m ? (m[1] ?? 'core') : null
+}
+// The person's switches, as the core skill reads them: a command, or the request in English or
+// Thai. A question ("is Hanahira Claude UI on?") switches nothing, nor does `เปิด` hide a `ปิด`.
+const SWITCH_ON =
+  /hanahira claude ui\s+(?:v\d+\s+)?(?:on|ultra)\b(?!\s*\?)|\b(?:turn\s+on|use)\s+(?:the\s+)?hanahira claude ui\b|เปิด\s*(?:โหมด\s*)?hanahira claude ui/gi
+const SWITCH_OFF = /hanahira claude ui\s+(?:v\d+\s+)?off\b(?!\s*\?)|\bturn\s+off\s+(?:the\s+)?hanahira claude ui\b|(?<!เ)ปิด\s*(?:โหมด\s*)?hanahira claude ui/gi
+/**
+ * A prompt that is a Hanahira skill's own command (`/hanahira-claude-ui:…`): its part, and on
+ * unless its argument is `off`. The engine names the command (`{ name, args }`, newer engines);
+ * else the text does, typed (`/name args`) or as the engine wraps it (`<command-name>`).
+ */
+export const skillCommand = (text: string, command?: unknown): { part: string; on: boolean } | null => {
+  const c = command as { name?: unknown; args?: unknown } | null | undefined
+  const typed =
+    /^\s*\/(\S+)(?:\s+(.*))?$/s.exec(text) ??
+    /<command-name>\/?([^<\s]+)<\/command-name>(?:[\s\S]*?<command-args>([\s\S]*?)<\/command-args>)?/.exec(text)
+  const name = typeof c?.name === 'string' ? c.name : typed?.[1]
+  const args = typeof c?.args === 'string' ? c.args : (typed?.[2] ?? '')
+  const part = name ? hanahiraPart(name) : null
+  return part === null ? null : { part, on: !/^off\b/i.test(args.trim()) }
+}
+// A transcript row as `$.session.messages()` gives it, as far as the mode needs it.
+type ModeRow = { role: string; text?: string; toolUses?: readonly { tool: string; input: Record<string, unknown> }[]; toolResults?: readonly unknown[] }
+// What the engine and the skills write into a user message: none of it is the person's switch.
+const NOT_TYPED = /<(system-reminder|task-notification|local-command-stdout|local-command-caveat)>[\s\S]*?<\/\1>/g
+/**
+ * The mode as the transcript tells it, by the core skill's own rule: the person's last switch
+ * decides, and a skill of it loading turns it on. An `off` holds until the person writes again,
+ * so the skill loaded to say "off" switches nothing back on. A skill's text, sent as a user
+ * message, is the skill speaking, not the person.
+ */
+export const modeFrom = (rows: readonly ModeRow[]): Skill => {
+  let mode: Skill = { on: false, loaded: [] }
+  let off = false
+  const load = (part: string) => {
+    if (!off) mode = { on: true, loaded: mode.loaded.includes(part) ? mode.loaded : [...mode.loaded, part] }
+  }
+  for (const r of rows) {
+    if (r.role !== 'user') {
+      for (const u of r.toolUses ?? []) {
+        const part = u.tool === 'Skill' && typeof u.input?.skill === 'string' ? hanahiraPart(u.input.skill) : null
+        if (part !== null) load(part)
+      }
+      continue
+    }
+    const text = (r.text ?? '').replace(NOT_TYPED, ' ')
+    if (r.toolResults?.length || !text.trim()) continue
+    const cmd = skillCommand(text)
+    if (!cmd && text.includes('Base directory for this skill:')) continue
+    const s = cmd ? (cmd.on ? 'on' : 'off') : modeSwitch(text)
+    off = s === 'off'
+    if (s === 'off') mode = { on: false, loaded: [] }
+    else if (cmd) load(cmd.part)
+    else if (s === 'on') mode = { ...mode, on: true }
+  }
+  return mode
+}
+/** The last switch in a prompt, or null; code and quoted lines are not the person's switch. */
+export const modeSwitch = (text: string): 'on' | 'off' | null => {
+  const own = text.replace(/```[\s\S]*?(?:```|$)/g, ' ').replace(/`[^`\n]*`/g, ' ').replace(/^[ \t]*>.*$/gm, ' ')
+  const last = (re: RegExp) => Math.max(-1, ...[...own.matchAll(re)].map(m => m.index ?? -1))
+  const on = last(SWITCH_ON)
+  const off = last(SWITCH_OFF)
+  return on < 0 && off < 0 ? null : off > on ? 'off' : 'on'
+}
 // The widest each compact-band column has been, per layout: a column only ever widens, so a
 // value that gains or loses a digit while a turn runs never moves its neighbours.
 const colMax = new Map<string, number>()
@@ -107,6 +190,15 @@ const efforts = new Map<string, string>()
 // every MOTION.glideStepMs, and stops once nothing moves (or after `glideBeats`, should the
 // band not be drawn to say so).
 const glides = glider()
+// The figures' slot rolls: a new value rolls in over the old one (slotText in chat.ts).
+const rolls = roller()
+// Figures that roll by themselves, in CSS inside their picture (reelText): the tool count.
+const reels = reelHolder()
+let reelDrop: { cancel: () => void } | null = null
+// The Hanahira mode as the band last drew it, and whether it switched on in this turn: the
+// sparkle turns in once, as it does, and the picture keeps that until the turn ends.
+let lastOn: boolean | null = null
+let twinkle = false
 let glidePump: { cancel: () => void } | null = null
 let glideBeats = 0
 
@@ -332,9 +424,6 @@ const CHAT = {
   // The band's frame (THEME.warm at 55% over the band), so your card and the band read as one.
   userEdge: '#8e5541',
   userGround: '#221d1b',
-  // A changed line's ground: the pill's tint, darker, so a run of them stays readable as code.
-  addGround: '#1d2a21',
-  delGround: '#2e1c21',
   diffEdge: INK.line,
 }
 
@@ -394,43 +483,24 @@ const changePills = (els: { Box: any; Text: any; Svg: any }, added: number, remo
 }
 
 /**
- * The change itself, under the row: numbered lines like an editor, the added on a green
- * ground, the removed on a red one, the rest dim; a gap row where the patch skips lines.
+ * The change itself, under the row, the way an editor shows it: the file's path, then the
+ * lines in the engine's own `Code` diff, with its syntax colours, line numbers and change
+ * markers on every surface.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const diffCard = (els: { Box: any; Text: any }, d: { rows: DiffRow[]; more: number }) => {
-  const { Box, Text } = els
-  const gutter = String(Math.max(1, ...d.rows.map(r => r.n ?? 0))).length
+const diffCard = (els: { Box: any; Text: any; Code: any }, d: { source: string; path: string; more: number }) => {
+  const { Box, Text, Code } = els
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={CHAT.diffEdge} marginLeft={4} overflow="hidden">
-      {d.rows.map((r, i) =>
-        r.sign === '@' ? (
-          <Box key={`diff-${i}`} paddingX={1}>
-            <Text dimColor mono>{'⋯'.padStart(gutter)}</Text>
-          </Box>
-        ) : (
-          <Box
-            key={`diff-${i}`}
-            paddingX={1}
-            gap={1}
-            {...(r.sign === '+' ? { backgroundColor: CHAT.addGround } : r.sign === '-' ? { backgroundColor: CHAT.delGround } : {})}
-          >
-            <Text dimColor mono tabular>{String(r.n ?? '').padStart(gutter)}</Text>
-            <Text
-              mono
-              wrap="truncate-end"
-              {...(r.sign === '+' ? { color: PILL.ok.fg } : r.sign === '-' ? { color: PILL.bad.fg } : { dimColor: true })}
-            >
-              {`${r.sign === '-' ? '−' : r.sign} ${r.text}`}
-            </Text>
-          </Box>
-        ),
-      )}
-      {d.more > 0 ? (
+    <Box flexDirection="column" marginLeft={4}>
+      {d.path ? (
         <Box paddingX={1}>
-          <Text dimColor>{`… ${d.more} more lines`}</Text>
+          <Text mono color={INK.label} wrap="truncate-start">{d.path}</Text>
         </Box>
       ) : null}
+      <Box flexDirection="column" borderStyle="round" borderColor={CHAT.diffEdge} paddingX={1} overflow="hidden">
+        <Code source={d.source} format="diff" {...(d.path ? { path: d.path } : {})} wrap="truncate-end" />
+        {d.more > 0 ? <Text dimColor>{`… ${d.more} more lines`}</Text> : null}
+      </Box>
     </Box>
   )
 }
@@ -439,6 +509,21 @@ const diffCard = (els: { Box: any; Text: any }, d: { rows: DiffRow[]; more: numb
 let agentTicker: { cancel: () => void } | null = null
 
 // The folder and its branch. Read again after every turn: a turn can switch the branch.
+// One of Hanahira Claude UI's skills loaded: the mode is on, and the part is named. At the top
+// of the file, as the engine lets `$` be handed only to a function declared here.
+const loadPart = ($: EngineInterface, part: string) =>
+  update($, skill, v => {
+    const { loaded } = asSkill(v)
+    return { on: true, loaded: loaded.includes(part) ? loaded : [...loaded, part] }
+  })
+
+// The mode, read again from the transcript: it outlives a reload, and a skill load whose event
+// another plugin kept from this one.
+const reconcileMode = async ($: EngineInterface) => {
+  const rows = await $.session.messages().catch(() => null)
+  if (Array.isArray(rows)) await update($, skill, () => modeFrom(rows as readonly ModeRow[]))
+}
+
 const locate = async ($: EngineInterface) => {
   const cwd = await $.session.cwd()
   const git = await $.process
@@ -490,9 +575,12 @@ export const register: Register = on => {
   // Characters of streamed text per output token, learned from each finished response, so the
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
+  // This prompt switched the mode off: the skill it loads to say so does not switch it back on.
+  let switchedOff = false
 
   on('session.start', async ($, e, next) => {
     await locate($)
+    await reconcileMode($)
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
     const fresh = await $.session.usage().catch(() => null)
     if (fresh) {
@@ -516,6 +604,34 @@ export const register: Register = on => {
       window: e.context.window,
       limits: e.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
     }))
+    return next(e)
+  })
+
+  // Hanahira Claude UI mode: the person's switch turns it on or off; one of its skills loading
+  // turns it on and names the part. A skill loads three ways and each is watched, as another
+  // plugin's skill.prompt hook may answer without passing the event on to this one.
+
+  on('prompt.submit', async ($, e, next) => {
+    // A prompt the person did not type (isMeta, newer engines) switches nothing.
+    const typed = !(e as { isMeta?: true }).isMeta
+    const cmd = typed ? skillCommand(e.text, (e as { command?: unknown }).command) : null
+    const s = cmd ? (cmd.on ? 'on' : 'off') : typed ? modeSwitch(e.text) : null
+    switchedOff = s === 'off'
+    if (s === 'off') await update($, skill, () => ({ on: false, loaded: [] }))
+    else if (cmd) await loadPart($, cmd.part)
+    else if (s === 'on') await update($, skill, v => ({ ...asSkill(v), on: true }))
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
+    const part = hanahiraPart(e.skill)
+    if (part !== null && !switchedOff) await loadPart($, part)
+    return next(e)
+  })
+
+  on('skill.prompt', async ($, e, next) => {
+    const part = hanahiraPart(e.skill)
+    if (part !== null && !switchedOff) await loadPart($, part)
     return next(e)
   })
 
@@ -748,8 +864,10 @@ export const register: Register = on => {
       await update($, runMs, t => (t ?? 0) + ran)
     }
     startedAt = 0
+    twinkle = false
     await locate($).catch(() => undefined)
     await reconcileAgents($)
+    await reconcileMode($)
     await update($, tick, n => (n ?? 0) + 1)
     return next(e)
   })
@@ -757,7 +875,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl] = await Promise.all([
+    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl, skNow] = await Promise.all([
       read($, stats),
       read($, seconds),
       read($, info),
@@ -769,23 +887,39 @@ export const register: Register = on => {
       read($, agents),
       read($, speed),
       read($, model),
+      read($, skill),
     ])
     // What the band draws: each figure on its way to the stored one (see MOTION in chat.ts).
+    // Rings, meters and the speed glide (glider); the figures written out roll in (roller):
+    // `shown` is a limit's own figure, `percentUsed` its ring on the way to it.
     const glide = (key: string, v: number | null, round?: (n: number) => number) => glides.value(key, v, nowMs, round)
+    const roll = (key: string, text: string) => rolls.value(key, text, nowMs)
     const exact = (n: number) => n
-    const st = { ...stNow, tools: glide('tools', stNow.tools) ?? 0 }
+    const st = stNow
     const use = {
       ...useNow,
-      usd: glide('usd', useNow.usd, exact),
       percent: glide('context', useNow.percent),
       tokens: glide('context-tokens', useNow.tokens),
       limits: (Array.isArray(useNow.limits) ? useNow.limits : []).map(l => ({
         ...l,
+        shown: l.percentUsed,
         percentUsed: glide(`limit-${l.kind}`, l.percentUsed, exact) ?? l.percentUsed,
       })),
     }
     const sp = { ...spNow, tps: glide('tps', spNow.tps, exact) }
-    if (glides.active(nowMs)) {
+    const sk = asSkill(skNow)
+    if (lastOn === false && sk.on) twinkle = true
+    if (!sk.on) twinkle = false
+    lastOn = sk.on
+    // A held reel is let go once it has played: draw again then, with the plain figure.
+    const reelLeft = reels.pending(nowMs)
+    if (reelLeft !== null && !reelDrop) {
+      reelDrop = $.clock.after(reelLeft + 20, () => {
+        reelDrop = null
+        void update($, tick, n => (n ?? 0) + 1)
+      })
+    }
+    if (glides.active(nowMs) || rolls.active(nowMs)) {
       glideBeats = Math.ceil(MOTION.glideMs / MOTION.glideStepMs) + 2
       glidePump ??= $.clock.every(MOTION.glideStepMs, () => {
         if (--glideBeats <= 0) {
@@ -818,15 +952,15 @@ export const register: Register = on => {
 
 
     // Overall figures, as five cards: spend, tokens, time spent running, model, and UI version.
-    const allTokens = glide('tokens', (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)) ?? 0
-    // `glide` names the figure's glide, so its cell pops while it moves (popLift in chat.ts).
-    const cards: { label: string; value: string; icon: IconName; color: string; glide?: string }[] = [
-      { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', glide: 'usd' },
-      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7', glide: 'tokens' },
-      // Live: it counts every second while a turn runs, on the band's beat (no glide or pop:
-      // a figure that moves every second would never be still).
+    const allTokens = (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)
+    // `roll` names the figure's slot roll: a new value rolls in over the old one.
+    const cards: { label: string; value: string; icon: IconName; color: string; roll?: string }[] = [
+      { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', roll: 'usd' },
+      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7', roll: 'tokens' },
+      // Live: it counts every second while a turn runs, on the band's beat (no roll: a figure
+      // that moves every second would never be still).
       { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
-      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7' },
+      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7', roll: 'model' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
     ]
@@ -858,6 +992,7 @@ export const register: Register = on => {
         color: '#f2c94c',
         icon: 'bolt',
         value: String(st.tools),
+        reel: reels.value('tools', String(st.tools), nowMs),
         label: toolWord,
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
@@ -889,7 +1024,8 @@ export const register: Register = on => {
 
     // The agent strip: running agents first, then the ones that finished lately.
     const crew = visibleAgents(asList(roster), nowMs, { max: THEME.listAgents, keepMs: THEME.keepFinishedMs })
-    const crewCards = crew.shown.map(a => ({ a, art: agentCardSvg(a, { padBottom: THEME.stripGap }) }))
+    // Each card in four pictures (agentCardParts): its figures swap as an image, its ring and bar run on.
+    const crewCards = crew.shown.map(a => ({ a, art: agentCardParts(a, { padBottom: THEME.stripGap, motion: e.props.isWorking }) }))
 
     // Stat tiles: a ring when the figure is a percentage, else the icon.
     const tiles: Tile[] = [
@@ -907,10 +1043,11 @@ export const register: Register = on => {
         key: l.kind,
         icon: (l.kind === 'five_hour' ? 'clock' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
         percent: l.percentUsed,
-        big: `${Math.round(l.percentUsed)}%`,
+        big: `${Math.round(l.shown)}%`,
+        roll: roll(`limit-${l.kind}`, `${Math.round(l.shown)}%`),
         caption: `of ${limitLabel(l.kind)}`,
         sub: fmtReset(l.resetsAt, nowMs) ?? undefined,
-        short: `${shortLimitLabel(l.kind)} · ${limitLeft(l.percentUsed)}`,
+        short: `${shortLimitLabel(l.kind)} · ${limitLeft(l.shown)}`,
         detail: fmtReset(l.resetsAt, nowMs)?.replace(/^resets in /, '') ?? undefined,
       })),
       // Model speed: the ring fills against the best seen this session, and never turns red.
@@ -926,6 +1063,20 @@ export const register: Register = on => {
         detail: sp.peak > 0 ? `peak ${fmtSpeed(sp.peak)}` : undefined,
         color: THEME.accent,
         calm: true,
+      },
+      // Hanahira Claude UI mode: active or not, under the name, and the companions loaded
+      // beside the core.
+      {
+        key: 'skill',
+        icon: 'sparkle' as IconName,
+        percent: null,
+        big: 'Hanahira',
+        caption: `Claude UI ${sk.on ? 'active' : 'deactive'}`,
+        short: sk.on ? 'Active' : 'Deactive',
+        detail: sk.on ? sk.loaded.filter(p => p !== 'core').join(', ') || undefined : undefined,
+        color: sk.on ? SKILL_ON : SKILL_OFF,
+        tone: sk.on ? SKILL_ON : SKILL_OFF,
+        ...(e.props.isWorking && sk.on ? { spark: { pulse: true, ...(twinkle ? { enterFrom: SKILL_OFF } : {}) } } : {}),
       },
     ]
     // A tile's ring (or, where pictures are not drawn, a glyph of it), at either size.
@@ -951,7 +1102,8 @@ export const register: Register = on => {
     // over the rest in smaller lines (narrower, every detail kept); `tall`, the value alone
     // over everything else (narrower still); `bare`, one line without the detail.
     type Mode = 'line' | 'stack' | 'tall' | 'bare'
-    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; draw: (width?: number, mode?: Mode) => ReturnType<typeof statSvg> }
+    // `live`: the cell moves, so it is drawn in the surface's frame.
+    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode) => ReturnType<typeof statSvg> }
     // Context is the hero line above the grid (below); the other gauges share the grid.
     const gaugeCells: Cell[] = tiles.filter(t => t.key !== 'context').map(t => ({
       key: `tile-${t.key}`,
@@ -959,15 +1111,20 @@ export const register: Register = on => {
       value: t.big,
       label: [t.short, t.detail].filter(Boolean).join(' · '),
       bareLabel: t.short,
+      live: t.spark !== undefined,
       draw: (width, mode = 'line') => {
         // Stacked: the name beside the value, what is left and the detail on lines under it;
         // tall: the name under the value too. Every gauge gets as many lines under it (blank
         // where it has less), so a line of gauges keeps one height and one baseline.
         const [name = t.short, ...rest] = t.short.split(' · ')
         const more = [...rest, ...(t.detail ? [t.detail] : [])]
-        const under =
-          mode === 'stack' ? [...more, '', ''].slice(0, 2) : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
-        return statSvg(t.big, mode === 'stack' ? name : mode === 'tall' ? '' : t.short, {
+        // A state reads under the value in both, its colour on the line it takes.
+        const under = t.tone
+          ? mode === 'stack' || mode === 'tall' ? [name, ...more, '', '', ''].slice(0, mode === 'stack' ? 2 : 3) : undefined
+          : mode === 'stack' ? [...more, '', ''].slice(0, 2) : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
+        return statSvg(t.big, mode === 'stack' ? (t.tone ? '' : name) : mode === 'tall' ? '' : t.short, {
+          tone: t.tone,
+          roll: t.roll,
           detail: mode === 'line' ? t.detail : undefined,
           ...(under ? { stack: under } : {}),
           width,
@@ -975,7 +1132,7 @@ export const register: Register = on => {
           ...(t.key === 'speed'
             ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph) }
             : t.percent === null
-            ? { icon: t.icon, color: t.color ?? THEME.accent }
+            ? { icon: t.icon, color: t.color ?? THEME.accent, spark: t.spark }
             : {
                 ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, { icon: t.icon, bigIcon: true }),
               }),
@@ -994,8 +1151,7 @@ export const register: Register = on => {
         draw: (width, mode = 'line') => {
           const under = mode === 'stack' || mode === 'tall'
           // Plain and muted: the figures are the quiet row, so the meter and the gauges lead.
-          const lift = c.glide ? popLift(glides.progress(c.glide, nowMs)) : 0
-          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, lift, ...(under ? { stack: [label] } : {}) })
+          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, roll: c.roll ? roll(c.roll, c.value) : null, ...(under ? { stack: [label] } : {}) })
         },
       }
     })
@@ -1013,6 +1169,9 @@ export const register: Register = on => {
       left: contextLeft(use.tokens, use.window, use.percent),
       window: use.window !== null ? `${fmtTokens(use.window)} window` : null,
       warn: use.percent !== null && use.percent >= 85,
+      // The figure is the stored one, rolled in; the meter glides to it.
+      value: useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`,
+      roll: roll('context', useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`),
     }
     const ctxColor = ringColor(use.percent ?? 0)
     const ctxLine = contextSvg(use.percent, ctxColor, ctxOpts)
@@ -1050,13 +1209,14 @@ export const register: Register = on => {
             <Box columnGap={2} rowGap={1} alignItems="center" flexWrap="wrap">
               {crewCards.map(({ a, art }) =>
                 Svg ? (
-                  <Svg
-                    key={`agent-${a.id}`}
-                    source={art.svg}
-                    alt={`${a.name}, ${a.status}`}
-                    width={art.width}
-                    height={art.height}
-                  />
+                  <Box key={`agent-${a.id}`} flexDirection="column">
+                    <Box flexDirection="row">
+                      <Svg source={art.head.svg} alt={`${a.name}, ${a.status}`} width={art.head.width} height={art.head.height} />
+                      <Svg source={art.mark.svg} alt={`${a.name} ${a.status === 'running' ? 'working' : a.status}`} width={art.mark.width} height={art.mark.height} {...loop} />
+                    </Box>
+                    <Svg source={art.body.svg} alt={agentStats(a)} width={art.body.width} height={art.body.height} />
+                    <Svg source={art.strip.svg} alt={`${a.name} progress`} width={art.strip.width} height={art.strip.height} {...loop} />
+                  </Box>
                 ) : (
                   <Text key={`agent-${a.id}`} dimColor>{`◈ ${a.name} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
                 ),
@@ -1139,7 +1299,7 @@ export const register: Register = on => {
 
         {THEME.compact ? (
           Svg ? (
-            <Svg source={ctxArt.svg} alt={`${use.percent === null ? '—' : `${use.percent}%`} context`} width={ctxArt.width} height={ctxArt.height} />
+            <Svg source={ctxArt.svg} alt={`${useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`} context`} width={ctxArt.width} height={ctxArt.height} />
           ) : (
             <Text>
               <Text bold>{use.percent === null ? '—' : `${use.percent}%`}</Text>
@@ -1164,7 +1324,7 @@ export const register: Register = on => {
                       </Text>
                     )
                   const art = c.draw(chosen.colW[j], chosen.mode)
-                  return <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} />
+                  return <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
                 })}
               </Box>
             ))}
@@ -1259,7 +1419,7 @@ export const register: Register = on => {
     const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
     const ms = durations.get(p.tool_use_id)
     const table = $.ui.resolve(e)
-    const { Box, Text } = table
+    const { Box, Text, Code } = table
     const Svg = 'Svg' in table ? table.Svg : null
     const els = { Text, Svg }
 
@@ -1285,10 +1445,11 @@ export const register: Register = on => {
       ms: p.isRunning ? undefined : ms,
     })
     if (!change || change.rows.length === 0) return row
+    const cwd = await $.session.cwd().catch(() => null)
     return (
       <Box flexDirection="column">
         {row}
-        {diffCard({ Box, Text }, change)}
+        {diffCard({ Box, Text, Code }, { ...change, path: relPath(change.path, cwd) })}
       </Box>
     )
   })

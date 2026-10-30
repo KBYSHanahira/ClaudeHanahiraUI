@@ -123,6 +123,9 @@ export const describe = (tool: string, raw: unknown, isRerun = false) => {
     }
     case 'WebSearch':
       return { kind: 'web' as Kind, verb: 'Search web', target: clip(str(i.query), 56) }
+    // Which skill, not only that one ran: `Use Skill` alone tells the reader nothing.
+    case 'Skill':
+      return { kind: 'other' as Kind, verb: 'Skill', target: clip(str(i.skill) || str(i.command) || 'skill', 64) }
     case 'AskUserQuestion': {
       const first = Array.isArray(i.questions) ? ((i.questions[0] ?? {}) as { question?: string }).question : ''
       return { kind: 'agent' as Kind, verb: 'Ask', target: clip(first ?? '', 64) }
@@ -254,15 +257,59 @@ export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
   return { rows: shown, more, ...countChanges(rows) }
 }
 
+type Hunk = { oldStart: number; newStart: number; lines: string[] }
+
 /**
- * What an Edit or Write call changed, from its result: the diff card's rows and the counts.
- * Null for any other tool; no rows for a result with no patch (an error's text, a no-op).
+ * The first `max` lines of a patch as unified-diff text, for the engine's `Code` element to
+ * highlight. Each hunk's header counts only the lines kept, since a hunk cut short does not
+ * parse. A new file's content is one hunk of additions. Control characters (a CRLF file's
+ * `\r`) are dropped and a long line is clipped, so the source stays drawable.
+ */
+export const diffSource = (hunks: unknown, fallback?: string, max = 14) => {
+  const list: Hunk[] =
+    Array.isArray(hunks) && hunks.length > 0
+      ? (hunks as Hunk[])
+      : fallback
+        ? [{ oldStart: 0, newStart: 1, lines: fallback.replace(/\n$/, '').split('\n').map(l => `+${l}`) }]
+        : []
+  const out: string[] = []
+  let left = max
+  for (const h of list) {
+    if (left <= 0) break
+    const kept = (h.lines ?? [])
+      .filter(l => l[0] !== '\\')
+      .slice(0, left)
+      .map(l => (l[0] === '+' || l[0] === '-' ? l[0] : ' ') + clip(l.slice(l[0] === '+' || l[0] === '-' || l[0] === ' ' ? 1 : 0).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ''), 400))
+    if (kept.length === 0) continue
+    left -= kept.length
+    const olds = kept.filter(l => l[0] !== '+').length
+    const news = kept.filter(l => l[0] !== '-').length
+    out.push(`@@ -${h.oldStart},${olds} +${h.newStart},${news} @@`, ...kept)
+  }
+  return out.join('\n')
+}
+
+/** A path as the project knows it: under `cwd`, relative to it; anywhere else, whole. */
+export const relPath = (path: string, cwd: string | null) => {
+  if (!cwd) return path
+  const root = cwd.replace(/[\\/]+$/, '')
+  return path.startsWith(`${root}/`) || path.startsWith(`${root}\\`) ? path.slice(root.length + 1) : path
+}
+
+/**
+ * What an Edit or Write call changed, from its result: the diff card's rows and the counts,
+ * the same lines as diff text for `Code`, and the file's path. Null for any other tool; no
+ * rows for a result with no patch (an error's text, a no-op).
  */
 export const fileChange = (tool: string, output: unknown) => {
   const name = short(tool)
   if (name !== 'Edit' && name !== 'Write') return null
-  const out = (output !== null && typeof output === 'object' ? output : {}) as { structuredPatch?: unknown; content?: unknown; type?: unknown }
-  return diffRows(out.structuredPatch, out.type === 'create' && typeof out.content === 'string' ? out.content : undefined)
+  const out = (output !== null && typeof output === 'object' ? output : {}) as { structuredPatch?: unknown; content?: unknown; type?: unknown; filePath?: unknown }
+  const fallback = out.type === 'create' && typeof out.content === 'string' ? out.content : undefined
+  const d = diffRows(out.structuredPatch, fallback)
+  // As many file lines as the rows show, so the "more" note counts the same lines.
+  const source = diffSource(out.structuredPatch, fallback, d.rows.filter(r => r.sign !== '@').length)
+  return { ...d, source, path: str(out.filePath) }
 }
 
 /** A background task's kind, from its notification: a shell command runs, anything else is an agent. */
@@ -312,13 +359,18 @@ export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line
 /**
  * The band's motion, on two rules so a redraw never blinks or starts a motion over (the reason
  * v1.8.0 took motion out):
- * - Loops (the bar's lights, the working dots, the status dot's halo) are SMIL with no time in
- *   them: while the state holds, every redraw draws the same picture and the surface keeps the
- *   one it has, so the loop runs on. Their first frame is the still picture, so a surface that
- *   starts one over, or plays no SMIL, shows no jump.
- * - A figure that changes glides to its new value (`glider`): a few still pictures, eased, then
- *   the exact value. No SMIL in them, so swapping one in is only a new image. On its way the
- *   figure pops up off its line and lands back on it (`popLift`), in the same still pictures.
+ * - Motion inside a picture (the bar's lights, the working dots, the status dot's halo, the
+ *   working chip coming in, the Hanahira sparkle, an agent card's ring and bar) is CSS
+ *   in the picture's own `<style>` (`motionStyle`), with no time in it: while the state holds,
+ *   every redraw draws the same picture and the surface keeps the one it has, so a loop runs on
+ *   and a one-shot plays once. The still look (the elements' own attributes) is where every
+ *   motion rests, so a surface that plays none, or a person who asks for reduced motion, sees
+ *   the right picture. It runs only in the surface's frame (`isInteractive`), drawn while
+ *   Claude works.
+ * - A figure that changes rolls like a slot reel (`roller`, `slotText`): the old value leaves
+ *   upward and the new one comes up from below, a touch past its line, and snaps onto it. Its
+ *   ring or meter glides to the new value (`glider`). Both are still pictures, eased, so
+ *   swapping one in is only a new image: a figure in a frame would blink each time it changed.
  */
 export const MOTION = {
   barMs: 2200, // one light's step to where the next one was
@@ -327,26 +379,161 @@ export const MOTION = {
   glowInk: '#ded8ff',
   dotsMs: 1200, // the working dots' wave
   haloMs: 2400, // the status dot's breath
-  glideMs: 480, // a figure moving to its new value
+  chipInMs: 260, // the working chip coming in as a turn starts
+  twinkleMs: 700, // the Hanahira sparkle turning in as the mode switches on
+  sparkMs: 2400, // its breath while the mode is on and Claude works
+  spinMs: 1100, // a running agent card's ring, once round
+  agentBarMs: 1600, // a running agent card's lit stretch, one way along its bar
+  checkMs: 420, // a finished agent card's check, drawn in
+  agentFillMs: 600, // a finished agent card's bar filling from its stretch to the end, once
+  glideMs: 640, // a ring or meter moving to its new value
+  rollMs: 450, // a figure's slot roll, old value out and new one in
   glideStepMs: 100, // a redraw this often while one moves: the engine's most, ten a second
-  popPx: 3, // how high a moving figure pops off its line
 }
 
-/** A looping SMIL `<animate>` over `values`, eased between each, starting from the first. */
-export const loopAnim = (attr: string, values: (number | string)[], ms: number) =>
-  `<animate attributeName="${attr}" values="${values.join(';')}" dur="${ms}ms" repeatCount="indefinite" ` +
-  `calcMode="spline" keySplines="${Array(values.length - 1).fill('0.45 0 0.55 1').join(';')}"/>`
+/** The curves motion runs on: out settles softly, spring overshoots a touch, inOut breathes. */
+export const EASE = {
+  out: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  inOut: 'cubic-bezier(0.45, 0, 0.55, 1)',
+}
 
 /**
- * How far a moving figure sits above its line, `t` (0 to 1) of the way through its glide: up
- * quickly to MOTION.popPx, then back down to land on its line as the glide ends. Not moving
- * (`null`), it sits on its line.
+ * A picture's motion as its own `<style>`: the keyframes and the classes that run them, all
+ * stopped where the person asks for reduced motion, which leaves the still look.
  */
-export const popLift = (t: number | null) =>
-  t === null ? 0 : Math.round(MOTION.popPx * Math.sin(Math.PI * Math.min(1, Math.max(0, t)) ** 0.7) * 10) / 10
+export const motionStyle = (css: string) =>
+  `<style>${css}@media (prefers-reduced-motion: reduce){*{animation:none!important}}</style>`
 
-/** Ease out: quick away from the old value, settling softly on the new one. */
-export const easeOut = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 3
+/** A figure's roll as drawn now: the value it rolls from, `t` (0 to 1) of the way. */
+export type Roll = { from: string; t: number }
+
+/**
+ * How far a slot reel has turned, `t` (0 to 1) of the way through its roll, in lines: it eases
+ * up a line and 6% past it by three quarters of the way, then snaps back onto its stop. Drawn
+ * at the band's ten frames a second the steps read as 0, ⅕, ⅔, past, onto.
+ */
+export const reel = (t: number) => {
+  const x = Math.min(1, Math.max(0, t))
+  if (x < 0.75) return 1.06 * ((1 - Math.cos((Math.PI * x) / 0.75)) / 2)
+  return 1.06 - 0.06 * easeOut((x - 0.75) / 0.25)
+}
+
+/**
+ * Figures that roll to a new value like a slot reel. `value(key, text, now)` gives the roll to
+ * draw (`slotText`): null when first seen, once a roll ends, or when nothing changed. A new
+ * value mid-roll rolls on from the value that was coming in. `active(now)` says whether any
+ * figure is still rolling, so the caller knows to draw again.
+ */
+export const roller = (ms = MOTION.rollMs) => {
+  const rolls = new Map<string, { from: string; to: string; at: number }>()
+  return {
+    value(key: string, text: string, now: number): Roll | null {
+      const r = rolls.get(key)
+      if (!r) {
+        rolls.set(key, { from: text, to: text, at: now - ms })
+        return null
+      }
+      if (r.to !== text) rolls.set(key, { from: r.to, to: text, at: now })
+      const g = rolls.get(key)!
+      return now - g.at >= ms || g.from === g.to ? null : { from: g.from, t: (now - g.at) / ms }
+    },
+    active(now: number) {
+      for (const r of rolls.values()) if (r.from !== r.to && now - r.at < ms) return true
+      return false
+    },
+  }
+}
+
+/**
+ * Figures whose roll is drawn by the picture itself (`reelText`): `value(key, text, now)` gives
+ * the value it rolls from, the same for as long as the roll is held (`holdMs`), so every redraw
+ * in that time sends the same picture and its motion plays once; then null, and the plain
+ * figure. `pending(now)` is how long until the next roll is let go, for a redraw then.
+ */
+export const reelHolder = (holdMs = MOTION.rollMs + 900) => {
+  const reels = new Map<string, { from: string | null; to: string; at: number }>()
+  return {
+    value(key: string, text: string, now: number): string | null {
+      const r = reels.get(key)
+      if (!r) {
+        reels.set(key, { from: null, to: text, at: now - holdMs })
+        return null
+      }
+      if (r.to !== text) reels.set(key, { from: r.to, to: text, at: now })
+      const g = reels.get(key)!
+      return g.from !== null && now - g.at < holdMs ? g.from : null
+    },
+    pending(now: number): number | null {
+      let next: number | null = null
+      for (const r of reels.values()) {
+        const left = r.at + holdMs - now
+        if (r.from !== null && left > 0) next = next === null ? left : Math.min(next, left)
+      }
+      return next
+    },
+  }
+}
+
+/**
+ * A figure as SVG text that rolls in from `from` by itself, as a slot reel turned by CSS in the
+ * picture: the shared front stays put; the rest is a strip, old over new a line apart, behind a
+ * window the figure's height, that turns up a line, 6% past it, and snaps back onto the new
+ * value. At rest (no motion run, or reduced motion) the strip stands on the new value.
+ */
+export const reelText = (x: number, y: number, fs: number, attrs: string, value: string, from?: string | null) => {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  if (!from || from === value) return `<text x="${x}" y="${y}" ${attrs}>${esc(value)}</text>`
+  let n = 0
+  while (n < from.length && n < value.length && from[n] === value[n]) n++
+  const keep = value.slice(0, n)
+  const line = +(fs * 1.2).toFixed(1)
+  const held = keep ? `<tspan fill-opacity="0">${esc(keep)}</tspan>` : ''
+  return (
+    `<clipPath id="reel-cut"><rect x="0" y="${(y - fs * 0.9).toFixed(1)}" width="100000" height="${(fs * 1.05).toFixed(1)}"/></clipPath>` +
+    (keep ? `<text x="${x}" y="${y}" ${attrs}>${esc(keep)}</text>` : '') +
+    `<g clip-path="url(#reel-cut)"><g class="reel" transform="translate(0 ${-line})">` +
+    `<text x="${x}" y="${y}" ${attrs}>${held}${esc(from.slice(n))}</text>` +
+    `<text x="${x}" y="${(y + line).toFixed(1)}" ${attrs}>${held}${esc(value.slice(n))}</text>` +
+    `</g></g>` +
+    motionStyle(
+      `@keyframes reel{from{transform:translateY(0);animation-timing-function:${EASE.inOut}}` +
+        `75%{transform:translateY(${(-line * 1.06).toFixed(1)}px);animation-timing-function:${EASE.out}}` +
+        `to{transform:translateY(${-line}px)}}.reel{animation:reel ${MOTION.rollMs}ms both}`,
+    )
+  )
+}
+
+/**
+ * A figure as SVG text at (`x`, `y`), rolling from `roll.from` when given, as a slot reel: what
+ * the two values share at the front stays put; the rest is a strip with the old value over the
+ * new, a line apart, that turns up a line (`reel`) behind a window the figure's own height. The
+ * old value leaves at the top as the new one comes in from the bottom, a touch past its line,
+ * and snaps onto it. `attrs` are the text's own (font, size, fill).
+ */
+export const slotText = (x: number, y: number, fs: number, attrs: string, value: string, roll?: Roll | null) => {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  if (!roll || roll.from === value) return `<text x="${x}" y="${y}" ${attrs}>${esc(value)}</text>`
+  let n = 0
+  while (n < roll.from.length && n < value.length && roll.from[n] === value[n]) n++
+  const keep = value.slice(0, n)
+  const t = Math.min(1, Math.max(0, roll.t))
+  const line = fs * 1.2
+  const turned = line * reel(t)
+  const held = keep ? `<tspan fill-opacity="0">${esc(keep)}</tspan>` : ''
+  // The window: a figure's cap height over its line, and a little room under it.
+  return (
+    `<clipPath id="slot"><rect x="0" y="${(y - fs * 0.9).toFixed(1)}" width="100000" height="${(fs * 1.05).toFixed(1)}"/></clipPath>` +
+    (keep ? `<text x="${x}" y="${y}" ${attrs}>${esc(keep)}</text>` : '') +
+    `<g clip-path="url(#slot)">` +
+    `<text x="${x}" y="${y}" ${attrs} opacity="${(1 - 0.5 * t).toFixed(2)}">${held}<tspan dy="${(-turned).toFixed(1)}">${esc(roll.from.slice(n))}</tspan></text>` +
+    `<text x="${x}" y="${y}" ${attrs}>${held}<tspan dy="${(line - turned).toFixed(1)}">${esc(value.slice(n))}</tspan></text>` +
+    `</g>`
+  )
+}
+
+/** Ease out (quint): quick away from the old value, settling softly on the new one. */
+export const easeOut = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 5
 
 type Glide = { from: number; to: number; at: number }
 
@@ -581,8 +768,8 @@ export const pillSvg = (
  * default `meet`, a surface that narrows the box shrinks the whole bar to a hairline.
  *
  * With `motion` (and `live`), soft lights glide left to right over the blocks, one every
- * MOTION.barPeriod px, so a slot of any width shows one. A loop (see MOTION): its first frame
- * is the still picture, and nothing in it depends on time, so a redraw sends the same picture.
+ * MOTION.barPeriod px, so a slot of any width shows one. A loop (see MOTION): its rest is the
+ * still picture, and nothing in it depends on time, so a redraw sends the same picture.
  */
 export const loadingSvg = (
   width: number,
@@ -607,9 +794,8 @@ export const loadingSvg = (
         `<stop offset="0.5" stop-color="${MOTION.glowInk}" stop-opacity="0.9"/>` +
         `<stop offset="1" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
         `</linearGradient><clipPath id="bar-cut"><path d="${blocks}"/></clipPath></defs>` +
-        `<g clip-path="url(#bar-cut)"><g>${glows.join('')}` +
-        `<animateTransform attributeName="transform" type="translate" from="0 0" to="${P} 0" dur="${MOTION.barMs}ms" repeatCount="indefinite"/>` +
-        `</g></g>`
+        `<g clip-path="url(#bar-cut)"><g class="lights">${glows.join('')}</g></g>` +
+        motionStyle(`@keyframes lights{to{transform:translateX(${P}px)}}.lights{animation:lights ${MOTION.barMs}ms linear infinite}`)
       : ''
 
   return (
@@ -664,12 +850,15 @@ export const contextSvg = (
     stack?: boolean
     width?: number
     warn?: boolean
+    /** The figure as written, when the meter shows a glide on its way to it; and its roll. */
+    value?: string
+    roll?: Roll | null
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CONTEXT
   const meter = meterSvg(percent, color)
-  const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
+  const value = opts.value ?? (percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`)
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
   const valueX = C.icon + 8
   const valueW = labelWidth(value, C.fs)
@@ -689,7 +878,7 @@ export const contextSvg = (
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     iconGroup('chip', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
-    `<text x="${valueX}" y="${y}" ${font} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}">${esc(value)}</text>` +
+    slotText(valueX, y, C.fs, `${font} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.roll) +
     `<text x="${wordsX}" y="${y}" ${font} font-size="${C.labelFs}">${words}</text>` +
     `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
     `</svg>`
@@ -703,7 +892,11 @@ export const dotSvg = (color: string, live: boolean, size = 14, motion = false) 
     ? `<circle cx="7" cy="7" r="5.8" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.4"` +
       // With `motion` the halo breathes out and fades, and comes back (a loop: see MOTION).
       (motion
-        ? `>${loopAnim('stroke-opacity', [0.4, 0.1, 0.4], MOTION.haloMs)}${loopAnim('r', [5.8, 6.25, 5.8], MOTION.haloMs)}</circle>`
+        ? ` class="halo"/>` +
+          motionStyle(
+            `@keyframes halo{50%{stroke-opacity:.1;transform:scale(1.08)}}` +
+              `.halo{transform-origin:7px 7px;animation:halo ${MOTION.haloMs}ms ${EASE.inOut} infinite}`,
+          )
         : '/>')
     : '') +
   `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
@@ -766,13 +959,25 @@ export const statSvg = (
     stack?: string[]
     /** The icon alone, no tile, centred in the glyph slot: the quiet look of a figure. */
     plain?: boolean
-    /** Px the value sits above its line (`popLift` while it moves); the label stays put. */
-    lift?: number
+    /** The value rolls in from this one (`roller`, `slotText`); the label is at its new place. */
+    roll?: Roll | null
+    /**
+     * A state to read at a glance (a mode on or off): the label in this colour, or, stacked,
+     * the first line under the value.
+     */
+    tone?: string
+    /**
+     * Motion for a state tile (the Hanahira mode): `pulse`, the glyph breathes (a loop);
+     * `enterFrom`, the state just arrived from this colour: the tile turns from it, the glyph
+     * turns in on a spring and the state line rises into place (once). See MOTION.
+     */
+    spark?: { pulse?: boolean; enterFrom?: string }
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const S = STAT
   const color = opts.color ?? '#8f8985'
+  const spark = opts.icon && !opts.plain && !opts.ring && (opts.spark?.pulse || opts.spark?.enterFrom) ? opts.spark : undefined
   const under = opts.stack ?? []
   const stacked = opts.stack !== undefined
   // A stacked cell grows a line (STAT.subLine) for each line under the value.
@@ -786,9 +991,11 @@ export const statSvg = (
     : opts.icon && opts.plain
       ? iconGroup(opts.icon, color, (S.glyph - S.plainIcon) / 2, g0 + (S.glyph - S.plainIcon) / 2, S.plainIcon, 2)
     : opts.icon
-      ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="7" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32"/>` +
+      ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="7" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32"${spark?.enterFrom ? ' class="tile"' : ''}/>` +
         // Across, the icon centres in the tile alone; down, past the row's top margin too.
-        iconGroup(opts.icon, color, (S.glyph - S.icon) / 2, io, S.icon, 2)
+        (spark ? '<g class="spark">' : '') +
+        iconGroup(opts.icon, color, (S.glyph - S.icon) / 2, io, S.icon, 2) +
+        (spark ? '</g>' : '')
       : ''
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
   const valueFont = `${font} font-size="${S.fs}" font-weight="700" fill="#f1ece8"`
@@ -796,14 +1003,16 @@ export const statSvg = (
   const holder = `<tspan font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
   const tail =
     `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#a39b96">${holder}` +
-    (label ? `<tspan dx="5">${esc(label)}</tspan>` : '') +
+    (label ? `<tspan dx="5"${opts.tone ? ` fill="${opts.tone}" font-weight="600"` : ''}>${esc(label)}</tspan>` : '') +
     (opts.detail && !stacked ? `<tspan fill="#8f8782"> · ${esc(opts.detail)}</tspan>` : '') +
     `</text>` +
     under
-      .map((line, i) => `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" fill="#8f8782">${esc(line)}</text>`)
+      .map((line, i) => {
+        const ink = i === 0 && opts.tone ? `fill="${opts.tone}" font-weight="600"${spark?.enterFrom ? ' class="rise"' : ''}` : 'fill="#8f8782"'
+        return `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" ${ink}>${esc(line)}</text>`
+      })
       .join('')
-  const lift = opts.lift ?? 0
-  const valueLine = `<text x="${x}" y="${lift ? (y - lift).toFixed(1) : y}" ${valueFont}>${esc(value)}</text>`
+  const valueLine = slotText(x, y, S.fs, valueFont, value, opts.roll)
   // Sized generously, so the label always fits; `width` only ever widens it to the column.
   // The last 12px are for a face wider than the estimate (bold values run wide), which would
   // otherwise clip the label.
@@ -816,11 +1025,34 @@ export const statSvg = (
       12,
   )
   const width = Math.max(natural, opts.width ?? 0)
+  // The tile's centre, where the glyph turns and breathes.
+  const mid = `${S.glyph / 2}px ${g0 + S.glyph / 2}px`
+  const motion = spark
+    ? motionStyle(
+        (spark.enterFrom
+          ? `@keyframes tile{from{fill:${spark.enterFrom};stroke:${spark.enterFrom}}}` +
+            `@keyframes twinkle{from{opacity:0;transform:rotate(-120deg) scale(.3)}}` +
+            `@keyframes rise{from{opacity:0;transform:translateY(5px)}}` +
+            `.tile{animation:tile ${MOTION.twinkleMs}ms ${EASE.out} both}` +
+            `.rise{animation:rise ${Math.round(MOTION.twinkleMs * 0.6)}ms ${EASE.out} ${Math.round(MOTION.twinkleMs * 0.25)}ms both}`
+          : '') +
+          (spark.pulse ? `@keyframes spark{50%{transform:scale(1.14) rotate(12deg);opacity:.72}}` : '') +
+          `.spark{transform-origin:${mid};animation:` +
+          [
+            spark.enterFrom ? `twinkle ${MOTION.twinkleMs}ms ${EASE.spring} both` : '',
+            spark.pulse ? `spark ${MOTION.sparkMs}ms ${EASE.inOut} ${spark.enterFrom ? MOTION.twinkleMs : 0}ms infinite` : '',
+          ]
+            .filter(Boolean)
+            .join(',') +
+          `}`,
+      )
+    : ''
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     glyph +
     tail +
     valueLine +
+    motion +
     `</svg>`
   return { svg, width, height, natural }
 }
@@ -846,8 +1078,15 @@ export const chipSvg = (opts: {
   minWidth?: number
   /** Outlined in the band's line colour, no tint, muted glyph and words: a chip that is not state. */
   quiet?: boolean
-  /** The dots light in a wave, left to right, from their still look (a loop: see MOTION). */
+  /**
+   * The chip comes in (a quick scale and fade, once) and its dots light in a wave, left to
+   * right, from their still look (a loop: see MOTION).
+   */
   motion?: boolean
+  /** The value rolls in from this one (`roller`, `slotText`). */
+  roll?: Roll | null
+  /** The value rolls in from this one by itself, in CSS (`reelHolder`, `reelText`). */
+  reel?: string | null
 }) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CHIP_LINE
@@ -867,7 +1106,7 @@ export const chipSvg = (opts: {
         .map(
           i =>
             `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${glyphColor}" opacity="${levels[i]}"` +
-            (opts.motion ? `>${loopAnim('opacity', [0, 1, 2, 3].map(p => levels[(i - p + 3) % 3]!), MOTION.dotsMs)}</circle>` : '/>'),
+            (opts.motion ? ` class="d${i}"/>` : '/>'),
         )
         .join('')
     : opts.icon
@@ -878,7 +1117,11 @@ export const chipSvg = (opts: {
   const tail =
     `<text x="${x}" y="${y}" ${font} font-size="${opts.strong && !opts.value ? C.fs : C.labelFs}">${holder}` +
     `<tspan ${labelStyle}${opts.value ? ' dx="5"' : ''}>${esc(opts.label)}</tspan></text>`
-  const value = opts.value ? `<text x="${x}" y="${y}" ${valueFont}>${esc(opts.value)}</text>` : ''
+  const value = opts.value
+    ? opts.reel
+      ? reelText(x, y, C.fs, valueFont, opts.value, opts.reel)
+      : slotText(x, y, C.fs, valueFont, opts.value, opts.roll)
+    : ''
   // Sized generously (bold values run wide), so the label always fits.
   const natural = Math.ceil(
     x +
@@ -888,12 +1131,26 @@ export const chipSvg = (opts: {
       (opts.strong && !opts.value ? 16 : 10),
   )
   const width = Math.max(natural, opts.minWidth ?? 0)
+  // Each dot steps through the three brightnesses, so the brightest one moves left to right.
+  const wave = (i: number) =>
+    `@keyframes d${i}{0%,100%{opacity:${levels[i]}}33.3%{opacity:${levels[(i + 2) % 3]}}66.7%{opacity:${levels[(i + 1) % 3]}}}` +
+    `.d${i}{animation:d${i} ${MOTION.dotsMs}ms ${EASE.inOut} infinite}`
+  const motion = opts.motion
+    ? motionStyle(
+        `@keyframes chip-in{from{opacity:0;transform:scale(.88)}}` +
+          `.chip{transform-origin:${width / 2}px ${h / 2}px;animation:chip-in ${MOTION.chipInMs}ms ${EASE.out} both}` +
+          (opts.dots ? [0, 1, 2].map(wave).join('') : ''),
+      )
+    : ''
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
+    (opts.motion ? '<g class="chip">' : '') +
     `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="7" fill="${opts.color}" fill-opacity="${restOpacity}" stroke="${quiet ? INK.line : opts.color}" stroke-opacity="${quiet ? 1 : 0.32}"/>` +
     glyph +
     tail +
     value +
+    (opts.motion ? '</g>' : '') +
+    motion +
     `</svg>`
   return { svg, width, height: h, natural }
 }

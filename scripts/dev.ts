@@ -5,8 +5,9 @@
 // into every session and that name loads first. A copy under its own name has no rival.
 // Sessions load the copy through ~/.claude/settings.json:
 //   "env": { "CLAUDE_CODE_PLUGIN_DIRS": "<DEST>", "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1" }
-// and the engine reloads it each time this script writes to it. Turn hanahira-claude-ui-ssh
-// off meanwhile, or two bands are drawn.
+// A Desktop session over SSH does not watch the copy (the WATCH key in settings.json does not
+// reach the engine's watch): type /reload-plugins in the open session after a save. Turn
+// hanahira-claude-ui-ssh off meanwhile, or two bands are drawn.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'

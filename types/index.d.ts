@@ -13,6 +13,10 @@ export type Usage = {
   limits: { kind: string; percentUsed: number; resetsAt?: string }[]
 }
 
+// Hanahira Claude UI mode as the band tells it: on once one of its skills loads, off once the
+// person switches it off; `loaded` names the parts loaded this session ('core', 'design', ...).
+export type Skill = { on: boolean; loaded: string[] }
+
 export type Tokens = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 export type Agent = {
@@ -47,6 +51,7 @@ declare module 'claude-code' {
       code: { net: number; candles: { o: number; h: number; l: number; c: number; v: number }[]; cur: { o: number; h: number; l: number; c: number; v: number } | null }
       seconds: number | null
       info: Info | null
+      skill: Skill
     }
   }
 }

@@ -76,6 +76,7 @@ const gauges = [
   statSvg('4%', '5h limit', { detail: '3h 59m', ring: ring(4, WARM, STAT.glyph, 'clock') }),
   statSvg('22%', '7d limit', { detail: '2d 8h', ring: ring(22, WARM, STAT.glyph, 'calendar') }),
   statSvg('58', 'tok/s', { detail: 'peak 81', ring: speedoSvg(58 / 81, ACCENT, STAT.glyph) }),
+  statSvg('Hanahira', 'Active', { detail: 'design', icon: 'sparkle', color: '#34c38f', tone: '#34c38f' }),
 ]
 const figures: [string, string, never, string][] = [['≈$46.22', 'cost', 'coin' as never, '#f2c94c'], ['172M', 'tokens', 'layers' as never, '#9b8cf7'], [fmtClock(2_730_000), 'time', 'stopwatch' as never, '#7bd88f'], [prettyModel('claude-opus-5-5'), 'model', 'bot' as never, '#5eb5f7']]
 const figureArt = figures.map(([v, l, ic]) => statSvg(v, l, { icon: ic, color: INK.detail, plain: true }))
