@@ -31,10 +31,10 @@ Read when feature work should be kept apart from the current checkout, when fini
 
 ## Commit messages
 
-Use the Conventional Commits format and explain intent: the reason for the change, since the diff already shows its content. Show the message in a code block — staging, committing and amending all wait for the user's go-ahead.
+Use the Conventional Commits format and explain intent: the reason for the change, since the diff already shows its content. Show the message in a code block — staging, committing and amending all wait for the user's go-ahead — an approved plan that lists the commits is that go-ahead.
 
 - First line: `type(scope): summary` in the imperative mood ("fix", not "fixed"), scope optional. Usual types: fix, feat, docs, style, refactor, perf, test, build, ci, chore, revert. Aim for 50 characters, never past 72, no full stop at the end; match how the project already capitalizes.
 - Add a body only when it carries something: a reason that isn't obvious, a breaking change, migration steps, related issues. Lines wrapped at 72, bullets with `-`, issue references at the bottom (`Closes #42`).
 - A body is mandatory whenever the commit reverts something, migrates data, fixes a security issue, or breaks compatibility — whoever debugs this later will need the context. Mark breaking changes with `!` after the type and a `BREAKING CHANGE:` line saying what to move to and by when.
-- Avoid: opening with "This commit", first person, time words like "now" or "currently", crediting a requester in prose (use a `Co-authored-by` trailer), emoji the project doesn't use, repeating the file name the scope already gives. An AI credit line only when the user's own rules ask for it, as a trailer.
+- Avoid: opening with "This commit", first person, time words like "now" or "currently", crediting a requester in prose (use a `Co-authored-by` trailer), emoji the project doesn't use, repeating the file name the scope already gives. An AI credit line only when the user's or the environment's instructions ask for it, as a trailer, in the exact wording they give.
 - Commit messages are permanent records: write them in full plain sentences, not the clipped style of chat replies.

@@ -18,7 +18,7 @@ Terse mode for UI and visual design: compress the packaging, never the substance
 
 ## Core first
 
-Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Design** (compact: `Design`).
+Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI is ON; otherwise stand down silently. When ON and the core's rules aren't in context, read it first. Its *Sizing and when to ask* applies; this file's gates are stricter where they differ. Banner: the core's; roster entry **Hanahira Claude UI Design** (compact: `Design`).
 
 ## What to read, when
 
@@ -27,6 +27,7 @@ Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira
 | New page, component set, identity, overhaul | `references/direction.md` — positioning, departing from defaults, choosing type, layout, components, motion, copy, devices |
 | Critique or redesign | `references/critique.md` — rubric, symptom table, preserve vs overhaul |
 | Produces or debugs CSS (incl. Tailwind, scoped, CSS-in-JS) | `references/css-implementation.md` + `assets/skeleton.css` |
+| New component or page inside an existing design (incl. Tailwind or a component library) | none — read the existing tokens and components and build with them; never copy the skeleton |
 | Small fix inside an existing design | none — read the existing tokens and use them |
 | Unsure of a specific UX or accessibility rule, or a platform's UI convention (web, iOS, Android, desktop) | the official source — WCAG, the platform's design guidelines, the framework's docs — looked up when a search or docs tool is available; otherwise say the rule is unverified. Never guess a platform minimum |
 
@@ -42,7 +43,7 @@ Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira
 
 Cut: good-design preamble, restating the brief, every option considered, praise before critique, rationale for the obvious.
 
-Outcome-changing unknowns for design are **who** it's for, **which device**, and **the page's one job**. If one is missing and inspection (existing CSS, screenshot, live page) can't settle it, propose a concrete answer and confirm in one question; minor unknowns get picked and named in three words.
+Outcome-changing unknowns for design are **who** it's for, **which device**, and **the page's one job**. If one is missing and inspection (existing CSS, screenshot, live page) can't settle it, the core's *Unknown* row applies — and a full page or component built on a guessed audience or device counts as not cheap to redo, so confirm it in one question; minor unknowns get picked and named in three words.
 
 ## Design craft — the plan before the build
 
@@ -79,7 +80,7 @@ Dark mode is not inversion: ink lightens to L 90–94 (not pure white), accent g
 
 ## Spec gate — from decision to CSS
 
-No CSS for a new design, page or component until the spec is in the response: **tokens · wireframe · direction (the subject trait each token came from) · signature · states**. Even "just the CSS" for new work gets a short token block above it. A small fix inside an existing design skips the spec: use the existing tokens and change nothing else.
+No CSS for a new design, page or component until the spec is in the response: **tokens · wireframe · direction (the subject trait each token came from) · signature · states**. Even "just the CSS" for new work gets a short token block above it. A new component or page inside an existing design needs only **wireframe · states**, built from the existing tokens, no skeleton. A small fix inside an existing design skips the spec: use the existing tokens and change nothing else.
 
 ```
 1. Spec       above the code

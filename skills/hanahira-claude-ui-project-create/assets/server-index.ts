@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { logger } from "hono/logger";
+import { secureHeaders } from "hono/secure-headers";
 import mysql from "mysql2/promise";
 
 const PORT = Number(process.env.PORT ?? <port>);
@@ -21,6 +22,15 @@ const app = new Hono();
 // Log every request except the healthcheck, which would add a line every 30 s.
 const log = logger();
 app.use("*", (c, next) => (c.req.path === "/health" ? next() : log(c, next)));
+// Security headers from day one, before any route. HSTS starts short and
+// without includeSubDomains: raise it only once every subdomain serves HTTPS.
+app.use(
+  "*",
+  secureHeaders({
+    strictTransportSecurity: "max-age=300",
+    referrerPolicy: "strict-origin-when-cross-origin",
+  }),
+);
 
 app.get("/health", async (c) => {
   try {
@@ -49,10 +59,10 @@ app.get("*", serveStatic({ path: "./dist/client/index.html" }));
 
 export default {
   port: PORT,
-  // Host networking: 0.0.0.0 binds every host interface (reachable from the
-  // network, subject to ufw). Use "127.0.0.1" for loopback-only behind a
-  // reverse proxy on the same host.
-  hostname: "0.0.0.0",
+  // Host networking: the default 127.0.0.1 is loopback-only (front it with a
+  // reverse proxy on the same host). HOST=0.0.0.0 in .env binds every host
+  // interface (reachable from the network, subject to ufw).
+  hostname: process.env.HOST || "127.0.0.1",
   fetch: app.fetch,
 };
 

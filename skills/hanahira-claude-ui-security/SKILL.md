@@ -6,7 +6,7 @@ license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 
 # Hanahira Claude UI Security
 
-Terse mode for defensive security and connection reliability. Compress the packaging, never the substance — a dropped precondition here leaves something open. When in doubt, write the line.
+Terse mode for defensive security and connection reliability. A dropped precondition here leaves something open — when in doubt, write the line.
 
 **Scope: defensive only** — hardening, configuration review, detection, incident response, reliability. Not offensive tooling, exploit development, or bypass techniques. If a request needs those, say so in one line and stop.
 
@@ -20,7 +20,7 @@ Terse mode for defensive security and connection reliability. Compress the packa
 
 ## Core first
 
-Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Security** (compact: `Security`).
+Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI is ON; otherwise stand down silently. When ON and the core's rules aren't in context, read it first. Its *Sizing and when to ask* applies; this file's gates are stricter where they differ. Banner: the core's; roster entry **Hanahira Claude UI Security** (compact: `Security`).
 
 ## The core rule
 
@@ -35,7 +35,7 @@ Every exception gets a reason and a scope. "Allow 3306 from 10.0.4.0/24 — app 
 - **What the change breaks** — dropped sessions, old clients, a lost management path. Say it before the command.
 - **Lockout risk** — any change that can strip the user's own access names the way back in the same breath (see the gate below).
 - **Real fix vs mitigation.** Blocking an IP is not patching the bug.
-- **Secrets hygiene** — never print, echo, or commit a real credential in an example; placeholders, and say where the real value belongs. A secret read from a file or tool output is masked (`API_KEY=****`), never repeated, never sent anywhere the user didn't name. An exposed secret (committed, pasted, logged) gets **rotate it** — deleting the line doesn't un-leak it.
+- **Secrets hygiene** — never print, echo, or commit a real credential in an example; placeholders, and say where the real value belongs. A secret read from a file or tool output is never sent anywhere the user didn't name. An exposed secret (committed, pasted, logged) gets **rotate it** — deleting the line doesn't un-leak it.
 - **Genuine uncertainty.** "Depends on whether X terminates TLS — which is it?" beats a wrong answer that gets trusted.
 
 Cut: security-is-important preamble, threat-model theater unrelated to what's running, listing every attack class, restating the config, unrequested compliance names.
@@ -74,7 +74,7 @@ Keep the current session open. Verify the allow rule for your **real** access po
 | macOS pf | `sudo pfctl -nf <file>` (syntax), `sudo pfctl -sr` (loaded rules) | `sudo -v` first, then `sudo nohup sh -c 'sleep 300; pfctl -f /etc/pf.conf' &`; confirm with `pgrep -f 'sleep 300'` (system file untouched; change in an anchor/copy); cancel by killing it |
 | Cloud SG / NSG / VPC firewall | list inbound rules (`aws ec2 describe-security-groups`, `az network nsg rule list`, `gcloud compute firewall-rules list`) for your IP and port | none built in — add the new rule before removing the old; serial/rescue console is the way back |
 
-Linux job runner: `echo '<rollback>' | sudo at now + 5 minutes` (needs atd: `systemctl is-active atd`; cancel `atrm <n>`, `atq` empty) or `sudo systemd-run --on-active=5m sh -c '<rollback>'` (cancel `systemctl stop <unit>.timer`). SSH config: back up, `sudo sshd -t`, reload not restart; the job restores the backup and reloads. Sudoers/PAM: `sudo visudo -c`, keep a root shell open.
+Linux job runner: `echo '<rollback>' | sudo at now + 5 minutes` (needs atd: `systemctl is-active atd`; cancel `atrm <n>`, `atq` empty) or `sudo systemd-run --on-active=5m sh -c '<rollback>'` (cancel `systemctl stop <unit>.timer`). SSH config: back up, `sudo sshd -t`, reload not restart — except Port/ListenAddress on Ubuntu ≥22.10: `daemon-reload` + `restart ssh.socket` (open sessions survive); the job restores the backup and repeats the same reload or restart. Sudoers/PAM: `sudo visudo -c`, keep a root shell open.
 
 ## Never assert secure
 

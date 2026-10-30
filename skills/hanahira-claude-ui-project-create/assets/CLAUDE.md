@@ -39,7 +39,7 @@ The container runs `network_mode: host` — it shares the host's network namespa
 
 `restart: unless-stopped` brings it back after a crash or a daemon restart, but not after a manual `docker compose stop`.
 
-Host mode needs a native Linux engine. Docker Desktop (any OS, Linux included) runs the engine in a VM, so "host" is the VM: MySQL on `127.0.0.1` is not this machine's. There, use bridge mode with `ports:` and `host.docker.internal`.
+Host mode needs a native, rootful Linux engine. Docker Desktop (any OS, Linux included), Colima, OrbStack and Rancher Desktop/Lima run the engine in a VM, and rootless Docker in its own network namespace, so "host" is not this machine: MySQL on `127.0.0.1` is not this machine's. There, use bridge mode with `ports:` and `host.docker.internal`.
 
 ## Database
 
@@ -59,11 +59,12 @@ Port `<port>`:
 
 Under host networking, ufw does control this port — Docker isn't publishing anything, so there are no `DOCKER-USER` rules bypassing it. The widely-repeated "Docker ignores ufw" caveat applies to bridge mode with `ports:`, not here.
 
-To make the service loopback-only, set `hostname: "127.0.0.1"` in `src/server/index.ts` and front it with a reverse proxy.
+The server binds `HOST` from `.env`: `127.0.0.1` (the default) is loopback-only, fronted by a reverse proxy; `0.0.0.0` exposes it on every host interface, subject to the rule above.
 
 ## Gotchas
 
-- Bun server binds `0.0.0.0`, which under host mode means every host interface.
+- Bun server binds `HOST` (default `127.0.0.1`); `0.0.0.0` under host mode means every host interface.
+- Security headers come from `secureHeaders()` in `src/server/index.ts`. HSTS starts at `max-age=300` without `includeSubDomains`; raise it only once every subdomain serves HTTPS.
 - Static routes are registered after API routes so `/api/*` isn't swallowed by the SPA fallback.
 - Nothing else on the host may use port `<port>` — host mode shares the port space.
 - `bun.lock` is committed; the image builds with `--frozen-lockfile`. Run `bun install` after changing dependencies (no Bun on the host → `docker run --rm -u $(id -u):$(id -g) -v "$PWD":/app -w /app oven/bun:<bun-version> bun install`), then commit the lockfile.

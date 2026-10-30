@@ -31,7 +31,7 @@ A command that runs long or prints a lot goes to a runner agent instead of the b
 - Never anything destructive or irreversible, and never a change to an access path (SSH, firewall, auth), even when approved — I run those myself so I can watch and undo them.
 - Secrets stay masked in its report (`DB_PASSWORD=****`).
 - On the first real error it stops and reports. It doesn't fix, doesn't retry with other flags, and doesn't change state to work around the problem — at most one rerun with more verbose output when the brief allows it.
-- A process meant to stay running (a dev server, a watcher) isn't started inside a runner, since it may end with the runner's session; start it the way `references/ops.md` describes and let the runner only check that it became ready.
+- A process meant to stay running (a dev server, a watcher) isn't started inside a runner, since it may end with the runner's session; start it the way `references/ops.md` *Long-running processes* describes and let the runner only check that it became ready.
 - Commands that write to the same place (two builds into one output folder) never run side by side; independent checks such as lint, type check and unit tests can each have their own runner at the same time.
 
 **Report format:**

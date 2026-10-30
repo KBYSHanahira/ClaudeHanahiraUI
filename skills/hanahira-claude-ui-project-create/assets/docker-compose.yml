@@ -15,8 +15,9 @@ services:
     # Host networking: the container shares the host's network namespace.
     # No port mapping is used or possible — the app binds PORT on the host
     # directly. A `ports:` block here would be silently ignored.
-    # Needs a native Linux engine. Docker Desktop (any OS, Linux included) runs
-    # the engine in a VM, so "host" there is the VM, not this machine.
+    # Needs a native, rootful Linux engine. Docker Desktop (any OS, Linux
+    # included), Colima, OrbStack and Rancher Desktop/Lima run the engine in a
+    # VM, rootless Docker in its own namespace, so "host" there is not this machine.
     network_mode: host
 
     env_file:

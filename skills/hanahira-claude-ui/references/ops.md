@@ -16,19 +16,23 @@ A compose project is the deploy path: edit compose/Dockerfile/mounted source, re
 
 ```bash
 docker compose up -d --build <service>     # recreates the container — ask first
-docker compose restart <service>           # config reload, no rebuild
+docker compose up -d <service>             # .env/compose change: recreates, no rebuild (`restart` keeps the old env)
 docker compose build --no-cache <service>  # stale layer
 docker compose ps && docker compose logs --tail=50 <service>   # verify after, never assume
 ```
 
 Warn above: `down -v` destroys volumes; `system prune -a` removes images that may not rebuild offline.
 
+## Long-running processes
+
+A dev server or watcher is a service start: ask first, bind `127.0.0.1`, start it in the background with output to a log (`nohup <cmd> > <log> 2>&1 &`; PowerShell `Start-Process -RedirectStandardOutput`), then confirm it is ready by requesting its URL or reading the log — never assume.
+
 ## Symptom → first check
 
 | Symptom | Linux | Windows (PowerShell) | macOS |
 |---|---|---|---|
 | service won't start | `systemctl status <svc>`; `journalctl -u <svc> -n 50` | `Get-Service <svc>`; `Get-WinEvent -LogName System -MaxEvents 50` | `launchctl list \| grep <svc>`; `log show --last 10m` |
-| port in use | `ss -ltnp \| grep :<port>` | `Get-NetTCPConnection -LocalPort <port>` → `Get-Process -Id <pid>` | `lsof -nP -iTCP:<port> -sTCP:LISTEN` |
+| port in use | `ss -ltnpH "sport = :<port>"` | `Get-NetTCPConnection -LocalPort <port>` → `Get-Process -Id <pid>` | `lsof -nP -iTCP:<port> -sTCP:LISTEN` |
 | connection refused | listening? on `0.0.0.0` vs `127.0.0.1`? | same; plus Windows Firewall rule | same; plus app firewall |
 | permission denied | owner/mode, then process user | ACL (`Get-Acl`), run-as user, UAC | owner/mode; Full Disk Access |
 | container exits immediately | `docker compose logs --tail=50 <svc>` — env or DB connection | same | same |

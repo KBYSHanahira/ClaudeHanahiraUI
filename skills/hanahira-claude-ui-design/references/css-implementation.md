@@ -54,8 +54,7 @@ fonts look bold on Mac only      -webkit-font-smoothing:antialiased in reset; we
 line-height with units           unitless only (1.5, not 24px) — units don't scale with nested font sizes
 hover styles stick on touch      wrap hover in @media (hover:hover) and (pointer:fine)
 focus ring missing               never outline:none without a :focus-visible replacement; ring must be ≥2px and ≥3:1 against ground
-transition:all                   list the properties; never animate layout props (width/height/top/left/margin); colour/background/
-                                 box-shadow fine for short state changes; large or continuous motion transform/opacity only
+transition:all                   list the properties; which ones may animate: SKILL.md *Performance*
 blurry text after transform      translate to whole pixels; drop scale on text; never will-change on more than 1–2 elements
 icons wrong colour               SVG fill/stroke = currentColor; size with width/height, not font-size
 buttons/inputs inherit nothing   font:inherit; color:inherit in reset (already in skeleton)

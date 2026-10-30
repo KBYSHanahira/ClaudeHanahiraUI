@@ -6,7 +6,7 @@ license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
 
 # Hanahira Claude UI Data
 
-Terse mode for database work. Same discipline as the core: compress the packaging, never the substance. Mistakes elsewhere cost time; mistakes here cost data that no rollback recovers.
+Terse mode for database work. Mistakes elsewhere cost time; mistakes here cost data that no rollback recovers.
 
 ## Role
 
@@ -18,7 +18,7 @@ Terse mode for database work. Same discipline as the core: compress the packagin
 
 ## Core first
 
-Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira-claude-ui/SKILL.md`). Otherwise stand down silently — no banner, no Hanahira Claude UI rules, no mention — except what the core prescribes for a `/Hanahira Claude UI` command or a status question. When ON and the core's rules aren't in context, read `hanahira-claude-ui/SKILL.md` first. Its *Sizing and when to ask* table applies; this file's gates are stricter where they differ, and stricter wins. Banner: the core's; roster entry **Hanahira Claude UI Data** (compact: `Data`).
+Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI is ON; otherwise stand down silently. When ON and the core's rules aren't in context, read it first. Its *Sizing and when to ask* applies; this file's gates are stricter where they differ. Banner: the core's; roster entry **Hanahira Claude UI Data** (compact: `Data`).
 
 ## The rule that outranks brevity
 
@@ -27,12 +27,16 @@ Runs only when Hanahira Claude UI is ON per the core's **Activation** (`hanahira
 Terseness never overrides this. Gated:
 - `DROP` (table, database, schema, index, constraint, `… CASCADE`), `TRUNCATE`, `DELETE`, `UPDATE`, `MERGE`, upserts and replaces (`REPLACE INTO`, `INSERT OR REPLACE`, `ON DUPLICATE KEY UPDATE`, `ON CONFLICT DO UPDATE`), destructive `ALTER` (drop column, narrow a type, change charset/collation, anything that rewrites data), `RENAME` of anything code depends on.
 - MongoDB: `deleteMany`/`deleteOne`, `updateMany`/`updateOne`, `replaceOne`, `findOneAnd*`, `bulkWrite`, `upsert: true`, `drop()`, `dropDatabase()`, `dropIndex`, `renameCollection`.
+- Users and privileges: `CREATE/ALTER/DROP USER`, `GRANT`, `REVOKE`.
+- Bulk loads: `LOAD DATA`, `COPY … FROM`, `mongoimport`.
 - Disabling FK or trigger enforcement (engine table, row *Integrity off*).
 - Running any migration (`prisma migrate dev/deploy`, `rails db:migrate`, `alembic upgrade`, `artisan migrate`, `knex migrate:latest`, `typeorm migration:run`, `manage.py migrate`) — gate it by the most destructive statement it contains. Resets and schema pushes: `prisma migrate reset`, `db push --accept-data-loss`, `migrate:fresh`, `drizzle-kit push`, `db:reset`/`db:drop`, `manage.py flush`, `schema:drop`, `sync({ force: true })`, `synchronize: true` against real data. Never `prisma migrate dev` against a shared DB — on drift it offers a reset.
 - `docker compose down -v` or `docker volume rm` on a database volume; deleting data directories or backup files.
 - Any restore or dump load that can overwrite — see **Backups**.
 
 A `DELETE` or `REPLACE` of a parent row counts as everything its `ON DELETE CASCADE` reaches — count the children too.
+
+An app user gets `SELECT, INSERT, UPDATE, DELETE` on `<db>.*` from `'localhost'`/`'127.0.0.1'` — never `ALL` or `*.*`.
 
 The gate is on **running** a write — through a tool, or handing the user a destructive statement to paste. Writing a migration file or an additive statement for review (`ADD COLUMN`, `CREATE INDEX`) is an edit; running it is the write and needs a yes. Schema and data changes that readers depend on go expand → backfill → verify → contract: old and new readers keep working while versions overlap, backfills are idempotent and batched, and the contract step (drop the old column/table) is a separate, later yes — never folded into the same run.
 
@@ -74,13 +78,14 @@ Engine unknown → infer it from the connection string, driver or migration dial
 | **Index build** | online natively; add `ALGORITHM=INPLACE, LOCK=NONE` so it errors instead of locking | `CREATE INDEX CONCURRENTLY` — outside any transaction (disable the migration tool's); on failure drop the `INVALID` index first | blocks writes for the whole build | `WITH (ONLINE = ON)` (Enterprise/Azure), else blocks | 4.2+ doesn't block writes |
 | **Lock wait / blocker** | `SET SESSION lock_wait_timeout = 5`; `sys.schema_table_lock_waits` | `SET lock_timeout = '5s'`; `pg_blocking_pids(pid)` | `PRAGMA busy_timeout = 5000`; one writer at a time | `SET LOCK_TIMEOUT 5000`; `sys.dm_exec_requests.blocking_session_id` | `db.currentOp({ waitingForLock: true })` |
 | **Backup** | `mysqldump --single-transaction --routines --events` | `pg_dump -Fc` (+ `pg_dumpall --globals-only` for roles) | `sqlite3 db ".backup out.db"` or `VACUUM INTO`; never `cp` a live file | `BACKUP DATABASE … WITH COPY_ONLY` (keeps the backup chain) | `mongodump` (`--oplog` on a replica set) |
-| **Load overwrites** | dumps carry `DROP TABLE IF EXISTS` by default; `--databases`/`-A` dumps carry `USE <original_db>`, ignoring the target you named | `pg_dump -c`/`-C`, `pg_restore --clean`/`-C`; plain dumps may `\connect` | `.restore` replaces the whole DB | `RESTORE … WITH REPLACE` | `mongorestore --drop` |
+| **Load overwrites** | `LOAD DATA … REPLACE` replaces rows on key clash; dumps carry `DROP TABLE IF EXISTS` by default; `--databases`/`-A` dumps carry `USE <original_db>`, ignoring the target you named | `pg_dump -c`/`-C`, `pg_restore --clean`/`-C`; plain dumps may `\connect` | `.restore` replaces the whole DB | `RESTORE … WITH REPLACE` | `mongorestore --drop`; `mongoimport --drop`, `--mode upsert\|merge` |
 | **Integrity off** (gated) | `SET FOREIGN_KEY_CHECKS=0` | `SET session_replication_role = replica`, `DISABLE TRIGGER ALL` | `PRAGMA foreign_keys = OFF` | `NOCHECK CONSTRAINT` | — |
 | **Password** | `-p` prompt, `--defaults-extra-file` (600) or `mysql_config_editor`; not `MYSQL_PWD` | `-W` prompt or `~/.pgpass` (600); not `PGPASSWORD=` on the line | file permissions | omit `-P` (prompts), or integrated auth | `--password` with no value (prompts) |
 
 ## Never cut
 
 - **Exact identifiers** — table, column, index, constraint, collection names, verbatim.
+- **Values from users go in as bound parameters** (`?`, `$1`, `:name`), never concatenated; identifiers from users come from an allow-list; Mongo filters never take raw request objects.
 - **The `WHERE` clause / filter, always.** An `UPDATE`/`DELETE` without one, or a Mongo write with `{}`, is a defect. If the intent really is every row, say so explicitly.
 - **Row count estimate** before a bulk change.
 - **Reversibility** — "adding a nullable column: reversible" vs "dropping the column destroys its data".
@@ -96,7 +101,7 @@ Cut: backup-is-important preamble, explaining `SELECT`, listing every index type
 
 Every migration needs a working `down`, or an explicit note that it is irreversible and why.
 
-Additive changes are safe: nullable column, new table, new index. Destructive changes use expand → migrate → contract: add the new shape, backfill, switch reads and writes, drop the old shape in a later deploy once nothing references it.
+Additive changes are safe: nullable column, new table, new index. Destructive changes follow the expand → backfill → verify → contract sequence in **The rule that outranks brevity**.
 
 Backfills on large tables run in batches by primary-key range (`WHERE id > :last AND id <= :last + 5000`), committing each batch and pausing between them — never `OFFSET`, never one `UPDATE` over 10M rows, never MySQL `UPDATE … LIMIT` without `ORDER BY`. Index builds: row *Index build*, and say which. New FK/`CHECK` on a big Postgres table: `NOT VALID`, then `VALIDATE CONSTRAINT`. Never edit a migration that has already run in an environment you don't control — write a new one.
 
