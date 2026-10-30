@@ -5,10 +5,13 @@
 # (same name) overrides anything installed on the host. So the host gets its own copy
 # under a different name, hanahira-claude-ui-ssh, which the synced copy cannot override.
 # The synced copy does bring skills/, so this copy carries only the hooks; a second set of
-# skills would list every Hanahira skill twice in an SSH session.
+# skills would list every Hanahira skill twice in an SSH session. Without a synced copy, or
+# with one stuck on an older version, HANAHIRA_SSH_SKILLS=1 adds skills/ to this copy, and
+# later runs keep them until HANAHIRA_SSH_SKILLS=0.
 #
 # Run it ON THE SSH HOST, from a clone of this repository:
 #   scripts/install-ssh.sh            # install or refresh
+#   HANAHIRA_SSH_SKILLS=1 scripts/install-ssh.sh
 #   CLAUDE=/path/to/claude scripts/install-ssh.sh
 # Re-run it after every `git pull`. Then start a new session in Desktop.
 set -euo pipefail
@@ -24,13 +27,17 @@ CLAUDE="${CLAUDE:-$(ls -d "$HOME"/.claude/remote/ccd-cli/* 2>/dev/null | sort -V
 CLAUDE="${CLAUDE:-$(command -v claude || true)}"
 [ -x "${CLAUDE:-}" ] || { echo "claude CLI not found; set CLAUDE=/path/to/claude" >&2; exit 1; }
 
+P="$DEST/$SSH_NAME"
+# Skills stay as the last install had them unless the caller says otherwise.
+SKILLS="${HANAHIRA_SSH_SKILLS:-$([ -d "$P/skills" ] && echo 1 || echo 0)}"
+
 # A real copy, not links: the CLI refuses a plugin whose files resolve outside its folder.
 rm -rf "$DEST"
-P="$DEST/$SSH_NAME"
 mkdir -p "$P/.claude-plugin" "$P/hooks" "$P/types" "$DEST/.claude-plugin"
 cp "$SRC"/hooks/*.ts "$SRC"/hooks/*.tsx "$SRC"/hooks/hooks.json "$P/hooks/"
 rm -f "$P"/hooks/*.test.ts "$P"/hooks/*.test.tsx
 cp "$SRC/types/index.d.ts" "$P/types/"
+[ "$SKILLS" = 1 ] && cp -r "$SRC/skills" "$P/"
 # Values in $.state belong to the plugin by name, so the name inside the code follows it.
 sed -i "s/$NAME/$SSH_NAME/g" "$P/hooks/register.tsx" "$P/types/index.d.ts"
 
