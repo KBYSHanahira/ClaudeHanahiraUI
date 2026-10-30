@@ -150,16 +150,18 @@ export const parseTests = (text: string) => {
 }
 
 export type PillIcon = 'check' | 'cross' | 'ban'
-export type Pill = { text: string; fg: string; bg: string; running?: boolean; icon?: PillIcon }
+export type Pill = { text: string; fg: string; bg: string; color?: string; running?: boolean; icon?: PillIcon }
 
+// `fg` and `bg` paint a capsule; `color` is the state's own colour, for its tile and word in a
+// row (the way a row's kind shows its tile and verb).
 export const PILL = {
-  ok: { fg: '#a9e6b4', bg: '#2d4232' },
-  bad: { fg: '#f4a1b3', bg: '#4a2b33' },
-  busy: { fg: '#c4baff', bg: '#2d2a3f' },
-  warn: { fg: '#ffd9a0', bg: '#3a3224' },
+  ok: { fg: '#a9e6b4', bg: '#2d4232', color: '#34c38f' },
+  bad: { fg: '#f4a1b3', bg: '#4a2b33', color: '#f2736b' },
+  busy: { fg: '#c4baff', bg: '#2d2a3f', color: '#9b8cf7' },
+  warn: { fg: '#ffd9a0', bg: '#3a3224', color: '#e8a33a' },
 }
 
-/** The status pill at the right of a tool row. */
+/** The status at the right of a tool row: its word, mark and colours (drawn by pillEl). */
 export const statusPill = (
   tool: string,
   s: { isRunning: boolean; isErrored: boolean; isInterrupted: boolean; output?: unknown },
@@ -200,12 +202,16 @@ export const fmtDuration = (ms: number) =>
 
 /**
  * A tool row's kind tile: a rounded square tinted in the kind's colour, its icon in the middle,
- * the same tile the band's cards carry. A running tile's edge is dimmer.
+ * the same tile the band's cards carry. A running tile's edge is dimmer. `icon` 'dots' draws
+ * three dots, dim to bright (a status still under way).
  */
 export const badgeSvg = (color: string, icon: string, size: number, running = false) => {
   const g = icon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const fs = icon.length > 1 ? 12 : 14
-  const mark = hasIcon(icon)
+  const mark = icon === 'dots'
+    ? // Three dots, dim to bright: a state still under way.
+      [0, 1, 2].map(i => `<circle cx="${10 + i * 6}" cy="16" r="2" fill="${color}" opacity="${(0.35 + i * 0.3).toFixed(2)}"/>`).join('')
+    : hasIcon(icon)
     ? iconGroup(icon, color, 8, 8, 16, 2.1)
     : `<text x="16" y="${icon.length > 1 ? 20.5 : 21}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="${fs}" font-weight="700" fill="${color}">${g}</text>`
   return (
@@ -454,7 +460,6 @@ export const MOTION = {
   agentFillMs: 600, // a finished agent card's bar filling from its stretch to the end, once
   glideMs: 640, // a ring, meter or needle moving to its new value
   rollMs: 450, // a figure's slot roll, old value out and new one in
-  holdMs: 900, // how long past its motion a picture keeps a change, for a surface slow to show it
 }
 
 /** The curves motion runs on: out settles softly, spring overshoots a touch, inOut breathes. */
@@ -491,15 +496,25 @@ export const cubicBezier = (x1: number, y1: number, x2: number, y2: number) => {
 export const easeOut = cubicBezier(0.22, 1, 0.36, 1)
 
 /**
- * Figures whose roll is drawn by the picture itself (`reelText`): `value(key, text, now)` gives
- * the value it rolls from, the same for as long as the roll is held (MOTION.rollMs and
- * MOTION.holdMs), so every redraw in that time sends the same picture and its motion plays
- * once; then null, and the plain figure.
+ * A motion under way: where it comes `from`, and its `age`, the ms since the change began.
+ * A picture plays its motion from its age (a negative `animation-delay`), so a surface that
+ * draws the picture again mid-motion picks it up where it is instead of starting it over.
  */
-export const reelHolder = (holdMs = MOTION.rollMs + MOTION.holdMs) => {
+export type Since<T> = { from: T; age: number }
+
+/** A motion's start as a builder takes it: a `Since`, or a bare value for a motion just begun. */
+export const since = <T>(f: Since<T> | T | null | undefined): Since<T> | null =>
+  f === null || f === undefined ? null : typeof f === 'object' ? (f as Since<T>) : { from: f as T, age: 0 }
+
+/**
+ * Figures whose roll is drawn by the picture itself (`reelText`): `value(key, text, now)` gives
+ * the value it rolls from and how long ago the roll began, for as long as it plays
+ * (MOTION.rollMs); then null, and the plain figure, which looks as the roll ends.
+ */
+export const reelHolder = (holdMs = MOTION.rollMs) => {
   const reels = new Map<string, { from: string | null; to: string; at: number }>()
   return {
-    value(key: string, text: string, now: number): string | null {
+    value(key: string, text: string, now: number): Since<string> | null {
       const r = reels.get(key)
       if (!r) {
         reels.set(key, { from: null, to: text, at: now - holdMs })
@@ -507,7 +522,13 @@ export const reelHolder = (holdMs = MOTION.rollMs + MOTION.holdMs) => {
       }
       if (r.to !== text) reels.set(key, { from: r.to, to: text, at: now })
       const g = reels.get(key)!
-      return g.from !== null && now - g.at < holdMs ? g.from : null
+      return g.from !== null && now - g.at < holdMs ? { from: g.from, age: Math.max(0, now - g.at) } : null
+    },
+    /** Ms until the last roll under way ends (0 with none): when the plain figures are due. */
+    left(now: number): number {
+      let ms = 0
+      for (const r of reels.values()) if (r.from !== null) ms = Math.max(ms, r.at + holdMs - now)
+      return ms
     },
   }
 }
@@ -518,10 +539,10 @@ export const reelHolder = (holdMs = MOTION.rollMs + MOTION.holdMs) => {
  * null. A new target mid-glide starts from where the last one had got to (on EASE.out), so a
  * gauge that changes often moves on and never jumps back.
  */
-export const glideHolder = (ms = MOTION.glideMs, holdMs = ms + MOTION.holdMs) => {
+export const glideHolder = (ms = MOTION.glideMs, holdMs = ms) => {
   const glides = new Map<string, { from: number; to: number; at: number }>()
   return {
-    from(key: string, target: number | null, now: number): number | null {
+    from(key: string, target: number | null, now: number): Since<number> | null {
       if (target === null || !Number.isFinite(target)) {
         glides.delete(key)
         return null
@@ -533,7 +554,13 @@ export const glideHolder = (ms = MOTION.glideMs, holdMs = ms + MOTION.holdMs) =>
       }
       if (g.to !== target) glides.set(key, { from: g.from + (g.to - g.from) * easeOut((now - g.at) / ms), to: target, at: now })
       const n = glides.get(key)!
-      return n.from !== n.to && now - n.at < holdMs ? n.from : null
+      return n.from !== n.to && now - n.at < holdMs ? { from: n.from, age: Math.max(0, now - n.at) } : null
+    },
+    /** Ms until the last glide under way ends (0 with none): when the plain pictures are due. */
+    left(now: number): number {
+      let ms = 0
+      for (const g of glides.values()) if (g.from !== g.to) ms = Math.max(ms, g.at + holdMs - now)
+      return ms
     },
   }
 }
@@ -544,8 +571,11 @@ export const glideHolder = (ms = MOTION.glideMs, holdMs = ms + MOTION.holdMs) =>
  * window the figure's height, that turns up a line, 6% past it, and snaps back onto the new
  * value. At rest (no motion run, or reduced motion) the strip stands on the new value.
  */
-export const reelText = (x: number, y: number, fs: number, attrs: string, value: string, from?: string | null) => {
+export const reelText = (x: number, y: number, fs: number, attrs: string, value: string, start?: Since<string> | string | null) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const from = since(start)?.from
+  // Played from its age, so a picture drawn again mid-roll goes on from where the roll is.
+  const delay = `-${Math.round(since(start)?.age ?? 0)}ms`
   if (!from || from === value) return `<text x="${x}" y="${y}" ${attrs}>${esc(value)}</text>`
   let n = 0
   while (n < from.length && n < value.length && from[n] === value[n]) n++
@@ -562,9 +592,9 @@ export const reelText = (x: number, y: number, fs: number, attrs: string, value:
     motionStyle(
       `@keyframes reel{from{transform:translateY(0);animation-timing-function:${EASE.inOut}}` +
         `75%{transform:translateY(${(-line * 1.06).toFixed(1)}px);animation-timing-function:${EASE.out}}` +
-        `to{transform:translateY(${-line}px)}}.reel{animation:reel ${MOTION.rollMs}ms both}` +
+        `to{transform:translateY(${-line}px)}}.reel{animation:reel ${MOTION.rollMs}ms ${delay} both}` +
         // The old value dims as it leaves, so the eye follows the one coming in.
-        `@keyframes reel-out{to{opacity:.35}}.reel-out{animation:reel-out ${Math.round(MOTION.rollMs * 0.75)}ms ${EASE.inOut} both}`,
+        `@keyframes reel-out{to{opacity:.35}}.reel-out{animation:reel-out ${Math.round(MOTION.rollMs * 0.75)}ms ${EASE.inOut} ${delay} both}`,
     )
   )
 }
@@ -574,10 +604,13 @@ export const reelText = (x: number, y: number, fs: number, attrs: string, value:
  * value for a reading. Empty when there is nothing to glide. `name` keeps the keyframes apart
  * where one picture holds two glides.
  */
-export const glideStyle = (name: string, prop: string, css: (v: number) => string, from: number | null | undefined, to: number) =>
-  from === null || from === undefined || !Number.isFinite(from) || css(from) === css(to)
+export const glideStyle = (name: string, prop: string, css: (v: number) => string, start: Since<number> | number | null | undefined, to: number) => {
+  const g = since(start)
+  // Played from its age, so a picture drawn again mid-glide goes on from where the glide is.
+  return g === null || !Number.isFinite(g.from) || css(g.from) === css(to)
     ? ''
-    : motionStyle(`@keyframes ${name}{from{${prop}:${css(from)}}to{${prop}:${css(to)}}}.${name}{animation:${name} ${MOTION.glideMs}ms ${EASE.out} both}`)
+    : motionStyle(`@keyframes ${name}{from{${prop}:${css(g.from)}}to{${prop}:${css(to)}}}.${name}{animation:${name} ${MOTION.glideMs}ms ${EASE.out} -${Math.round(g.age)}ms both}`)
+}
 
 /**
  * A panel's background: gradient fill, hairline edge, a one-pixel highlight along the top.
@@ -689,10 +722,11 @@ export const speedScale = (peak: number) =>
  * A speedometer as SVG: a 270° track open at the bottom, an arc filled to `fraction`, and a
  * needle. With `from`, the arc and needle swing there from that fraction (`glideHolder`).
  */
-export const speedoSvg = (fraction: number, color: string, size: number, from?: number | null) => {
+export const speedoSvg = (fraction: number, color: string, size: number, from?: Since<number> | number | null) => {
   const clamp = (v: number) => (Number.isNaN(v) ? 0 : Math.max(0, Math.min(1, v)))
   const f = clamp(fraction)
-  const was = from === null || from === undefined ? null : clamp(from)
+  const start = since(from)
+  const was = start === null ? null : { from: clamp(start.from), age: start.age }
   const r = 17
   const c = 2 * Math.PI * r
   const sweep = 0.75 * c
@@ -883,7 +917,7 @@ export const SLIDER = { width: METER.segs * (METER.w + METER.gap) - METER.gap, t
  * gradient that spans the whole track (so a fuller slider shows more of it), and a white knob at
  * the end. With `from`, the fill and the knob glide there from that reading (`glideHolder`).
  */
-export const sliderSvg = (percent: number | null, from?: number | null) => {
+export const sliderSvg = (percent: number | null, from?: Since<number> | number | null) => {
   const S = SLIDER
   const height = 2 * S.knob + 2
   const share = (p: number | null) => (p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100)
@@ -891,7 +925,7 @@ export const sliderSvg = (percent: number | null, from?: number | null) => {
   // The knob's centre runs from its own radius in to the far end less it, so it never hangs out.
   const at = (p: number | null) => +(r + share(p) * (S.width - 2 * r)).toFixed(1)
   const y = (height - S.track) / 2
-  const was = from === null || from === undefined ? null : from
+  const was = since(from)
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S.width} ${height}" width="${S.width}" height="${height}">` +
     `<defs><linearGradient id="heat" gradientUnits="userSpaceOnUse" x1="0" x2="${S.width}" y1="0" y2="0">` +
@@ -905,6 +939,12 @@ export const sliderSvg = (percent: number | null, from?: number | null) => {
     `</svg>`
   return { svg, width: S.width, height }
 }
+
+/**
+ * The face the band's figures are set in. Tabular digits are all one width, so a figure that
+ * changes (a clock every second, a count) keeps its width and nothing after it moves.
+ */
+export const FIGURE_FONT = 'font-family="ui-sans-serif,system-ui,sans-serif" style="font-variant-numeric:tabular-nums"'
 
 /** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
 export const CONTEXT = { height: 24, fs: 15, labelFs: 11, icon: 15, gap: 10, afterValue: 12, baseline: 17.3, meterGap: 4 }
@@ -926,15 +966,15 @@ export const contextSvg = (
     width?: number
     warn?: boolean
     /** The figure rolls in from this one (`reelText`); the meter glides from `fromPercent`. */
-    from?: string | null
-    fromPercent?: number | null
+    from?: Since<string> | string | null
+    fromPercent?: Since<number> | number | null
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CONTEXT
   const meter = sliderSvg(percent, opts.fromPercent)
   const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
-  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const font = FIGURE_FONT
   const valueX = C.icon + 8
   const valueW = labelWidth(value, C.fs)
   const words =
@@ -1063,7 +1103,7 @@ export const statSvg = (
     /** The icon alone, no tile, centred in the glyph slot: the quiet look of a figure. */
     plain?: boolean
     /** The value rolls in from this one (`reelHolder`, `reelText`); the label is at its new place. */
-    reel?: string | null
+    reel?: Since<string> | string | null
     /**
      * A state to read at a glance (a mode on or off): the label in this colour, or, stacked,
      * the first line under the value.
@@ -1108,7 +1148,7 @@ export const statSvg = (
         iconGroup(opts.icon, color, (S.glyph - S.icon) / 2, io, S.icon, 2) +
         (spark ? '</g>' : '')
       : ''
-  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const font = FIGURE_FONT
   const valueFont = `${font} font-size="${S.fs}" font-weight="700" fill="#f1ece8"`
   // An invisible copy of the value holds its place, so the label follows it as the renderer sets it.
   const holder = `<tspan font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
@@ -1195,7 +1235,7 @@ export const chipSvg = (opts: {
    */
   motion?: boolean
   /** The value rolls in from this one by itself, in CSS (`reelHolder`, `reelText`). */
-  reel?: string | null
+  reel?: Since<string> | string | null
 }) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CHIP_LINE
@@ -1206,7 +1246,7 @@ export const chipSvg = (opts: {
   const glyphW = opts.dots ? 16 : opts.icon ? C.icon : 0
   const x = C.lead + glyphW + (glyphW ? 6 : 0)
   const y = C.baseline
-  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const font = FIGURE_FONT
   const valueFont = `${font} font-size="${C.fs}" font-weight="700" fill="#f1ece8"`
   // Still, the dots brighten left to right; moving, that brightness steps one dot on each third.
   const levels = [0, 1, 2].map(i => (0.3 + i * 0.35).toFixed(2))
@@ -1267,9 +1307,9 @@ export const chipSvg = (opts: {
  * top line's elapsed clock. `minText` holds it as wide as that text from the start, so what
  * follows it never steps right as it grows.
  */
-export const tickerSvg = (text: string, opts: { from?: string | null; minText?: string; color?: string } = {}) => {
+export const tickerSvg = (text: string, opts: { from?: Since<string> | string | null; minText?: string; color?: string } = {}) => {
   const C = CHIP_LINE
-  const font = `font-family="ui-sans-serif,system-ui,sans-serif" font-size="${C.fs}" fill="${opts.color ?? INK.label}"`
+  const font = `${FIGURE_FONT} font-size="${C.fs}" fill="${opts.color ?? INK.label}"`
   // A little room past the estimate, for a face wider than it.
   const width = Math.ceil(Math.max(labelWidth(text, C.fs), labelWidth(opts.minText ?? '', C.fs)) + 6)
   const svg =

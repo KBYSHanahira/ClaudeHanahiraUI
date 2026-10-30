@@ -10,7 +10,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.12.0-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.12.2-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 [🇯🇵 日本語](README.md) ｜ **🇬🇧 English (this page)**
@@ -28,7 +28,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 | ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed as small rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
 | 💰 | **Totals** | Cost, tokens, time and model, each with its icon on a tile of its own colour. Time is the session's time spent running, counting every second while a turn runs; the top line's clock is the current turn alone. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
-| 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), a status pill and the time. Deleting files with `rm` shows as a red **Delete** row. |
+| 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), then the status in the same style (a tile tinted the state's colour and the word in it: green `Done`, red `Error`, purple `Running`) and the time. Deleting files with `rm` shows as a red **Delete** row. |
 | ✏️ | **Code changes inline** | An Edit or Write shows its change right under its row: numbered lines, added ones on green, removed ones on red, a `⋯` where the patch skips lines, and `+N` / `−N` pills in place of `saved`. The full view (ctrl+o) keeps the engine's own. |
 | 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide over the loading bar's blocks, the working chip comes in and its dots light in a wave, the status dot breathes, a running agent card's ring turns and its bar slides along it and back without a break, and a finished one draws its check in and fills its bar to the end, then stops; the Hanahira switch slides on as the mode switches on. A figure that changes (context, limits, cost, tokens, tools, model, the Time figure and the top line's clock, every second) rolls in like a slot reel: the old value turns up and out while the new one comes in from below, a touch past its line, and snaps onto it; limit rings glide to the new value, the context slider's fill and knob glide along, and the tok/s needle swings to each reading as it streams. Motion is CSS inside each picture, played at the screen's own frame rate with no redraw while it moves, and with no time in it, so a redraw never restarts it, and it stops for anyone who asks for reduced motion; transcript rows stay still. |
 | 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |

@@ -45,6 +45,7 @@ import {
   statusPill,
   tickerSvg,
   GLASS,
+  type Since,
   inCard,
   themed,
   tokensPerSec,
@@ -93,7 +94,7 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
 // `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: boolean }; reel?: string | null; from?: number | null }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: boolean }; reel?: Since<string> | null; from?: Since<number> | null }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
@@ -348,7 +349,7 @@ export const tone = (percent: number) => (percent >= 85 ? '#f2736b' : percent >=
 export const ringColor = (percent: number) => (percent >= 85 ? '#f2736b' : THEME.warm)
 
 /** A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. */
-export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean; from?: number | null } = {}) => {
+export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean; from?: Since<number> | number | null } = {}) => {
   // `bigIcon`, for a ring drawn small: a thinner ring and a larger icon, so the icon still
   // reads as what it is at a text row's height.
   const stroke = opts.bigIcon ? 3.5 : 5
@@ -399,26 +400,42 @@ export const shortLimitLabel = (kind: string) =>
 
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 
-type PillSpec = { text: string; fg: string; bg: string; running?: boolean; icon?: 'check' | 'cross' | 'ban'; minWidth?: number }
+type PillSpec = { text: string; fg: string; bg: string; color?: string; running?: boolean; icon?: 'check' | 'cross' | 'ban'; minWidth?: number }
 
 const PILL_GLYPH = { check: '✓', cross: '✕', ban: '⊘' }
 
-/** A status pill: a capsule where the surface draws SVG, else a tinted text block. */
+/**
+ * A status at the right of a row, in the row's own grammar: a tile tinted the state's colour
+ * with its mark (a check, a cross, dots while running), then the word in that colour, as the
+ * left side shows the kind's tile and verb. A bare figure (+12, −3) is the word alone. Held to a
+ * width (`minWidth`), it stays a capsule. Without SVG, a tinted text block.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pillEl = (els: { Text: any; Svg: any }, p: PillSpec) => {
-  const { Text, Svg } = els
+const pillEl = (els: { Text: any; Svg: any; Box?: any }, p: PillSpec) => {
+  const { Text, Svg, Box } = els
   if (!Svg) {
     const label = p.icon ? `${PILL_GLYPH[p.icon]} ${p.text}` : p.text
     return <Text backgroundColor={p.bg} color={p.fg} bold>{` ${label} `}</Text>
   }
-  const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon, p.minWidth)
-  // An image, never a frame: a frame reloads (and blanks) whenever its picture changes.
-  return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
+  if (p.minWidth !== undefined || !Box) {
+    const b = pillSvg(p.text, p.fg, p.bg, ROW.pill, p.running === true, p.icon, p.minWidth)
+    // An image, never a frame: a frame reloads (and blanks) whenever its picture changes.
+    return <Svg source={b.svg} alt={p.text} width={b.width} height={b.height} />
+  }
+  const color = p.color ?? p.fg
+  const mark = p.running ? 'dots' : p.icon
+  const word = p.text.charAt(0).toUpperCase() + p.text.slice(1)
+  return (
+    <Box gap={1} alignItems="center">
+      {mark ? <Svg source={badgeSvg(color, mark, ROW.tile, p.running === true)} alt="" width={ROW.tile} height={ROW.tile} /> : null}
+      <Text weight="semibold" color={color}>{word}</Text>
+    </Box>
+  )
 }
 
 /** The busy pill of a running row. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const runningPill = (els: { Text: any; Svg: any }) => pillEl(els, { text: 'running', running: true, ...PILL.busy })
+const runningPill = (els: { Text: any; Svg: any; Box?: any }) => pillEl(els, { text: 'running', running: true, ...PILL.busy })
 
 /** A small icon where the surface draws SVG, else a plain glyph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -580,6 +597,14 @@ const agentBeat = ($: EngineInterface) => {
 export const register: Register = on => {
   let startedAt = 0
   let ticker: { cancel: () => void } | null = null
+  // What the running turn's clocks and tool count show: set on each beat alone, so each moves
+  // once a second, in step, whenever else the band redraws.
+  let beatSecs = 0
+  let beatTools = 0
+  // One redraw as the last motion under way ends, so the band rests on its plain pictures even
+  // with nothing else to redraw it (a turn just ended): a surface that stopped painting a
+  // picture mid-motion (a window out of focus) then shows where it rests, not a frame of it.
+  let restDue = 0
   // Characters of streamed text per output token, learned from each finished response, so the
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
@@ -652,10 +677,16 @@ export const register: Register = on => {
     // A beat every second while the turn runs, so the clock and figures move live.
     ticker?.cancel()
     let beats = 0
+    beatSecs = 0
+    beatTools = 0
     ticker = $.clock.every(1000, () => {
       beats += 1
       if (beats > 7200) ticker?.cancel() // two hours: never leave one running
-      void update($, tick, n => (n ?? 0) + 1)
+      void (async () => {
+        beatSecs = beats
+        beatTools = (await read($, stats))?.tools ?? 0
+        await update($, tick, n => (n ?? 0) + 1)
+      })()
     })
     await update($, stats, () => EMPTY)
     await update($, outcome, () => null)
@@ -905,6 +936,7 @@ export const register: Register = on => {
     // (see MOTION in chat.ts): `reel` for a figure written out, `from` for a ring or meter.
     const reel = (key: string, text: string) => reels.value(key, text, nowMs)
     const from = (key: string, v: number | null) => glides.from(key, v, nowMs)
+
     const st = stNow
     const use = {
       ...useNow,
@@ -920,10 +952,12 @@ export const register: Register = on => {
     // would show one still frame and move only when the band redraws. Idle they hold no loop,
     // so they go back to plain images and the motion stops.
     const loop = e.props.isWorking ? { isInteractive: true } : {}
-    const liveMs = e.props.isWorking && startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0
+    const live = e.props.isWorking && startedAt > 0
+    const liveMs = live ? beatSecs * 1000 : 0
     // Time spent running: the finished turns, and the running one as it goes.
     const runShown = (run ?? 0) + liveMs
-    const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
+    const shownSecs = live ? beatSecs : secs
+    const shownTools = live ? beatTools : st.tools
     const elapsedArt =
       shownSecs === null ? null : tickerSvg(fmtElapsed(shownSecs), { from: reel('elapsed', fmtElapsed(shownSecs)), minText: '59m 59s' })
     const { Box, Text } = $.ui.resolve(e)
@@ -953,12 +987,12 @@ export const register: Register = on => {
     const cardArt = cards.map(c => cardSvg(c.label, c.value, { icon: c.icon, iconColor: c.color }))
 
     // Room for three digits, so the count growing never shifts the version after it.
-    const countArt = countSvg(st.tools, { minWidth: countSvg(999).width })
+    const countArt = countSvg(shownTools, { minWidth: countSvg(999).width })
 
     // The compact band's top-line chips: status, tool count and version in the stats' own tile
     // look. Status is held as wide as 'working' and the count as wide as three digits, so
     // nothing on the line moves when a turn starts or the count grows.
-    const toolWord = st.tools === 1 ? 'tool' : 'tools'
+    const toolWord = shownTools === 1 ? 'tool' : 'tools'
     // Working in red; once the turn ends, how it went: success in green, error, stopped, or idle
     // before the first turn. Held as wide as the widest, so nothing after it moves.
     type Status = 'working' | Outcome | 'idle'
@@ -975,11 +1009,11 @@ export const register: Register = on => {
     const barRest = status === 'error' || status === 'stopped' ? INK.track : THEME.done
     const chips = [
       { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: chipSvg({ ...STATUS[status], strong: true, minWidth: statusW }) },
-      { key: 'tools', alt: `${st.tools} tool calls`, art: chipSvg({
+      { key: 'tools', alt: `${shownTools} tool calls`, art: chipSvg({
         color: '#f2c94c',
         icon: 'bolt',
-        value: String(st.tools),
-        reel: reel('tools', String(st.tools)),
+        value: String(shownTools),
+        reel: reel('tools', String(shownTools)),
         label: toolWord,
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
@@ -1125,7 +1159,7 @@ export const register: Register = on => {
           width,
           // Speed is no share of a limit: a speedometer whose needle follows the stream.
           ...(t.key === 'speed'
-            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph, t.from === null || t.from === undefined ? null : t.from / 100) }
+            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph, t.from ? { from: t.from.from / 100, age: t.from.age } : null) }
             : t.percent === null
             ? t.toggle
               ? { toggle: t.toggle, color: t.color ?? THEME.accent }
@@ -1202,6 +1236,12 @@ export const register: Register = on => {
       layouts.map(l => ({ ...l, ...widthsFor(l.k, l.mode) })).find(l => lineW(l.colW) <= roomPx) ??
       { k: 1, mode: 'bare' as Mode, ...widthsFor(1, 'bare') }
     chosen.colW.forEach((w, j) => colMax.set(`${chosen.k}:${chosen.mode}:${j}`, w))
+    // Whatever this draw set moving, the band draws its plain pictures as the last of it ends.
+    const motionLeft = Math.max(reels.left(nowMs), glides.left(nowMs))
+    if (motionLeft > 0 && nowMs + motionLeft > restDue) {
+      restDue = nowMs + motionLeft
+      $.clock.after(motionLeft + 20, () => void update($, tick, n => (n ?? 0) + 1))
+    }
 
     return (
       <Box flexDirection="column">
@@ -1278,7 +1318,7 @@ export const register: Register = on => {
               <Box gap={1} alignItems="center" minWidth={9}>
                 {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
                 {Svg ? (
-                  // Each second rolls in, like the band's figures.
+                  // Each second rolls in on the beat, like the band's figures.
                   <Svg source={themed(elapsedArt!.svg)} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
                 ) : (
                   <Text dimColor>{fmtElapsed(shownSecs)}</Text>
@@ -1299,9 +1339,9 @@ export const register: Register = on => {
                   : { text: 'idle', fg: '#8a8480', bg: '#2a2727', minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
               )}
               {Svg ? (
-                <Svg source={themed(countArt.svg)} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
+                <Svg source={themed(countArt.svg)} alt={`${shownTools} tool calls`} width={countArt.width} height={countArt.height} />
               ) : (
-                <Text dimColor>{`⚡ ${st.tools} ${st.tools === 1 ? 'tool' : 'tools'}`}</Text>
+                <Text dimColor>{`⚡ ${shownTools} ${shownTools === 1 ? 'tool' : 'tools'}`}</Text>
               )}
               {THEME.compact ? <Text dimColor>{`v${VERSION}`}</Text> : null}
               </Box>
@@ -1419,7 +1459,7 @@ export const register: Register = on => {
       glyph: KIND_GLYPH[kind],
       verb,
       target: clip(taskSummary(e.props.text, verb), 96),
-      status: pillEl({ Text, Svg }, taskPill(task.status)),
+      status: pillEl({ Box, Text, Svg }, taskPill(task.status)),
       ms: task.durationMs,
     })
   })
@@ -1433,7 +1473,7 @@ export const register: Register = on => {
     const table = $.ui.resolve(e)
     const { Box, Text, Code } = table
     const Svg = 'Svg' in table ? table.Svg : null
-    const els = { Text, Svg }
+    const els = { Box, Text, Svg }
 
     // What the call changed, when it is a file write that landed. Drawn here, in the row, so it
     // shows wherever the row does; the ToolResult under it then draws nothing (see below).
@@ -1505,7 +1545,7 @@ export const register: Register = on => {
       verb: 'Explore',
       target: summary,
       running: isRunning,
-      status: isRunning ? runningPill({ Text, Svg }) : pillEl({ Text, Svg }, pill),
+      status: isRunning ? runningPill({ Box, Text, Svg }) : pillEl({ Box, Text, Svg }, pill),
     })
   })
 
@@ -1526,7 +1566,7 @@ export const register: Register = on => {
     const Svg = 'Svg' in table ? table.Svg : null
     return (
       <Box gap={1} alignItems="center">
-        {pillEl({ Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok })}
+        {pillEl({ Box, Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok })}
         <Text dimColor>{fmtDuration(e.props.durationMs)}</Text>
       </Box>
     )

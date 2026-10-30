@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, diffSource, relPath, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, easeOut, cubicBezier, tickerSvg, glideHolder, reelHolder, reelText, INK } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, easeOut, cubicBezier, tickerSvg, glideHolder, glideStyle, reelHolder, reelText, EASE, INK } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -795,33 +795,50 @@ describe('motion', () => {
     expect(Math.abs(cubicBezier(0, 0, 1, 1)(0.3) - 0.3)).toBeLessThan(1e-6)
   })
 
-  test('a gauge glides from where it was, held while it plays, then the plain picture', () => {
+  test('a gauge glides from where it was, with its age, while it plays, then the plain picture', () => {
     const g = glideHolder(400, 1000)
     expect(g.from('n', 10, 0)).toBe(null) // seen first: nothing to glide from
     expect(g.from('n', 10, 50)).toBe(null)
-    expect(g.from('n', 80, 2000)).toBe(10)
-    expect(g.from('n', 80, 2500)).toBe(10) // the same while held, so a redraw is the same picture
+    expect(g.from('n', 80, 2000)).toEqual({ from: 10, age: 0 })
+    // Its age goes with it, so a picture drawn again plays on from there, not from the start.
+    expect(g.from('n', 80, 2250)).toEqual({ from: 10, age: 250 })
     expect(g.from('n', 80, 3000)).toBe(null) // played: the plain picture, which looks the same
     // A new reading mid-glide starts from where the last one had got to, never back.
     g.from('m', 0, 0)
     g.from('m', 100, 5000)
     const on = g.from('m', 200, 5200)!
-    expect(on).toBeGreaterThan(50)
-    expect(on).toBeLessThan(100)
+    expect(on.from).toBeGreaterThan(50)
+    expect(on.from).toBeLessThan(100)
+    expect(on.age).toBe(0)
     expect(g.from('m', null, 5300)).toBe(null)
     expect(g.from('m', 40, 5400)).toBe(null) // after a gap, seen first again
   })
 
-  test('a figure rolls from its last value, held while it plays, then the plain figure', () => {
+  test('a figure rolls from its last value, with its age, while it plays, then the plain figure', () => {
     const r = reelHolder(1000)
     expect(r.value('n', '20%', 0)).toBe(null)
-    expect(r.value('n', '60%', 500)).toBe('20%')
-    expect(r.value('n', '60%', 1400)).toBe('20%')
+    expect(r.value('n', '60%', 500)).toEqual({ from: '20%', age: 0 })
+    expect(r.value('n', '60%', 1400)).toEqual({ from: '20%', age: 900 })
     expect(r.value('n', '60%', 1500)).toBe(null)
-    // A new value mid-roll rolls on from the one that was coming in.
+    // A new value mid-roll rolls on from the one that was coming in, from its own start.
     r.value('n', '61%', 2000)
-    expect(r.value('n', '62%', 2100)).toBe('61%')
+    expect(r.value('n', '62%', 2100)).toEqual({ from: '61%', age: 0 })
     expect(reelHolder().value('x', '1', 0)).toBe(null)
+    // Held as long as the roll plays, no longer.
+    const d = reelHolder()
+    d.value('y', '1', 0)
+    d.value('y', '2', 1000)
+    expect(d.value('y', '2', 1000 + MOTION.rollMs - 1)).not.toBe(null)
+    expect(d.value('y', '2', 1000 + MOTION.rollMs)).toBe(null)
+  })
+
+  test('a motion plays from its age: drawn again mid-way, it goes on rather than starting over', () => {
+    const attrs = 'font-size="14" font-weight="700"'
+    expect(reelText(10, 20, 14, attrs, '2', { from: '1', age: 180 })).toContain(`.reel{animation:reel ${MOTION.rollMs}ms -180ms both}`)
+    expect(reelText(10, 20, 14, attrs, '2', { from: '1', age: 180 })).toContain('-180ms both}')
+    expect(glideStyle('arc', 'width', v => `${v}px`, { from: 10, age: 120 }, 50)).toContain(`animation:arc ${MOTION.glideMs}ms ${EASE.out} -120ms both`)
+    // A bare start is a motion just begun.
+    expect(glideStyle('arc', 'width', v => `${v}px`, 10, 50)).toContain('-0ms both')
   })
 
   test('a reel: the shared front stays, the strip rests on the new value and plays up from the old', () => {
@@ -834,7 +851,7 @@ describe('motion', () => {
     expect(r).toContain(`<g class="reel" transform="translate(0 ${-(14 * 1.2).toFixed(1)})">`)
     expect(r).toMatch(/class="reel-out"><tspan fill-opacity="0">≈\$18\.<\/tspan>01<\/text>/)
     expect(r).toMatch(/y="36\.8" font-size="14" font-weight="700"><tspan fill-opacity="0">≈\$18\.<\/tspan>37<\/text>/)
-    expect(r).toContain(`.reel{animation:reel ${MOTION.rollMs}ms both}`)
+    expect(r).toContain(`.reel{animation:reel ${MOTION.rollMs}ms -0ms both}`)
     expect(r).toContain('clip-path="url(#reel-cut)"')
     // A figure that shares no front rolls whole.
     expect(reelText(10, 20, 14, attrs, '10%', '9%')).not.toMatch(/fill-opacity="0">/)

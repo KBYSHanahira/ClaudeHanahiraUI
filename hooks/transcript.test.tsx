@@ -82,6 +82,34 @@ run('a delete command reads as Delete, and a running row draws', async ($, on) =
   }
 })
 
+run('a row\'s status reads like its kind: a tile tinted the state\'s colour, then the word in it', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  const row = (id: string, props: object) =>
+    $.ui.mount({
+      plugin: PLUGIN, surface: 'desktop', component: 'ToolUse', requestId: id,
+      props: { tool_use_id: id, tool: 'Bash', input: { command: 'ls' }, isRunning: false, isErrored: false, isInterrupted: false, ...props },
+    })
+  const svgs = async (ui: any) => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string } }[]
+  const done = await row('st-1', { output: { stdout: 'a\nb', stderr: '' } })
+  const word = (await done.find({ type: 'Text', text: 'Done' })) as unknown as { props: { color: string; weight: string } }
+  expect(word.props.color).toBe('#34c38f')
+  expect(word.props.weight).toBe('semibold')
+  // Two tiles, as the row's grammar: the kind's on the left, the state's (a check) on the right.
+  const tiles = (await svgs(done)).filter(s => /rx="8" fill="[^"]+" fill-opacity="0.15"/.test(s.props.source))
+  expect(tiles.length).toBe(2)
+  expect(tiles[1]!.props.source).toContain('stroke="#34c38f"')
+  // No capsule any more.
+  expect((await svgs(done)).some(s => /rx="11" fill="#2d4232"/.test(s.props.source))).toBe(false)
+  await done.unmount()
+  const running = await row('st-2', { isRunning: true })
+  expect(await running.find({ type: 'Text', text: 'Running' })).toBeDefined()
+  expect((await svgs(running)).some(s => s.props.source.includes('<circle cx="10" cy="16" r="2" fill="#9b8cf7"'))).toBe(true)
+  await running.unmount()
+  const failed = await row('st-3', { isErrored: true })
+  expect(((await failed.find({ type: 'Text', text: 'Error' })) as unknown as { props: { color: string } }).props.color).toBe('#f2736b')
+  await failed.unmount()
+})
+
 run('a task notification is a row with its status, on every surface', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   for (const surface of SURFACES) {
@@ -208,7 +236,7 @@ run('the band\'s loops keep their picture across beats, so they run on and never
   await ui.unmount()
 })
 
-run('a change plays once in CSS inside its picture, the same picture while it plays, then the plain one', async ($, on) => {
+run('a change plays once in CSS inside its picture, from its age on each redraw, then the plain one', async ($, on) => {
   const clock = mock.clock(on, { now: 2_000_000 })
   const usage = { percent: 20, usd: 1 }
   const ui = await band($, on, usage, false)
@@ -234,14 +262,19 @@ run('a change plays once in CSS inside its picture, the same picture while it pl
   expect(litAfter).toBeGreaterThan(litBefore)
   expect(await cost()).toContain('≈$5.00')
   expect(await cost()).toContain('@keyframes reel')
-  // While it plays, a redraw sends the same picture, so the surface never starts it over.
-  for (let i = 0; i < 5; i++) {
+  // While it plays, a redraw carries the motion on from its age, so a surface that draws the
+  // picture again picks it up where it is and never starts it over.
+  expect(playing).toContain('-0ms both')
+  for (let i = 1; i <= 3; i++) {
     await clock.advance(100)
     await ui.redraw()
-    expect(await context()).toBe(playing)
+    const again = await context()
+    expect(again).toContain(`.reel{animation:reel 450ms -${i * 100}ms both}`)
+    expect(again).toContain(`-${i * 100}ms both}`)
+    expect(again.replace(/-\d+ms both/g, '')).toBe(playing.replace(/-\d+ms both/g, ''))
   }
   // Played: the plain picture, at the same fill, and still from then on.
-  await clock.advance(2000) // past the longest motion (MOTION.glideMs) and its hold (MOTION.holdMs)
+  await clock.advance(2000) // past the longest motion (MOTION.glideMs)
   await ui.redraw()
   const settled = await pictures(ui)
   expect(settled.join()).not.toContain('@keyframes')
@@ -283,6 +316,89 @@ run('the top bar is red while Claude works and green once the turn is done', asy
   expect((await bar()).props.alt).toBe('Idle')
   expect((await bar()).props.source).toContain('fill="#34c38f"/>')
   expect((await bar()).props.source).not.toContain('#f2736b')
+  await ui.unmount()
+})
+
+run('the clocks and the tool count move once a second, on the beat, each rolling in', async ($, on) => {
+  const clock = mock.clock(on, { now: 2_200_000 })
+  turns(on)
+  on('tool.call', () => ({ result: {} }) as never)
+  const ui = await band($, on, { percent: 20, usd: 1 }, false)
+  const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string } }[]
+  const pick = async (test: RegExp) => (await svgs()).find(s => test.test(s.props.alt))!.props
+  const tools = async () => (await pick(/tool calls$/)).alt
+  await ($ as any).turn.start({ text: 'go', turnId: 'tc' })
+  await ui.redraw(working)
+  for (let i = 1; i <= 3; i++) {
+    // A tool call between beats, and a redraw half a second in: neither moves anything yet.
+    await clock.advance(500)
+    await ($ as any).tool.call({ tool: 'Bash', command: 'ls' })
+    await ui.redraw(working)
+    expect(await clocks(ui)).toEqual({ time: `0:0${i - 1}`, top: `${i - 1}s` })
+    expect(await tools()).toBe(`${i - 1} tool calls`)
+    // The beat: each moves on by exactly one, and rolls in.
+    await clock.advance(500)
+    await ui.redraw(working)
+    expect(await clocks(ui)).toEqual({ time: `0:0${i}`, top: `${i}s` })
+    expect(await tools()).toBe(`${i} tool calls`)
+    for (const test of [/^Time /, /^\d+s$/, /tool calls$/]) {
+      const source = (await pick(test)).source
+      expect(source).toContain('@keyframes reel')
+      // Digits all one width, so the figure keeps its place as it changes.
+      expect(source).toContain('font-variant-numeric:tabular-nums')
+    }
+  }
+  // The turn ends: the count is the turn's own at once, and the clocks stop.
+  await ($ as any).turn.complete({ turnId: 'tc', answer: '', durationMs: 3000, isAborted: false, reason: 'answer' })
+  await ui.redraw(idle)
+  expect(await tools()).toBe('3 tool calls')
+  await ui.unmount()
+})
+
+run('between beats a redraw never starts a roll over: it plays on from its age, then rests', async ($, on) => {
+  const clock = mock.clock(on, { now: 2_300_000 })
+  turns(on)
+  on('tool.call', () => ({ result: {} }) as never)
+  const ui = await band($, on, { percent: 20, usd: 1 }, false)
+  const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string } }[]
+  const pictureSet = async () => {
+    const all = await svgs()
+    return [/^Time /, /^\d+s$/, /tool calls$/].map(t => all.find(s => t.test(s.props.alt))!.props.source)
+  }
+  await ($ as any).turn.start({ text: 'go', turnId: 'tb' })
+  await ui.redraw(working)
+  await ($ as any).tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.advance(1000)
+  await ui.redraw(working)
+  for (const p of await pictureSet()) expect(p).toContain('reel 450ms -0ms both')
+  // Claude keeps the band busy between beats: tool calls and redraws every 100 ms.
+  for (let k = 1; k <= 9; k++) {
+    await clock.advance(100)
+    if (k % 3 === 0) await ($ as any).tool.call({ tool: 'Bash', command: 'ls' })
+    await ui.redraw(working)
+    for (const p of await pictureSet()) {
+      // Mid-roll it is drawn at its age; past the roll, the plain picture.
+      if (k * 100 < 450) expect(p).toContain(`reel 450ms -${k * 100}ms both`)
+      else expect(p).not.toContain('@keyframes reel')
+    }
+  }
+  await ui.unmount()
+})
+
+run('with nothing else to redraw it, the band rests on its plain pictures once a motion ends', async ($, on) => {
+  const clock = mock.clock(on, { now: 2_400_000 })
+  const ui = await band($, on, { percent: 20, usd: 1 }, false)
+  await ($ as any).session.measure({
+    context: { percent: 60, tokens: 600000, window: 1000000 }, rateLimits: [], cost: { usd: 5 }, changed: ['context', 'cost'],
+  })
+  expect((await pictures(ui)).join()).toContain('@keyframes reel')
+  // No redraw from the test or a beat: the band draws itself again as the last motion ends,
+  // so a surface that stopped painting mid-motion still ends on the plain figure.
+  await clock.advance(700)
+  const settled = (await pictures(ui)).join()
+  expect(settled).not.toContain('@keyframes reel')
+  expect(settled).not.toContain('@keyframes sl-fill')
+  expect(settled).toContain('≈$5.00')
   await ui.unmount()
 })
 
