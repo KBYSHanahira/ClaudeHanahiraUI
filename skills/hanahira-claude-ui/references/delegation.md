@@ -18,6 +18,36 @@ What a helper hands back is a claim, not proof: confirm it by reading the diff o
 
 **The brief** (a helper sees only this): where the piece fits in one line · the goal · limits (what not to touch) · exact inputs — paths, error text, values · how I resolved anything ambiguous · the report format (below) · where to write it.
 
+## Choosing the model and effort
+
+Models are not equally good at everything, so the model is chosen per piece, like the agent, and so is how hard it thinks (effort). Name both at every launch where the tool takes them: left out, the helper runs on the session's own model and effort, often the most expensive pair.
+
+**1. Read the model menu.** The agent tool lists the models it accepts (a `model` option or similar); the session's own information may say which family is newest and what each is for. Place each model in a tier from that, never from a name remembered from another environment. In the Claude family, for example: Haiku is fast, Sonnet is balanced, Opus is strongest. A model the environment lists but doesn't describe stays unused unless the user names it.
+
+**2. Match the piece to a tier and an effort.**
+
+| The piece | Tier | Effort | Why |
+|---|---|---|---|
+| finding files or symbols, reading and summarising known files, counting, listing, running a command and reporting | fast | low | the answer is in the text; speed and cost matter, depth doesn't |
+| code from a plan that already holds the design, tests from listed cases, a doc or README section from notes, translation, many similar edits | balanced | low–medium | clear input and a clear shape; needs care, not invention |
+| critique of a short draft against its brief, a routine review of a small diff | strongest | low–medium | a different eye matters more than long thought |
+| architecture, a bug that crosses components or has no obvious cause, security or concurrency review, a migration plan, the final review of a branch | strongest | high | a wrong call is expensive, and the hard part is judgement |
+| writing where the reader's reaction is the point — a post, a pitch, an apology, a proposal, a hard email | strongest | medium | tone and argument, not just facts |
+| prose in a language or register the user named, at volume | balanced, then I edit | low | the draft is bulk; the voice is set in my edit |
+
+**Effort, never more than the piece needs.** Effort multiplies time and cost, and on a clear task more of it buys nothing. Size it by the piece, not by how important the project feels: a short or well-specified piece is low even on the strongest model; high only where the row above says so. The levels above high (xhigh, max) only when the user asks for them. Where the agent tool takes effort only on instruction (a user's or a skill's), this table is that instruction; with no effort option, the tier alone carries it.
+
+Where the environment or the user says a model is better at something (a language, long documents, code in one stack), that beats the table and holds for the chat.
+
+**3. Writing with more than one model.** For writing that matters (code or prose):
+- *Split by strength*: I set the outline, the facts and the voice; a balanced helper drafts the sections from that brief; I edit the whole into one voice. The lead always does the last pass: a reader should never feel the seams.
+- *Draft and critique on different models*: one model writes, a different one reviews against the brief, so the review catches what the writer's habits miss. The same model reviewing its own draft mostly agrees with itself.
+- *Two drafts* only when the choice is genuinely open (a headline, a name, an opening): two models each write one, and I keep the stronger or merge them, saying in one line which and why. Not for routine text — it doubles the cost.
+
+**4. Step up, never repeat.** A helper that fails twice steps up once, with the failure in its brief: effort one level first (the cheaper step), then the tier, and never past high without the user. Never resend the same task to the same model and effort unchanged. A piece that turns out simpler than expected drops a step next time.
+
+**5. Say it.** The one-line plan names each helper's model and effort ("search → fast/low, draft → balanced/medium, review → strongest/high"), so the user can redirect before it runs. The user naming a model or an effort, or saying "no helpers", overrides every row above.
+
 ## Commands through a runner agent
 
 A command that runs long or prints a lot goes to a runner agent instead of the background. The runner stays with it from start to finish, so a failure is caught the moment it appears instead of whenever someone next looks, and only a short report reaches my context.
@@ -65,7 +95,7 @@ For a plan whose tasks are mostly independent: each task gets its own new implem
   - **stuck** → if information is missing, add it; if it needs harder reasoning, use a stronger model; if the task is too big, split it; if the plan is wrong, record a ruling and resend. Never resend the same task to the same model unchanged.
 - The task review checks both that it meets the spec and that it's well made; the implementer's own review never counts instead. Give the reviewer the diff as a file.
 - Many identical trivial edits (one value changed in many files) go out as one task and are reviewed as one diff.
-- **Which model:** the least expensive one that can do the job, named explicitly (leaving it out means the session's model is used). Plan already contains the full code → cheapest; work spanning several files → middle; design judgement and the final review → strongest. Reviewers, and implementers working from a prose spec, start at the middle tier, because cheap models take more rounds. Move up a tier after repeated failed rounds.
+- **Which model** (*Choosing the model and effort* above): plan already contains the full code → fast; work spanning several files → balanced; design judgement and the final review → strongest, on a different model from the implementers. Reviewers, and implementers working from a prose spec, start at the balanced tier, because cheap models take more rounds.
 - Progress file, the pre-start comparison, rulings and stopping conditions work exactly as when I execute a plan myself.
 
 ## Ask for a fixed report format
