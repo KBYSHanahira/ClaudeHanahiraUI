@@ -112,7 +112,7 @@ cd ClaudeHanahiraUI
 scripts/install-ssh.sh
 ```
 
-This copy carries only the hooks: the skills reach the remote with Desktop's synced copy, so they keep their usual `hanahira-claude-ui:` names and appear once. With no synced copy, or one stuck on an older version, `HANAHIRA_SSH_SKILLS=1 scripts/install-ssh.sh` adds the skills to this copy too (named `hanahira-claude-ui-ssh:`, kept on later runs; `HANAHIRA_SSH_SKILLS=0` takes them out).
+The skills appear once either way. When your claude.ai account has the plugin, they reach the remote with Desktop's synced copy under their usual `hanahira-claude-ui:` names, and this copy carries only the hooks. Without it, the script puts the skills in this copy (named `hanahira-claude-ui-ssh:`). The check runs when the script runs, so re-run it after adding or removing the plugin on your account. `HANAHIRA_SSH_SKILLS=1` or `0` overrides the check, for example `1` when the synced copy is stuck on an older version.
 
 Then open a **new session** in Desktop (open sessions do not pick it up). After a `git pull`, run `scripts/install-ssh.sh` again. Using it on your local machine needs none of this; Option 1 works as is.
 

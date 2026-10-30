@@ -112,7 +112,7 @@ cd ClaudeHanahiraUI
 scripts/install-ssh.sh
 ```
 
-このコピーに入るのは hooks だけです。スキルは Desktop が同期するコピーで接続先に届くため、いつもの `hanahira-claude-ui:` の名前のまま 1 回だけ表示されます。同期されるコピーがない、または古いバージョンのままの場合は `HANAHIRA_SSH_SKILLS=1 scripts/install-ssh.sh` でスキルもこのコピーに入ります（`hanahira-claude-ui-ssh:` の名前で表示され、次回以降の実行でも保持されます。外すときは `HANAHIRA_SSH_SKILLS=0`）。
+スキルはどちらの場合も 1 回だけ表示されます。claude.ai のアカウントにプラグインがあれば、スキルは Desktop が同期するコピーでいつもの `hanahira-claude-ui:` の名前のまま届き、このコピーに入るのは hooks だけです。アカウントにない場合は、スキルもこのコピーに入ります（`hanahira-claude-ui-ssh:` の名前）。この判定はスクリプト実行時に行われるため、アカウントのプラグインを追加・削除したら再実行してください。`HANAHIRA_SSH_SKILLS=1` または `0` で判定を上書きできます（同期されるコピーが古いバージョンのままのときは `1`）。
 
 その後、Desktop で **新しいセッション** を開きます（開いているセッションには反映されません）。`git pull` で更新したら、もう一度 `scripts/install-ssh.sh` を実行してください。手元のマシン（ローカル）で使う場合はこの手順は不要で、方法 1 のままで動きます。
 
