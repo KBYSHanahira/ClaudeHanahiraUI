@@ -111,6 +111,16 @@ describe('rings', () => {
     expect(ringSvg(250, '#fff', 40)).toContain(`stroke-dasharray="${c.toFixed(2)} ${c.toFixed(2)}"`)
   })
 
+  test('ringSvg glides its arc from the last reading in CSS, resting on the new one', () => {
+    const c = 2 * Math.PI * 19.5
+    const plain = ringSvg(80, '#e8825f', 40)
+    expect(plain).not.toContain('<style>')
+    expect(ringSvg(80, '#e8825f', 40, { from: 80 })).toBe(plain)
+    const gliding = ringSvg(80, '#e8825f', 40, { from: 20 })
+    expect(gliding).toContain(`stroke-dasharray="${(c * 0.8).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)" class="arc"/>`)
+    expect(gliding).toContain(`@keyframes arc{from{stroke-dasharray:${(c * 0.2).toFixed(2)} ${c.toFixed(2)}}`)
+  })
+
   test('glyph steps through quarters', () => {
     expect([0, 25, 50, 75, 100].map(glyph)).toEqual(['○', '◔', '◑', '◕', '●'])
     expect(glyph(NaN)).toBe('○')

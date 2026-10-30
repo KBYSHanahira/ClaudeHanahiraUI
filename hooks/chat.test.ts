@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, diffSource, relPath, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, glider, easeOut, roller, reel, slotText, INK } from './chat'
+  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, easeOut, cubicBezier, tickerSvg, glideHolder, reelHolder, reelText, INK } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -501,9 +501,9 @@ describe('band pictures', () => {
   })
 
   test('the speedometer points its needle at the fraction', () => {
-    expect(speedoSvg(0.5, '#9b8cf7', 22)).toContain('rotate(0.0 22 22)')
+    expect(speedoSvg(0.5, '#9b8cf7', 22)).toContain('translate(22 22)"><g transform="rotate(0.0)"')
     expect(speedoSvg(0.5, '#9b8cf7', 22)).not.toContain('@keyframes')
-    expect(speedoSvg(3, '#fff', 22)).toContain('rotate(135.0 22 22)')
+    expect(speedoSvg(3, '#fff', 22)).toContain('rotate(135.0)"')
   })
 
   test('a stat takes a ring in the glyph slot, and is still', () => {
@@ -778,119 +778,115 @@ describe('motion', () => {
     expect(statSvg('9', 'x', { icon: 'coin', plain: true, spark: { pulse: true } }).svg).not.toContain('<style>')
   })
 
-  test('easeOut runs 0 to 1, fast first, and holds past the ends', () => {
-    expect(easeOut(0)).toBe(0)
-    expect(easeOut(1)).toBe(1)
-    expect(easeOut(0.5)).toBeGreaterThan(0.5)
-    expect(easeOut(-1)).toBe(0)
-    expect(easeOut(2)).toBe(1)
+  test('easeOut is EASE.out as a function: 0 to 1, fast first, held past the ends', () => {
+    expect(Math.abs(easeOut(0) - 0)).toBeLessThan(1e-6)
+    expect(Math.abs(easeOut(1) - 1)).toBeLessThan(1e-6)
+    expect(easeOut(0.5)).toBeGreaterThan(0.85)
+    expect(Math.abs(easeOut(-1) - 0)).toBeLessThan(1e-6)
+    expect(Math.abs(easeOut(2) - 1)).toBeLessThan(1e-6)
+    // The browser's own curve: linear stays linear.
+    expect(Math.abs(cubicBezier(0, 0, 1, 1)(0.3) - 0.3)).toBeLessThan(1e-6)
   })
 
-  test('a figure seen first shows as it is; a new value glides there and lands exactly', () => {
-    const g = glider(400)
-    expect(g.value('n', 10, 0)).toBe(10)
-    expect(g.active(0)).toBe(false)
-    expect(g.value('n', 110, 1000)).toBe(10)
-    expect(g.active(1000)).toBe(true)
-    const mid = g.value('n', 110, 1200)!
-    expect(mid).toBeGreaterThan(60) // eased: past halfway at half the time
-    expect(mid).toBeLessThan(110)
-    expect(Number.isInteger(mid)).toBe(true)
-    expect(g.value('n', 110, 1400)).toBe(110)
-    expect(g.active(1400)).toBe(false)
-    expect(g.value('n', 110, 9999)).toBe(110)
+  test('a gauge glides from where it was, held while it plays, then the plain picture', () => {
+    const g = glideHolder(400, 1000)
+    expect(g.from('n', 10, 0)).toBe(null) // seen first: nothing to glide from
+    expect(g.from('n', 10, 50)).toBe(null)
+    expect(g.from('n', 80, 2000)).toBe(10)
+    expect(g.from('n', 80, 2500)).toBe(10) // the same while held, so a redraw is the same picture
+    expect(g.from('n', 80, 3000)).toBe(null) // played: the plain picture, which looks the same
+    // A new reading mid-glide starts from where the last one had got to, never back.
+    g.from('m', 0, 0)
+    g.from('m', 100, 5000)
+    const on = g.from('m', 200, 5200)!
+    expect(on).toBeGreaterThan(50)
+    expect(on).toBeLessThan(100)
+    expect(g.from('m', null, 5300)).toBe(null)
+    expect(g.from('m', 40, 5400)).toBe(null) // after a gap, seen first again
   })
 
-  test('a new target mid-glide carries on from where the figure is, never back', () => {
-    const g = glider(400)
-    g.value('n', 0, 0)
-    g.value('n', 100, 1000)
-    const at = g.value('n', 100, 1200)!
-    expect(g.value('n', 200, 1200)).toBe(at)
-    expect(g.value('n', 200, 1300)!).toBeGreaterThan(at)
-    expect(g.value('n', 200, 1600)).toBe(200)
-  })
-
-  test('round shapes a moving figure only; none, a value passes as it is', () => {
-    const g = glider(400)
-    g.value('usd', 1, 0, n => n)
-    g.value('usd', 2, 1000, n => n)
-    const mid = g.value('usd', 2, 1100, n => n)!
-    expect(Number.isInteger(mid)).toBe(false)
-    expect(g.value('usd', 2.37, 5000, n => n)).toBe(2) // the change starts where it stood
-    expect(g.value('usd', 2.37, 5400, n => n)).toBe(2.37) // and lands on the value itself
-    expect(g.value('gone', null, 0)).toBe(null)
-    g.value('k', 5, 0)
-    expect(g.value('k', null, 10)).toBe(null)
-    expect(g.value('k', 9, 20)).toBe(9) // after a gap, seen first again
-  })
-
-  test('progress says how far a figure is through its glide, null while it is still', () => {
-    const g = glider(400)
-    g.value('n', 0, 0)
-    expect(g.progress('n', 0)).toBe(null)
-    g.value('n', 100, 1000)
-    expect(g.progress('n', 1100)).toBe(0.25)
-    expect(g.progress('n', 1400)).toBe(null)
-    expect(g.progress('unseen', 0)).toBe(null)
-  })
-
-  test('a roll starts on a new value, runs its time, and is gone once it lands', () => {
-    const r = roller(400)
+  test('a figure rolls from its last value, held while it plays, then the plain figure', () => {
+    const r = reelHolder(1000)
     expect(r.value('n', '20%', 0)).toBe(null)
-    expect(r.value('n', '20%', 50)).toBe(null)
-    expect(r.value('n', '60%', 1000)).toEqual({ from: '20%', t: 0 })
-    expect(r.value('n', '60%', 1100)).toEqual({ from: '20%', t: 0.25 })
-    expect(r.active(1100)).toBe(true)
-    expect(r.value('n', '60%', 1400)).toBe(null)
-    expect(r.active(1400)).toBe(false)
+    expect(r.value('n', '60%', 500)).toBe('20%')
+    expect(r.value('n', '60%', 1400)).toBe('20%')
+    expect(r.value('n', '60%', 1500)).toBe(null)
     // A new value mid-roll rolls on from the one that was coming in.
     r.value('n', '61%', 2000)
-    expect(r.value('n', '62%', 2100)).toEqual({ from: '61%', t: 0 })
+    expect(r.value('n', '62%', 2100)).toBe('61%')
+    expect(reelHolder().value('x', '1', 0)).toBe(null)
   })
 
-  test('a reel turns up a line, a touch past it, then snaps onto its stop', () => {
-    expect(reel(0)).toBe(0)
-    expect(reel(1)).toBe(1)
-    // At the band's frames (every 100 ms of 450): on its way, past the line, then onto it.
-    const frames = [100, 200, 300, 400].map(ms => reel(ms / MOTION.rollMs))
-    expect(frames[0]).toBeGreaterThan(0.1)
-    expect(frames[0]).toBeLessThan(frames[1]!)
-    expect(Math.max(...frames)).toBeGreaterThan(1)
-    expect(Math.max(...frames)).toBeLessThanOrEqual(1.06)
-  })
-
-  test('a slot roll: the shared front stays, the old rest leaves upward, the new one rises in from below', () => {
+  test('a reel: the shared front stays, the strip rests on the new value and plays up from the old', () => {
     const attrs = 'font-size="14" font-weight="700"'
-    expect(slotText(10, 20, 14, attrs, '≈$18.37')).toBe('<text x="10" y="20" font-size="14" font-weight="700">≈$18.37</text>')
-    expect(slotText(10, 20, 14, attrs, '≈$18.37', { from: '≈$18.37', t: 0.5 })).toBe(slotText(10, 20, 14, attrs, '≈$18.37'))
-    const mid = slotText(10, 20, 14, attrs, '≈$18.37', { from: '≈$18.01', t: 0.3 })
-    // '≈$18.' stays put; '01' leaves upward and '37' rises in, held at their place by an
-    // invisible copy of the front, cut to the figure's line.
-    expect(mid).toContain('<text x="10" y="20" font-size="14" font-weight="700">≈$18.</text>')
-    expect(mid).toMatch(/<tspan fill-opacity="0">≈\$18\.<\/tspan><tspan dy="-[\d.]+">01<\/tspan>/)
-    expect(mid).toMatch(/<tspan fill-opacity="0">≈\$18\.<\/tspan><tspan dy="[\d.]+">37<\/tspan>/)
-    expect(mid).toContain('clip-path="url(#slot)"')
-    // At the start the new value is a line below, out of the window, and the old one in place.
-    const start = slotText(10, 20, 14, attrs, '60%', { from: '20%', t: 0 })
-    expect(start).toContain('<tspan dy="0.0">20%</tspan>')
-    expect(start).toContain(`<tspan dy="${(14 * 1.2).toFixed(1)}">60%</tspan>`)
-    // Old and new are one strip, a line apart, whatever the moment.
-    for (const t of [0.2, 0.5, 0.8]) {
-      const [, up, rise] = /<tspan dy="(-?[\d.]+)">20%<\/tspan>[\s\S]*<tspan dy="(-?[\d.]+)">60%<\/tspan>/.exec(slotText(10, 20, 14, attrs, '60%', { from: '20%', t }))!
-      expect(Math.abs(Number(rise) - Number(up) - 14 * 1.2)).toBeLessThan(0.11)
-    }
+    expect(reelText(10, 20, 14, attrs, '≈$18.37')).toBe('<text x="10" y="20" font-size="14" font-weight="700">≈$18.37</text>')
+    expect(reelText(10, 20, 14, attrs, '≈$18.37', '≈$18.37')).toBe(reelText(10, 20, 14, attrs, '≈$18.37'))
+    const r = reelText(10, 20, 14, attrs, '≈$18.37', '≈$18.01')
+    expect(r).toContain('<text x="10" y="20" font-size="14" font-weight="700">≈$18.</text>')
+    // Old over new, a line apart; at rest the strip stands a line up, on the new value.
+    expect(r).toContain(`<g class="reel" transform="translate(0 ${-(14 * 1.2).toFixed(1)})">`)
+    expect(r).toMatch(/class="reel-out"><tspan fill-opacity="0">≈\$18\.<\/tspan>01<\/text>/)
+    expect(r).toMatch(/y="36\.8" font-size="14" font-weight="700"><tspan fill-opacity="0">≈\$18\.<\/tspan>37<\/text>/)
+    expect(r).toContain(`.reel{animation:reel ${MOTION.rollMs}ms both}`)
+    expect(r).toContain('clip-path="url(#reel-cut)"')
     // A figure that shares no front rolls whole.
-    expect(slotText(10, 20, 14, attrs, '10%', { from: '9%', t: 0.5 })).not.toMatch(/fill-opacity="0">/)
+    expect(reelText(10, 20, 14, attrs, '10%', '9%')).not.toMatch(/fill-opacity="0">/)
   })
 
-  test('a stat rolls its value; the label is at the new value\'s place; no CSS motion', () => {
-    const still = statSvg('$2', 'cost', { plain: true, icon: 'coin' }).svg
-    const rolling = statSvg('$2', 'cost', { plain: true, icon: 'coin', roll: { from: '$1', t: 0.4 } }).svg
-    expect(rolling).toContain('clip-path="url(#slot)"')
-    expect(rolling).not.toContain('@keyframes')
-    expect(statSvg('$2', 'cost', { plain: true, icon: 'coin', roll: null }).svg).toBe(still)
-    expect(chipSvg({ color: '#fff', value: '4', label: 'tools', roll: { from: '3', t: 0.4 } }).svg).toContain('clip-path="url(#slot)"')
-    expect(contextSvg(40, '#e8825f', { value: '60%', roll: { from: '20%', t: 0.4 } }).svg).toContain('>60%</tspan>')
+  test('the meter lights the blocks between two readings one by one, resting on the new one', () => {
+    const plain = meterSvg(70, '#e8a87c').svg
+    expect(meterSvg(70, '#e8a87c', 70).svg).toBe(plain)
+    expect(meterSvg(70, '#e8a87c', null).svg).toBe(plain)
+    const up = meterSvg(70, '#e8a87c', 10).svg
+    const steps = [...up.matchAll(/fill="([^"]+)" class="m" style="animation-delay:(\d+)ms"/g)]
+    expect(steps).toHaveLength(21 - 3)
+    expect(steps.every(m => m[1] === '#e8a87c')).toBe(true) // each rests lit
+    const delays = steps.map(m => Number(m[2]))
+    expect(delays).toEqual([...delays].sort((x, y) => x - y))
+    expect(delays.at(-1)).toBe(MOTION.glideMs)
+    expect(delays[1]! - delays[0]!).toBeLessThan(delays.at(-1)! - delays.at(-2)!) // eased: quick first
+    expect(up).toContain(`@keyframes m{from{fill:${INK.track}}}`)
+    // Going down, they go out, resting on the track.
+    const down = meterSvg(10, '#e8a87c', 70).svg
+    expect([...down.matchAll(/fill="([^"]+)" class="m"/g)].every(m => m[1] === INK.track)).toBe(true)
+    expect(down).toContain('@keyframes m{from{fill:#e8a87c}}')
+  })
+
+  test('the speedometer swings its needle and arc from the last reading, at rest on the new one', () => {
+    const plain = speedoSvg(0.8, '#9b8cf7', 28)
+    expect(plain).not.toContain('<style>')
+    expect(speedoSvg(0.8, '#9b8cf7', 28, 0.8)).toBe(plain)
+    const swing = speedoSvg(0.8, '#9b8cf7', 28, 0.1)
+    expect(swing).toContain(`<g transform="rotate(${(-135 + 0.8 * 270).toFixed(1)})" class="spd-needle">`)
+    expect(swing).toContain(`@keyframes spd-needle{from{transform:rotate(${(-135 + 0.1 * 270).toFixed(1)}deg)}to{transform:rotate(${(-135 + 0.8 * 270).toFixed(1)}deg)}}`)
+    expect(swing).toContain('@keyframes spd-arc{from{stroke-dasharray:')
+    expect(swing).toContain(`animation:spd-needle ${MOTION.glideMs}ms`)
+  })
+
+  test('stats, chips and the context line roll their figures in CSS; nothing to roll, the plain picture', () => {
+    const plain = statSvg('$2', 'cost', { plain: true, icon: 'coin' }).svg
+    expect(statSvg('$2', 'cost', { plain: true, icon: 'coin', reel: null }).svg).toBe(plain)
+    const rolling = statSvg('$2', 'cost', { plain: true, icon: 'coin', reel: '$1' }).svg
+    expect(rolling).toContain('@keyframes reel')
+    expect(rolling).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(chipSvg({ color: '#fff', value: '4', label: 'tools', reel: '3' }).svg).toContain('@keyframes reel')
+    const ctx = contextSvg(40, '#e8825f', { from: '20%', fromPercent: 20 }).svg
+    expect(ctx).toContain('@keyframes reel')
+    expect(ctx).toContain('@keyframes m{')
+    expect(contextSvg(40, '#e8825f').svg).not.toContain('<style>')
+    // Held, a change is the same picture each time it is drawn.
+    const draw = () => contextSvg(40, '#e8825f', { from: '20%', fromPercent: 20 }).svg + speedoSvg(0.5, '#fff', 28, 0.2)
+    expect(draw()).toBe(draw())
+  })
+
+  test('the elapsed clock rolls each second in and holds its width from the start', () => {
+    const plain = tickerSvg('4s', { minText: '59m 59s' })
+    expect(plain.svg).not.toContain('<style>')
+    expect(plain.width).toBe(tickerSvg('59m 59s').width)
+    const rolling = tickerSvg('5s', { from: '4s', minText: '59m 59s' })
+    expect(rolling.svg).toContain('@keyframes reel')
+    expect(rolling.width).toBe(plain.width)
+    // Only the digits that change turn: '1m 1' stays put as 1m 19s becomes 1m 20s.
+    expect(tickerSvg('1m 20s', { from: '1m 19s' }).svg).toContain('>1m </text>')
   })
 })

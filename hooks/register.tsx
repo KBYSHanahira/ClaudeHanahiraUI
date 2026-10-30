@@ -26,8 +26,8 @@ import {
   fmtReset,
   fmtSpeed,
   fmtTokens,
-  glider,
-  roller,
+  glideHolder,
+  glideStyle,
   reelHolder,
   loadingSvg,
   MOTION,
@@ -43,9 +43,9 @@ import {
   speedoSvg,
   statSvg,
   statusPill,
+  tickerSvg,
   tokensPerSec,
 } from './chat'
-import type { Roll } from './chat'
 export { clip }
 import { iconGroup, iconSvg } from './icons'
 import { VERSION } from './version'
@@ -90,7 +90,7 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
 // `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; roll?: Roll | null }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; reel?: string | null; from?: number | null }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
@@ -186,21 +186,15 @@ export const modeSwitch = (text: string): 'on' | 'off' | null => {
 // value that gains or loses a digit while a turn runs never moves its neighbours.
 const colMax = new Map<string, number>()
 const efforts = new Map<string, string>()
-// The band's figures glide to each new value; while one moves, `glidePump` redraws the band
-// every MOTION.glideStepMs, and stops once nothing moves (or after `glideBeats`, should the
-// band not be drawn to say so).
-const glides = glider()
-// The figures' slot rolls: a new value rolls in over the old one (slotText in chat.ts).
-const rolls = roller()
-// Figures that roll by themselves, in CSS inside their picture (reelText): the tool count.
+// A change plays once, in CSS inside its picture (see MOTION in chat.ts): the figures written
+// out roll in (reelHolder, reelText), rings, meters and the speed needle glide (glideHolder).
+// Each holds where it came from while it plays, so a redraw then sends the same picture.
+const glides = glideHolder()
 const reels = reelHolder()
-let reelDrop: { cancel: () => void } | null = null
 // The Hanahira mode as the band last drew it, and whether it switched on in this turn: the
 // sparkle turns in once, as it does, and the picture keeps that until the turn ends.
 let lastOn: boolean | null = null
 let twinkle = false
-let glidePump: { cancel: () => void } | null = null
-let glideBeats = 0
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
@@ -344,20 +338,24 @@ export const tone = (percent: number) => (percent >= 85 ? '#f2736b' : percent >=
 export const ringColor = (percent: number) => (percent >= 85 ? '#f2736b' : THEME.warm)
 
 /** A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. */
-export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean } = {}) => {
+export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean; from?: number | null } = {}) => {
   // `bigIcon`, for a ring drawn small: a thinner ring and a larger icon, so the icon still
   // reads as what it is at a text row's height.
   const stroke = opts.bigIcon ? 3.5 : 5
   const r = (44 - stroke) / 2
   const c = 2 * Math.PI * r
-  const arc = (Math.max(0, Math.min(100, percent)) / 100) * c
+  const length = (p: number) => (Math.max(0, Math.min(100, p)) / 100) * c
+  const arc = length(percent)
+  // With `from`, the arc glides there from that reading (glideHolder), in CSS.
+  const dash = (p: number) => `${length(p).toFixed(2)} ${c.toFixed(2)}`
   // A disc tinted the arc's colour fills the middle, and the icon fills the disc: big enough
   // to read at a glance, so the gauge reads as one piece.
   const disc = `<circle cx="22" cy="22" r="${opts.bigIcon ? 17 : 15}" fill="${color}" fill-opacity="0.13"/>`
   const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/>`
   const fill =
     arc > 0
-      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${arc.toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>`
+      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${dash(percent)}" transform="rotate(-90 22 22)" class="arc"/>` +
+        glideStyle('arc', 'stroke-dasharray', dash, opts.from, percent)
       : ''
   const iconPx = opts.bigIcon ? 25 : 20
   const mark = opts.icon ? iconGroup(opts.icon, color, 22 - iconPx / 2, 22 - iconPx / 2, iconPx, opts.bigIcon ? 2.3 : 2.1) : ''
@@ -889,49 +887,20 @@ export const register: Register = on => {
       read($, model),
       read($, skill),
     ])
-    // What the band draws: each figure on its way to the stored one (see MOTION in chat.ts).
-    // Rings, meters and the speed glide (glider); the figures written out roll in (roller):
-    // `shown` is a limit's own figure, `percentUsed` its ring on the way to it.
-    const glide = (key: string, v: number | null, round?: (n: number) => number) => glides.value(key, v, nowMs, round)
-    const roll = (key: string, text: string) => rolls.value(key, text, nowMs)
-    const exact = (n: number) => n
+    // What the band draws: each figure as stored, and where a change came from while it plays
+    // (see MOTION in chat.ts): `reel` for a figure written out, `from` for a ring or meter.
+    const reel = (key: string, text: string) => reels.value(key, text, nowMs)
+    const from = (key: string, v: number | null) => glides.from(key, v, nowMs)
     const st = stNow
     const use = {
       ...useNow,
-      percent: glide('context', useNow.percent),
-      tokens: glide('context-tokens', useNow.tokens),
-      limits: (Array.isArray(useNow.limits) ? useNow.limits : []).map(l => ({
-        ...l,
-        shown: l.percentUsed,
-        percentUsed: glide(`limit-${l.kind}`, l.percentUsed, exact) ?? l.percentUsed,
-      })),
+      limits: (Array.isArray(useNow.limits) ? useNow.limits : []).map(l => ({ ...l, shown: l.percentUsed })),
     }
-    const sp = { ...spNow, tps: glide('tps', spNow.tps, exact) }
+    const sp = spNow
     const sk = asSkill(skNow)
     if (lastOn === false && sk.on) twinkle = true
     if (!sk.on) twinkle = false
     lastOn = sk.on
-    // A held reel is let go once it has played: draw again then, with the plain figure.
-    const reelLeft = reels.pending(nowMs)
-    if (reelLeft !== null && !reelDrop) {
-      reelDrop = $.clock.after(reelLeft + 20, () => {
-        reelDrop = null
-        void update($, tick, n => (n ?? 0) + 1)
-      })
-    }
-    if (glides.active(nowMs) || rolls.active(nowMs)) {
-      glideBeats = Math.ceil(MOTION.glideMs / MOTION.glideStepMs) + 2
-      glidePump ??= $.clock.every(MOTION.glideStepMs, () => {
-        if (--glideBeats <= 0) {
-          glidePump?.cancel()
-          glidePump = null
-        }
-        void update($, tick, n => (n ?? 0) + 1)
-      })
-    } else if (glidePump) {
-      glidePump.cancel()
-      glidePump = null
-    }
     // The looping pictures (status dot, loading bar, working chip) are drawn in the surface's
     // sandboxed frame while Claude works, the only place SMIL runs: as a plain image a loop
     // would show one still frame and move only when the band redraws. Idle they hold no loop,
@@ -941,6 +910,8 @@ export const register: Register = on => {
     // Time spent running: the finished turns, and the running one as it goes.
     const runShown = (run ?? 0) + liveMs
     const shownSecs = liveMs > 0 ? Math.floor(liveMs / 1000) : secs
+    const elapsedArt =
+      shownSecs === null ? null : tickerSvg(fmtElapsed(shownSecs), { from: reel('elapsed', fmtElapsed(shownSecs)), minText: '59m 59s' })
     const { Box, Text } = $.ui.resolve(e)
 
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
@@ -957,9 +928,9 @@ export const register: Register = on => {
     const cards: { label: string; value: string; icon: IconName; color: string; roll?: string }[] = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', roll: 'usd' },
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7', roll: 'tokens' },
-      // Live: it counts every second while a turn runs, on the band's beat (no roll: a figure
-      // that moves every second would never be still).
-      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f' },
+      // Live: it counts every second while a turn runs, on the band's beat, each second rolling
+      // in like the other figures (only the digits that change turn).
+      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f', roll: 'time' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7', roll: 'model' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
@@ -992,7 +963,7 @@ export const register: Register = on => {
         color: '#f2c94c',
         icon: 'bolt',
         value: String(st.tools),
-        reel: reels.value('tools', String(st.tools), nowMs),
+        reel: reel('tools', String(st.tools)),
         label: toolWord,
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
@@ -1028,6 +999,7 @@ export const register: Register = on => {
     const crewCards = crew.shown.map(a => ({ a, art: agentCardParts(a, { padBottom: THEME.stripGap, motion: e.props.isWorking }) }))
 
     // Stat tiles: a ring when the figure is a percentage, else the icon.
+    const speedPct = sp.tps === null ? 0 : Math.min(100, (sp.tps / speedScale(sp.peak ?? 0)) * 100)
     const tiles: Tile[] = [
       {
         key: 'context',
@@ -1044,7 +1016,8 @@ export const register: Register = on => {
         icon: (l.kind === 'five_hour' ? 'clock' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
         percent: l.percentUsed,
         big: `${Math.round(l.shown)}%`,
-        roll: roll(`limit-${l.kind}`, `${Math.round(l.shown)}%`),
+        reel: reel(`limit-${l.kind}`, `${Math.round(l.shown)}%`),
+        from: from(`limit-${l.kind}`, l.percentUsed),
         caption: `of ${limitLabel(l.kind)}`,
         sub: fmtReset(l.resetsAt, nowMs) ?? undefined,
         short: `${shortLimitLabel(l.kind)} · ${limitLeft(l.shown)}`,
@@ -1055,7 +1028,9 @@ export const register: Register = on => {
         key: 'speed',
         icon: 'bolt' as IconName,
         // Against a round full scale clear of the best seen, as on a speedometer's dial.
-        percent: sp.tps === null ? 0 : Math.min(100, (sp.tps / speedScale(sp.peak ?? 0)) * 100),
+        percent: speedPct,
+        // The needle swings to each reading; the figure itself just changes, as on a dial.
+        from: from('tps', speedPct),
         big: sp.tps === null ? '—' : fmtSpeed(sp.tps),
         caption: 'tokens / sec',
         sub: sp.peak > 0 ? `peak ${fmtSpeed(sp.peak)}` : undefined,
@@ -1124,17 +1099,17 @@ export const register: Register = on => {
           : mode === 'stack' ? [...more, '', ''].slice(0, 2) : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
         return statSvg(t.big, mode === 'stack' ? (t.tone ? '' : name) : mode === 'tall' ? '' : t.short, {
           tone: t.tone,
-          roll: t.roll,
+          reel: t.reel,
           detail: mode === 'line' ? t.detail : undefined,
           ...(under ? { stack: under } : {}),
           width,
           // Speed is no share of a limit: a speedometer whose needle follows the stream.
           ...(t.key === 'speed'
-            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph) }
+            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph, t.from === null || t.from === undefined ? null : t.from / 100) }
             : t.percent === null
             ? { icon: t.icon, color: t.color ?? THEME.accent, spark: t.spark }
             : {
-                ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, { icon: t.icon, bigIcon: true }),
+                ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, { icon: t.icon, bigIcon: true, from: t.from }),
               }),
         })
       },
@@ -1151,7 +1126,7 @@ export const register: Register = on => {
         draw: (width, mode = 'line') => {
           const under = mode === 'stack' || mode === 'tall'
           // Plain and muted: the figures are the quiet row, so the meter and the gauges lead.
-          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, roll: c.roll ? roll(c.roll, c.value) : null, ...(under ? { stack: [label] } : {}) })
+          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, reel: c.roll ? reel(c.roll, c.value) : null, ...(under ? { stack: [label] } : {}) })
         },
       }
     })
@@ -1169,9 +1144,9 @@ export const register: Register = on => {
       left: contextLeft(use.tokens, use.window, use.percent),
       window: use.window !== null ? `${fmtTokens(use.window)} window` : null,
       warn: use.percent !== null && use.percent >= 85,
-      // The figure is the stored one, rolled in; the meter glides to it.
-      value: useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`,
-      roll: roll('context', useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`),
+      // The figure rolls in and the meter's blocks light up to it.
+      from: reel('context', use.percent === null ? '—' : `${Math.round(use.percent)}%`),
+      fromPercent: from('context', use.percent),
     }
     const ctxColor = ringColor(use.percent ?? 0)
     const ctxLine = contextSvg(use.percent, ctxColor, ctxOpts)
@@ -1270,7 +1245,12 @@ export const register: Register = on => {
               // As wide as '59m 59s' from the start, so the pill does not step right as it grows.
               <Box gap={1} alignItems="center" minWidth={9}>
                 {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
-                <Text dimColor>{fmtElapsed(shownSecs)}</Text>
+                {Svg ? (
+                  // Each second rolls in, like the band's figures.
+                  <Svg source={elapsedArt!.svg} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
+                ) : (
+                  <Text dimColor>{fmtElapsed(shownSecs)}</Text>
+                )}
               </Box>
             ) : null}
             {THEME.compact && Svg ? (

@@ -367,10 +367,12 @@ export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line
  *   motion rests, so a surface that plays none, or a person who asks for reduced motion, sees
  *   the right picture. It runs only in the surface's frame (`isInteractive`), drawn while
  *   Claude works.
- * - A figure that changes rolls like a slot reel (`roller`, `slotText`): the old value leaves
- *   upward and the new one comes up from below, a touch past its line, and snaps onto it. Its
- *   ring or meter glides to the new value (`glider`). Both are still pictures, eased, so
- *   swapping one in is only a new image: a figure in a frame would blink each time it changed.
+ * - A figure that changes plays its change once, in CSS inside its picture too: a written
+ *   figure rolls like a slot reel (`reelText`), a ring or meter glides to its new value, the
+ *   speedometer's needle swings. The picture holds where the change came from (`reelHolder`,
+ *   `glideHolder`) for as long as it plays, so a redraw then sends the same picture; after
+ *   that the plain picture, which looks the same as where the motion rests. The surface runs
+ *   it at its own frame rate, with no redraw while it moves.
  */
 export const MOTION = {
   barMs: 2200, // one light's step to where the next one was
@@ -386,9 +388,9 @@ export const MOTION = {
   agentBarMs: 1600, // a running agent card's lit stretch, one way along its bar
   checkMs: 420, // a finished agent card's check, drawn in
   agentFillMs: 600, // a finished agent card's bar filling from its stretch to the end, once
-  glideMs: 640, // a ring or meter moving to its new value
+  glideMs: 640, // a ring, meter or needle moving to its new value
   rollMs: 450, // a figure's slot roll, old value out and new one in
-  glideStepMs: 100, // a redraw this often while one moves: the engine's most, ten a second
+  holdMs: 900, // how long past its motion a picture keeps a change, for a surface slow to show it
 }
 
 /** The curves motion runs on: out settles softly, spring overshoots a touch, inOut breathes. */
@@ -405,53 +407,32 @@ export const EASE = {
 export const motionStyle = (css: string) =>
   `<style>${css}@media (prefers-reduced-motion: reduce){*{animation:none!important}}</style>`
 
-/** A figure's roll as drawn now: the value it rolls from, `t` (0 to 1) of the way. */
-export type Roll = { from: string; t: number }
-
-/**
- * How far a slot reel has turned, `t` (0 to 1) of the way through its roll, in lines: it eases
- * up a line and 6% past it by three quarters of the way, then snaps back onto its stop. Drawn
- * at the band's ten frames a second the steps read as 0, ⅕, ⅔, past, onto.
- */
-export const reel = (t: number) => {
-  const x = Math.min(1, Math.max(0, t))
-  if (x < 0.75) return 1.06 * ((1 - Math.cos((Math.PI * x) / 0.75)) / 2)
-  return 1.06 - 0.06 * easeOut((x - 0.75) / 0.25)
-}
-
-/**
- * Figures that roll to a new value like a slot reel. `value(key, text, now)` gives the roll to
- * draw (`slotText`): null when first seen, once a roll ends, or when nothing changed. A new
- * value mid-roll rolls on from the value that was coming in. `active(now)` says whether any
- * figure is still rolling, so the caller knows to draw again.
- */
-export const roller = (ms = MOTION.rollMs) => {
-  const rolls = new Map<string, { from: string; to: string; at: number }>()
-  return {
-    value(key: string, text: string, now: number): Roll | null {
-      const r = rolls.get(key)
-      if (!r) {
-        rolls.set(key, { from: text, to: text, at: now - ms })
-        return null
-      }
-      if (r.to !== text) rolls.set(key, { from: r.to, to: text, at: now })
-      const g = rolls.get(key)!
-      return now - g.at >= ms || g.from === g.to ? null : { from: g.from, t: (now - g.at) / ms }
-    },
-    active(now: number) {
-      for (const r of rolls.values()) if (r.from !== r.to && now - r.at < ms) return true
-      return false
-    },
+/** A CSS cubic-bézier curve as a function of time (0 to 1), solved as the browser does. */
+export const cubicBezier = (x1: number, y1: number, x2: number, y2: number) => {
+  const at = (a: number, b: number, s: number) => 3 * a * s * (1 - s) ** 2 + 3 * b * s * s * (1 - s) + s ** 3
+  return (t: number) => {
+    const x = Math.min(1, Math.max(0, t))
+    let lo = 0
+    let hi = 1
+    for (let i = 0; i < 32; i++) {
+      const mid = (lo + hi) / 2
+      if (at(x1, x2, mid) < x) lo = mid
+      else hi = mid
+    }
+    return at(y1, y2, (lo + hi) / 2)
   }
 }
 
+/** EASE.out as a function: where a glide is, `t` (0 to 1) of the way through it. */
+export const easeOut = cubicBezier(0.22, 1, 0.36, 1)
+
 /**
  * Figures whose roll is drawn by the picture itself (`reelText`): `value(key, text, now)` gives
- * the value it rolls from, the same for as long as the roll is held (`holdMs`), so every redraw
- * in that time sends the same picture and its motion plays once; then null, and the plain
- * figure. `pending(now)` is how long until the next roll is let go, for a redraw then.
+ * the value it rolls from, the same for as long as the roll is held (MOTION.rollMs and
+ * MOTION.holdMs), so every redraw in that time sends the same picture and its motion plays
+ * once; then null, and the plain figure.
  */
-export const reelHolder = (holdMs = MOTION.rollMs + 900) => {
+export const reelHolder = (holdMs = MOTION.rollMs + MOTION.holdMs) => {
   const reels = new Map<string, { from: string | null; to: string; at: number }>()
   return {
     value(key: string, text: string, now: number): string | null {
@@ -464,13 +445,31 @@ export const reelHolder = (holdMs = MOTION.rollMs + 900) => {
       const g = reels.get(key)!
       return g.from !== null && now - g.at < holdMs ? g.from : null
     },
-    pending(now: number): number | null {
-      let next: number | null = null
-      for (const r of reels.values()) {
-        const left = r.at + holdMs - now
-        if (r.from !== null && left > 0) next = next === null ? left : Math.min(next, left)
+  }
+}
+
+/**
+ * Rings, meters and needles that glide to a new value by themselves, in CSS: `from(key,
+ * target, now)` gives the value the picture glides from, the same while the glide is held, then
+ * null. A new target mid-glide starts from where the last one had got to (on EASE.out), so a
+ * gauge that changes often moves on and never jumps back.
+ */
+export const glideHolder = (ms = MOTION.glideMs, holdMs = ms + MOTION.holdMs) => {
+  const glides = new Map<string, { from: number; to: number; at: number }>()
+  return {
+    from(key: string, target: number | null, now: number): number | null {
+      if (target === null || !Number.isFinite(target)) {
+        glides.delete(key)
+        return null
       }
-      return next
+      const g = glides.get(key)
+      if (!g) {
+        glides.set(key, { from: target, to: target, at: now - holdMs })
+        return null
+      }
+      if (g.to !== target) glides.set(key, { from: g.from + (g.to - g.from) * easeOut((now - g.at) / ms), to: target, at: now })
+      const n = glides.get(key)!
+      return n.from !== n.to && now - n.at < holdMs ? n.from : null
     },
   }
 }
@@ -493,83 +492,28 @@ export const reelText = (x: number, y: number, fs: number, attrs: string, value:
     `<clipPath id="reel-cut"><rect x="0" y="${(y - fs * 0.9).toFixed(1)}" width="100000" height="${(fs * 1.05).toFixed(1)}"/></clipPath>` +
     (keep ? `<text x="${x}" y="${y}" ${attrs}>${esc(keep)}</text>` : '') +
     `<g clip-path="url(#reel-cut)"><g class="reel" transform="translate(0 ${-line})">` +
-    `<text x="${x}" y="${y}" ${attrs}>${held}${esc(from.slice(n))}</text>` +
+    `<text x="${x}" y="${y}" ${attrs} class="reel-out">${held}${esc(from.slice(n))}</text>` +
     `<text x="${x}" y="${(y + line).toFixed(1)}" ${attrs}>${held}${esc(value.slice(n))}</text>` +
     `</g></g>` +
     motionStyle(
       `@keyframes reel{from{transform:translateY(0);animation-timing-function:${EASE.inOut}}` +
         `75%{transform:translateY(${(-line * 1.06).toFixed(1)}px);animation-timing-function:${EASE.out}}` +
-        `to{transform:translateY(${-line}px)}}.reel{animation:reel ${MOTION.rollMs}ms both}`,
+        `to{transform:translateY(${-line}px)}}.reel{animation:reel ${MOTION.rollMs}ms both}` +
+        // The old value dims as it leaves, so the eye follows the one coming in.
+        `@keyframes reel-out{to{opacity:.35}}.reel-out{animation:reel-out ${Math.round(MOTION.rollMs * 0.75)}ms ${EASE.inOut} both}`,
     )
   )
 }
 
 /**
- * A figure as SVG text at (`x`, `y`), rolling from `roll.from` when given, as a slot reel: what
- * the two values share at the front stays put; the rest is a strip with the old value over the
- * new, a line apart, that turns up a line (`reel`) behind a window the figure's own height. The
- * old value leaves at the top as the new one comes in from the bottom, a touch past its line,
- * and snaps onto it. `attrs` are the text's own (font, size, fill).
+ * A glide in CSS from `from` to where the element rests: `prop` is the property and `css(v)` its
+ * value for a reading. Empty when there is nothing to glide. `name` keeps the keyframes apart
+ * where one picture holds two glides.
  */
-export const slotText = (x: number, y: number, fs: number, attrs: string, value: string, roll?: Roll | null) => {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  if (!roll || roll.from === value) return `<text x="${x}" y="${y}" ${attrs}>${esc(value)}</text>`
-  let n = 0
-  while (n < roll.from.length && n < value.length && roll.from[n] === value[n]) n++
-  const keep = value.slice(0, n)
-  const t = Math.min(1, Math.max(0, roll.t))
-  const line = fs * 1.2
-  const turned = line * reel(t)
-  const held = keep ? `<tspan fill-opacity="0">${esc(keep)}</tspan>` : ''
-  // The window: a figure's cap height over its line, and a little room under it.
-  return (
-    `<clipPath id="slot"><rect x="0" y="${(y - fs * 0.9).toFixed(1)}" width="100000" height="${(fs * 1.05).toFixed(1)}"/></clipPath>` +
-    (keep ? `<text x="${x}" y="${y}" ${attrs}>${esc(keep)}</text>` : '') +
-    `<g clip-path="url(#slot)">` +
-    `<text x="${x}" y="${y}" ${attrs} opacity="${(1 - 0.5 * t).toFixed(2)}">${held}<tspan dy="${(-turned).toFixed(1)}">${esc(roll.from.slice(n))}</tspan></text>` +
-    `<text x="${x}" y="${y}" ${attrs}>${held}<tspan dy="${(line - turned).toFixed(1)}">${esc(value.slice(n))}</tspan></text>` +
-    `</g>`
-  )
-}
-
-/** Ease out (quint): quick away from the old value, settling softly on the new one. */
-export const easeOut = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 5
-
-type Glide = { from: number; to: number; at: number }
-
-/**
- * Figures that glide to a new value instead of jumping. `value(key, target, now)` gives what
- * to draw: the target itself when first seen or once a glide ends, else an eased step between
- * where it was and the target (rounded by `round` while it moves). A new target mid-glide
- * starts from where the figure is, so it never jumps back. `active(now)` says whether any
- * figure is still moving, so the caller knows to draw again; `progress(key, now)` how far
- * through its glide one figure is (0 to 1), or `null` while it is still.
- */
-export const glider = (ms = MOTION.glideMs) => {
-  const glides = new Map<string, Glide>()
-  const at = (g: Glide, now: number) => (now - g.at >= ms ? g.to : g.from + (g.to - g.from) * easeOut((now - g.at) / ms))
-  return {
-    value(key: string, target: number | null, now: number, round: (v: number) => number = Math.round): number | null {
-      if (target === null || !Number.isFinite(target)) {
-        glides.delete(key)
-        return target
-      }
-      const g = glides.get(key)
-      if (!g) {
-        glides.set(key, { from: target, to: target, at: now - ms })
-        return target
-      }
-      if (g.to !== target) glides.set(key, { from: at(g, now), to: target, at: now })
-      const next = glides.get(key)!
-      return now - next.at >= ms ? target : round(at(next, now))
-    },
-    active: (now: number) => [...glides.values()].some(g => now - g.at < ms && g.from !== g.to),
-    progress(key: string, now: number): number | null {
-      const g = glides.get(key)
-      return g && g.from !== g.to && now - g.at < ms ? Math.max(0, now - g.at) / ms : null
-    },
-  }
-}
+export const glideStyle = (name: string, prop: string, css: (v: number) => string, from: number | null | undefined, to: number) =>
+  from === null || from === undefined || !Number.isFinite(from) || css(from) === css(to)
+    ? ''
+    : motionStyle(`@keyframes ${name}{from{${prop}:${css(from)}}to{${prop}:${css(to)}}}.${name}{animation:${name} ${MOTION.glideMs}ms ${EASE.out} both}`)
 
 /**
  * A panel's background: gradient fill, hairline edge, a one-pixel highlight along the top.
@@ -677,20 +621,29 @@ export const liveSpeed = (samples: ReadonlyArray<readonly [number, number]>, now
 export const speedScale = (peak: number) =>
   [50, 100, 150, 200, 300, 400, 600, 800, 1000, 1500, 2000].find(s => s >= peak * 1.1) ?? Math.ceil((peak * 1.1) / 1000) * 1000
 
-/** A speedometer as SVG: a 270° track open at the bottom, an arc filled to `fraction`, and a needle. */
-export const speedoSvg = (fraction: number, color: string, size: number) => {
-  const f = Number.isNaN(fraction) ? 0 : Math.max(0, Math.min(1, fraction))
+/**
+ * A speedometer as SVG: a 270° track open at the bottom, an arc filled to `fraction`, and a
+ * needle. With `from`, the arc and needle swing there from that fraction (`glideHolder`).
+ */
+export const speedoSvg = (fraction: number, color: string, size: number, from?: number | null) => {
+  const clamp = (v: number) => (Number.isNaN(v) ? 0 : Math.max(0, Math.min(1, v)))
+  const f = clamp(fraction)
+  const was = from === null || from === undefined ? null : clamp(from)
   const r = 17
   const c = 2 * Math.PI * r
   const sweep = 0.75 * c
   const dash = (v: number) => `${(v * sweep).toFixed(2)} ${c.toFixed(2)}`
   const arc =
     f > 0
-      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(f)}" transform="rotate(135 22 22)"/>`
+      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(f)}" transform="rotate(135 22 22)" class="spd-arc"/>` +
+        glideStyle('spd-arc', 'stroke-dasharray', dash, was, f)
       : ''
+  // The needle turns about the hub: drawn from the origin of a group set on the hub.
+  const turn = (v: number) => `rotate(${(-135 + v * 270).toFixed(1)}deg)`
   const needle =
-    `<g transform="rotate(${(-135 + f * 270).toFixed(1)} 22 22)">` +
-    `<path d="M22 22 L22 9" stroke="#f1ece8" stroke-width="2.6" stroke-linecap="round"/></g>`
+    `<g transform="translate(22 22)"><g transform="rotate(${(-135 + f * 270).toFixed(1)})" class="spd-needle">` +
+    `<path d="M0 0 L0 -13" stroke="#f1ece8" stroke-width="2.6" stroke-linecap="round"/></g></g>` +
+    glideStyle('spd-needle', 'transform', turn, was, f)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">` +
     `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3a3433" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
@@ -814,21 +767,48 @@ export const METER = { segs: 30, w: 6, h: 12, gap: 2 }
  * `color`, the rest the track. Drawn crisp, no anti-aliasing: the same language as the agent
  * sprites. Any use at all lights the first block, so a session that has begun never reads as empty.
  */
-export const meterSvg = (percent: number | null, color: string) => {
+export const meterSvg = (percent: number | null, color: string, from?: number | null) => {
   const M = METER
   const pitch = M.w + M.gap
   const width = M.segs * pitch - M.gap
   const height = M.h
-  const share = percent === null ? 0 : Math.max(0, Math.min(100, percent)) / 100
-  const litN = share > 0 ? Math.max(1, Math.round(share * M.segs)) : 0
-  const blocks = (from: number, to: number) =>
-    Array.from({ length: to - from }, (_, k) => `M${(from + k) * pitch} 0h${M.w}v${M.h}h-${M.w}z`).join('')
+  const lit = (p: number | null) => {
+    const share = p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100
+    return share > 0 ? Math.max(1, Math.round(share * M.segs)) : 0
+  }
+  const litN = lit(percent)
+  // With `from`, the blocks between the two readings light (or go out) one by one, on
+  // MOTION.glideMs and EASE.out, each at its own delay: crisp blocks, never half of one.
+  const fromN = from === null || from === undefined ? litN : lit(from)
+  const lo = Math.min(litN, fromN)
+  const hi = Math.max(litN, fromN)
+  const block = (k: number) => `M${k * pitch} 0h${M.w}v${M.h}h-${M.w}z`
+  const blocks = (a: number, b: number) => Array.from({ length: Math.max(0, b - a) }, (_, k) => block(a + k)).join('')
+  const step = Array.from({ length: hi - lo }, (_, i) => {
+    const k = litN > fromN ? fromN + i : fromN - 1 - i
+    const delay = Math.round(MOTION.glideMs * easeIn((i + 1) / (hi - lo)))
+    return `<path d="${block(k)}" fill="${k < litN ? color : INK.track}" class="m" style="animation-delay:${delay}ms"/>`
+  }).join('')
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" shape-rendering="crispEdges">` +
-    (litN < M.segs ? `<path d="${blocks(litN, M.segs)}" fill="${INK.track}"/>` : '') +
-    (litN > 0 ? `<path d="${blocks(0, litN)}" fill="${color}"/>` : '') +
+    (hi < M.segs ? `<path d="${blocks(hi, M.segs)}" fill="${INK.track}"/>` : '') +
+    (lo > 0 ? `<path d="${blocks(0, lo)}" fill="${color}"/>` : '') +
+    step +
+    (step ? motionStyle(`@keyframes m{from{fill:${litN > fromN ? INK.track : color}}}.m{animation:m 1ms linear both}`) : '') +
     `</svg>`
   return { svg, width, height }
+}
+
+/** When EASE.out reaches `y` (0 to 1): the time a glide passes a point on its way. */
+const easeIn = (y: number) => {
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < 32; i++) {
+    const mid = (lo + hi) / 2
+    if (easeOut(mid) < y) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
 }
 
 /** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
@@ -850,15 +830,15 @@ export const contextSvg = (
     stack?: boolean
     width?: number
     warn?: boolean
-    /** The figure as written, when the meter shows a glide on its way to it; and its roll. */
-    value?: string
-    roll?: Roll | null
+    /** The figure rolls in from this one (`reelText`); the meter glides from `fromPercent`. */
+    from?: string | null
+    fromPercent?: number | null
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CONTEXT
-  const meter = meterSvg(percent, color)
-  const value = opts.value ?? (percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`)
+  const meter = meterSvg(percent, color, opts.fromPercent)
+  const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
   const valueX = C.icon + 8
   const valueW = labelWidth(value, C.fs)
@@ -878,7 +858,7 @@ export const contextSvg = (
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     iconGroup('chip', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
-    slotText(valueX, y, C.fs, `${font} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.roll) +
+    reelText(valueX, y, C.fs, `${font} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
     `<text x="${wordsX}" y="${y}" ${font} font-size="${C.labelFs}">${words}</text>` +
     `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
     `</svg>`
@@ -959,8 +939,8 @@ export const statSvg = (
     stack?: string[]
     /** The icon alone, no tile, centred in the glyph slot: the quiet look of a figure. */
     plain?: boolean
-    /** The value rolls in from this one (`roller`, `slotText`); the label is at its new place. */
-    roll?: Roll | null
+    /** The value rolls in from this one (`reelHolder`, `reelText`); the label is at its new place. */
+    reel?: string | null
     /**
      * A state to read at a glance (a mode on or off): the label in this colour, or, stacked,
      * the first line under the value.
@@ -1012,7 +992,7 @@ export const statSvg = (
         return `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" ${ink}>${esc(line)}</text>`
       })
       .join('')
-  const valueLine = slotText(x, y, S.fs, valueFont, value, opts.roll)
+  const valueLine = reelText(x, y, S.fs, valueFont, value, opts.reel)
   // Sized generously, so the label always fits; `width` only ever widens it to the column.
   // The last 12px are for a face wider than the estimate (bold values run wide), which would
   // otherwise clip the label.
@@ -1083,8 +1063,6 @@ export const chipSvg = (opts: {
    * right, from their still look (a loop: see MOTION).
    */
   motion?: boolean
-  /** The value rolls in from this one (`roller`, `slotText`). */
-  roll?: Roll | null
   /** The value rolls in from this one by itself, in CSS (`reelHolder`, `reelText`). */
   reel?: string | null
 }) => {
@@ -1118,9 +1096,7 @@ export const chipSvg = (opts: {
     `<text x="${x}" y="${y}" ${font} font-size="${opts.strong && !opts.value ? C.fs : C.labelFs}">${holder}` +
     `<tspan ${labelStyle}${opts.value ? ' dx="5"' : ''}>${esc(opts.label)}</tspan></text>`
   const value = opts.value
-    ? opts.reel
-      ? reelText(x, y, C.fs, valueFont, opts.value, opts.reel)
-      : slotText(x, y, C.fs, valueFont, opts.value, opts.roll)
+    ? reelText(x, y, C.fs, valueFont, opts.value, opts.reel)
     : ''
   // Sized generously (bold values run wide), so the label always fits.
   const natural = Math.ceil(
@@ -1153,6 +1129,23 @@ export const chipSvg = (opts: {
     motion +
     `</svg>`
   return { svg, width, height: h, natural }
+}
+
+/**
+ * A dim line of text that rolls to each new value like the band's figures (`reelText`): the
+ * top line's elapsed clock. `minText` holds it as wide as that text from the start, so what
+ * follows it never steps right as it grows.
+ */
+export const tickerSvg = (text: string, opts: { from?: string | null; minText?: string; color?: string } = {}) => {
+  const C = CHIP_LINE
+  const font = `font-family="ui-sans-serif,system-ui,sans-serif" font-size="${C.fs}" fill="${opts.color ?? INK.label}"`
+  // A little room past the estimate, for a face wider than it.
+  const width = Math.ceil(Math.max(labelWidth(text, C.fs), labelWidth(opts.minText ?? '', C.fs)) + 6)
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${C.height}" width="${width}" height="${C.height}">` +
+    reelText(0, C.baseline, C.fs, font, text, opts.from) +
+    `</svg>`
+  return { svg, width, height: C.height }
 }
 
 /**

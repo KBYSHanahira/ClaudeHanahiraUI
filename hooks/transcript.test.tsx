@@ -208,41 +208,48 @@ run('the band\'s loops keep their picture across beats, so they run on and never
   await ui.unmount()
 })
 
-run('a figure that changes rolls in like a slot reel while its meter glides, then holds still', async ($, on) => {
+run('a change plays once in CSS inside its picture, the same picture while it plays, then the plain one', async ($, on) => {
   const clock = mock.clock(on, { now: 2_000_000 })
   const usage = { percent: 20, usd: 1 }
   const ui = await band($, on, usage, false)
   const context = async () => (await pictures(ui)).find(p => /:\d+% context=/.test(p))!
   const cost = async () => (await pictures(ui)).find(p => /:Cost /.test(p))!
-  // How many of the meter's blocks are lit (the meter's colour), as the hero line draws it.
-  const lit = async () => (/<path d="([^"]*)" fill="#e8825f"\/>/.exec(await context())?.[1]?.match(/M/g) ?? []).length
+  // How many of the meter's blocks rest lit (the meter's colour), as the hero line draws it.
+  const lit = async () => {
+    const p = await context()
+    const base = (/<path d="([^"]*)" fill="#e8825f"\/>/.exec(p)?.[1]?.match(/M/g) ?? []).length
+    return base + (p.match(/fill="#e8825f" class="m"/g) ?? []).length
+  }
   expect(await context()).toMatch(/^\d+:20% context=/)
+  expect(await context()).not.toContain('<style>')
   const litBefore = await lit()
   usage.percent = 60
   usage.usd = 5
   await ($ as any).session.measure({
     context: { percent: 60, tokens: 600000, window: 1000000 }, rateLimits: [], cost: { usd: 5 }, changed: ['context', 'cost'],
   })
-  const rolling: boolean[] = []
-  const meter: number[] = []
-  for (let i = 0; i < 8; i++) {
-    await clock.advance(100)
-    const p = await context()
-    // The figure is the new one at once, for a reader; the picture rolls it in over the old.
-    expect(p).toMatch(/^\d+:60% context=/)
-    rolling.push(p.includes('clip-path="url(#slot)"'))
-    meter.push(await lit())
-  }
-  // It rolled (20% out, 60% in), then landed: the last pictures hold no roll.
-  expect(rolling.slice(0, 3).every(Boolean)).toBe(true)
-  expect(rolling[rolling.length - 1]).toBe(false)
-  // The meter glides: blocks light on the way, never back, and end at the new fill.
-  expect(meter.some(n => n > litBefore && n < meter[meter.length - 1]!)).toBe(true)
-  expect(meter).toEqual([...meter].sort((a, b) => a - b))
+  // The figure is the new one at once, for a reader; the picture rolls it in and lights the
+  // meter up to it by itself, resting on the new fill.
+  const playing = await context()
+  expect(playing).toMatch(/^\d+:60% context=/)
+  expect(playing).toContain('@keyframes reel')
+  expect(playing).toContain('@keyframes m{')
+  const litAfter = await lit()
+  expect(litAfter).toBeGreaterThan(litBefore)
   expect(await cost()).toContain('≈$5.00')
-  expect(await cost()).not.toContain('url(#slot)')
-  // Landed: the band is still again, a redraw draws the same pictures.
+  expect(await cost()).toContain('@keyframes reel')
+  // While it plays, a redraw sends the same picture, so the surface never starts it over.
+  for (let i = 0; i < 5; i++) {
+    await clock.advance(100)
+    await ui.redraw()
+    expect(await context()).toBe(playing)
+  }
+  // Played: the plain picture, at the same fill, and still from then on.
+  await clock.advance(2000) // past the longest motion (MOTION.glideMs) and its hold (MOTION.holdMs)
+  await ui.redraw()
   const settled = await pictures(ui)
+  expect(settled.join()).not.toContain('@keyframes')
+  expect(await lit()).toBe(litAfter)
   await clock.advance(1000)
   await ui.redraw()
   expect(await pictures(ui)).toEqual(settled)
@@ -252,8 +259,9 @@ run('a figure that changes rolls in like a slot reel while its meter glides, the
 /** The Time figure and the top line's clock, as the band draws them now. */
 const clocks = async (ui: any) => {
   const time = (await pictures(ui)).map(p => /:Time ([^=]+)=/.exec(p)?.[1]).find(Boolean)
-  const texts = (await ui.findAll({ type: 'Text' })).map((t: { text: string }) => t.text)
-  return { time, top: texts.find((t: string) => /^\d+(m \d+)?s$|^\d+m \d+s$/.test(t)) }
+  // The top line's clock is a picture that rolls each second in; its alt is the time as written.
+  const top = (await pictures(ui)).map(p => /^\d+:(\d+s|\d+m \d+s)=/.exec(p)?.[1]).find(Boolean)
+  return { time, top }
 }
 /** What the engine answers beneath the plugin for a turn's events. */
 const turns = (on: any) => {
