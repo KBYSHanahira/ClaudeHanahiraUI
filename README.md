@@ -10,7 +10,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.12.2-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.12.3-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 **🇯🇵 日本語（このページ）** ｜ [🇬🇧 English](README.en.md)

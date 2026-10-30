@@ -641,8 +641,9 @@ export const register: Register = on => {
   })
 
   // Hanahira Claude UI mode: the person's switch turns it on or off; one of its skills loading
-  // turns it on and names the part. A skill loads three ways and each is watched, as another
-  // plugin's skill.prompt hook may answer without passing the event on to this one.
+  // turns it on and names the part. A skill loads typed as /name (prompt.submit) or through the
+  // Skill tool (tool.call). No skill.prompt hook: a security plugin answers that event first and
+  // passes it on past this one, and the engine then prints a skipped-hook line on every load.
 
   on('prompt.submit', async ($, e, next) => {
     // A prompt the person did not type (isMeta, newer engines) switches nothing.
@@ -657,12 +658,6 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
-    const part = hanahiraPart(e.skill)
-    if (part !== null && !switchedOff) await loadPart($, part)
-    return next(e)
-  })
-
-  on('skill.prompt', async ($, e, next) => {
     const part = hanahiraPart(e.skill)
     if (part !== null && !switchedOff) await loadPart($, part)
     return next(e)
