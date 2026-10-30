@@ -214,14 +214,10 @@ run('a change plays once in CSS inside its picture, the same picture while it pl
   const ui = await band($, on, usage, false)
   const context = async () => (await pictures(ui)).find(p => /:\d+% context=/.test(p))!
   const cost = async () => (await pictures(ui)).find(p => /:Cost /.test(p))!
-  // How many of the meter's blocks rest lit (the meter's colour), as the hero line draws it.
-  const lit = async () => {
-    const p = await context()
-    const base = (/<path d="([^"]*)" fill="#e8825f"\/>/.exec(p)?.[1]?.match(/M/g) ?? []).length
-    return base + (p.match(/fill="#e8825f" class="m"/g) ?? []).length
-  }
+  // How far the context slider's fill rests, in px, as the hero line draws it.
+  const lit = async () => Number(/width="([\d.]+)" height="12" rx="6" fill="url\(#heat\)"/.exec(await context())?.[1] ?? 0)
   expect(await context()).toMatch(/^\d+:20% context=/)
-  expect(await context()).not.toContain('<style>')
+  expect(await context()).not.toContain('@keyframes')
   const litBefore = await lit()
   usage.percent = 60
   usage.usd = 5
@@ -229,11 +225,11 @@ run('a change plays once in CSS inside its picture, the same picture while it pl
     context: { percent: 60, tokens: 600000, window: 1000000 }, rateLimits: [], cost: { usd: 5 }, changed: ['context', 'cost'],
   })
   // The figure is the new one at once, for a reader; the picture rolls it in and lights the
-  // meter up to it by itself, resting on the new fill.
+  // slider up to it by itself, resting on the new fill.
   const playing = await context()
   expect(playing).toMatch(/^\d+:60% context=/)
   expect(playing).toContain('@keyframes reel')
-  expect(playing).toContain('@keyframes m{')
+  expect(playing).toContain('@keyframes sl-fill')
   const litAfter = await lit()
   expect(litAfter).toBeGreaterThan(litBefore)
   expect(await cost()).toContain('≈$5.00')
@@ -272,6 +268,61 @@ const turns = (on: any) => {
 const working = { hasSurvey: false, isWorking: true, maxRows: 30, bodyColumns: 150, scroll: { offset: 0, bodyRows: 30 }, view: {} }
 const idle = { ...working, isWorking: false }
 
+run('the top bar is red while Claude works and green once the turn is done', async ($, on) => {
+  mock.clock(on, { now: 2_000_000 })
+  turns(on)
+  const ui = await band($, on, { percent: 20, usd: 1 }, true)
+  const bar = async () =>
+    ((await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string } }[]).find(s => /^(Working|Idle)$/.test(s.props.alt))!
+  await ($ as any).turn.start({ text: 'go', turnId: 't0' })
+  await ui.redraw(working)
+  expect((await bar()).props.alt).toBe('Working')
+  expect((await bar()).props.source).toContain('fill="#f2736b"/>')
+  await ($ as any).turn.complete({ turnId: 't0', answer: '', durationMs: 1000, isAborted: false, reason: 'answer' })
+  await ui.redraw(idle)
+  expect((await bar()).props.alt).toBe('Idle')
+  expect((await bar()).props.source).toContain('fill="#34c38f"/>')
+  expect((await bar()).props.source).not.toContain('#f2736b')
+  await ui.unmount()
+})
+
+run('the status chip is red while Claude works, then green success; a stopped turn says so', async ($, on) => {
+  mock.clock(on, { now: 2_500_000 })
+  turns(on)
+  const ui = await band($, on, { percent: 20, usd: 1 }, false)
+  const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string } }[]
+  const chip = async () => (await svgs()).filter(s => /^(Working|Success|Stopped|Error|Idle)$/.test(s.props.alt)).at(-1)!
+  expect((await chip()).props.alt).toBe('Idle')
+  await ($ as any).turn.start({ text: 'go', turnId: 't1' })
+  await ui.redraw(working)
+  expect((await chip()).props.alt).toBe('Working')
+  expect((await chip()).props.source).toContain('#f2736b')
+  await ($ as any).turn.complete({ turnId: 't1', answer: '', durationMs: 1000, isAborted: false, reason: 'answer' })
+  await ui.redraw(idle)
+  expect((await chip()).props.alt).toBe('Success')
+  expect((await chip()).props.source).toContain('#34c38f')
+  expect((await chip()).props.source).toContain('success')
+  // The next turn starts over in red; a turn stopped halfway rests grey, bar and chip.
+  await ($ as any).turn.start({ text: 'go', turnId: 't2' })
+  await ui.redraw(working)
+  expect((await chip()).props.alt).toBe('Working')
+  await ($ as any).turn.complete({ turnId: 't2', answer: '', durationMs: 1000, isAborted: true, reason: 'aborted' })
+  await ui.redraw(idle)
+  expect((await chip()).props.alt).toBe('Stopped')
+  expect((await svgs()).find(s => s.props.alt === 'Idle')!.props.source).not.toContain('#34c38f')
+  await ui.unmount()
+})
+
+run('the top line sits on a card of its own', async ($, on) => {
+  mock.clock(on, { now: 2_600_000 })
+  const ui = await band($, on, { percent: 20, usd: 1 }, false)
+  const boxes = (await ui.findAll({ type: 'Box' })) as unknown as { props: Record<string, unknown> }[]
+  const card = boxes.filter(b => b.props.borderStyle === 'round')
+  expect(card.length).toBe(1)
+  expect(card[0]!.props.backgroundColor).toBe('#8080800f')
+  await ui.unmount()
+})
+
 run('a turn started without a typed prompt runs the clocks live, and Time adds the turn as it ends', async ($, on) => {
   const clock = mock.clock(on, { now: 3_000_000 })
   turns(on)
@@ -306,21 +357,23 @@ run('a prompt typed while a turn runs neither restarts its clock nor clears its 
   await ui.unmount()
 })
 
-run('the Hanahira tile turns in once as the mode switches on, breathes while Claude works, and rests idle', async ($, on) => {
+run('the Hanahira switch slides on once as the mode switches on, in a plain picture, and rests', async ($, on) => {
   const clock = mock.clock(on, { now: 5_000_000 })
   turns(on)
   const ui = await band($, on, { percent: 20, usd: 1 }, true)
   const svgs = async () => (await ui.findAll({ type: 'Svg' })) as unknown as { props: { source: string; alt: string; isInteractive?: boolean } }[]
   const tile = async () => (await svgs()).find(s => /^Hanahira /.test(s.props.alt))!
   expect((await tile()).props.source).not.toContain('@keyframes')
+  expect((await tile()).props.source).toContain('fill="#4a4846"') // off: the grey track
   await ($ as any).prompt.submit({ text: '/Hanahira Claude UI on' })
   await ($ as any).turn.start({ text: '/Hanahira Claude UI on', turnId: 't3' })
   await ui.redraw(working)
   const arriving = await tile()
   expect(arriving.props.alt).toBe('Hanahira Claude UI active')
-  expect(arriving.props.source).toContain('twinkle')
-  expect(arriving.props.isInteractive).toBe(true)
-  // The beats of the turn draw the same picture, so the turn-in plays once and the breath runs on.
+  expect(arriving.props.source).toContain('@keyframes tg-knob')
+  // A one-shot in a plain image: no frame, so nothing blinks.
+  expect(arriving.props.isInteractive).toBeUndefined()
+  // The beats of the turn draw the same picture, so the knob slides once.
   for (let i = 0; i < 3; i++) {
     await clock.advance(1000)
     await ui.redraw(working)
@@ -328,13 +381,13 @@ run('the Hanahira tile turns in once as the mode switches on, breathes while Cla
   }
   await ($ as any).turn.complete({ turnId: 't3', answer: '', durationMs: 3000, isAborted: false, reason: 'answer' })
   await ui.redraw(idle)
-  expect((await tile()).props.source).not.toContain('@keyframes')
-  expect((await tile()).props.isInteractive).toBeUndefined()
-  // The next turn breathes without turning in again.
+  const rest = (await tile()).props.source
+  expect(rest).not.toContain('@keyframes')
+  expect(rest).toContain('fill="#34c38f"') // on: the green track
+  // The next turn does not slide it again.
   await ($ as any).turn.start({ text: 'next', turnId: 't4' })
   await ui.redraw(working)
-  expect((await tile()).props.source).toContain('animation:spark')
-  expect((await tile()).props.source).not.toContain('twinkle')
+  expect((await tile()).props.source).toBe(rest)
   await ui.unmount()
 })
 

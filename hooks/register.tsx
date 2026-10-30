@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Agent, Info, Skill, Stats, Tokens, Usage } from '../types'
+import type { Agent, Info, Outcome, Skill, Stats, Tokens, Usage } from '../types'
 import { agentCardParts, agentStats, prettyModel, visibleAgents } from './agents'
 import {
   KIND_COLOR,
@@ -44,6 +44,9 @@ import {
   statSvg,
   statusPill,
   tickerSvg,
+  GLASS,
+  inCard,
+  themed,
   tokensPerSec,
 } from './chat'
 export { clip }
@@ -90,7 +93,7 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
 // `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; reel?: string | null; from?: number | null }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: boolean }; reel?: string | null; from?: number | null }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
@@ -106,6 +109,8 @@ const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, []
 
 // Hanahira Claude UI mode, shown after the speed: on while its skills are at work.
 const skill = atom({ plugin: 'hanahira-claude-ui', key: 'skill' } as const, { on: false, loaded: [] } as Skill)
+// How the latest main turn ended; none before the first one ends, and none while one runs.
+const outcome = atom({ plugin: 'hanahira-claude-ui', key: 'outcome' } as const, null as Outcome | null)
 const SKILL_ON = '#34c38f' // the green of the mode's own banner
 const SKILL_OFF = '#f2736b' // the red of its switch-off box, as the rings' red
 export const asSkill = (v: unknown): Skill => {
@@ -209,17 +214,22 @@ const RING = 38
 const CARD_MIN = 18
 
 const THEME = {
-  accent: '#9b8cf7', // dot, loading bar, the working chip
+  accent: '#9b8cf7', // the status dot
+  working: '#f2736b', // the loading bar and the status chip while Claude works
+  done: '#34c38f', // both once the turn is done
+  // The top line's card, in grey at low alpha so it reads on the light theme and the dark.
+  lineCard: { bg: '#8080800f', border: '#8080802e' },
   warm: '#e8825f', // frame, the context meter, the limit rings
   muted: INK.detail, // the figures' icons: quiet, so the meter leads
   fallbackTitle: 'Hanahira',
-  frame: true,
+  // The band's rounded frame; off since each cell is its own glass card.
+  frame: false,
   // Two even rows of one-line stats (gauges over figures, in aligned columns) in place of
   // three-line tiles over tall cards: about half the height. false brings back the full band.
   compact: true,
   barPx: 900, // widest the loading bar grows, in px
-  barHeight: 12, // its height in px
-  barGap: 6, // room under the bar, in px: keeps it off the rings below
+  barHeight: 8, // its height in px
+  barGap: 4, // room under the bar, in px: keeps it off the rings below
   listAgents: 4, // agent cards on the strip: running first, then the latest finished
   keepFinishedMs: 3000, // a finished agent's card stays this long (to show the check), then goes
   stripGap: 8, // room under the agent strip, in px: keeps it off the band's frame
@@ -414,7 +424,7 @@ const runningPill = (els: { Text: any; Svg: any }) => pillEl(els, { text: 'runni
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, size: number, fallback: string) => {
   const { Text, Svg } = els
-  return Svg ? <Svg source={iconSvg(name, color, size)} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
+  return Svg ? <Svg source={themed(iconSvg(name, color, size))} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
 }
 
 /** The transcript's own colours, beside the kinds' and the pills'. */
@@ -648,6 +658,7 @@ export const register: Register = on => {
       void update($, tick, n => (n ?? 0) + 1)
     })
     await update($, stats, () => EMPTY)
+    await update($, outcome, () => null)
     return next(e)
   })
 
@@ -853,6 +864,8 @@ export const register: Register = on => {
     }
     ticker?.cancel()
     ticker = null
+    const reason = (e as unknown as { reason?: string }).reason
+    await update($, outcome, () => (reason === 'error' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done'))
     // The turn's length as the engine reports it; failing that, from the start this module heard
     // (none after a reload mid-turn: startedAt is 0 and the span would be epoch seconds).
     const nowMs = await $.clock.now()
@@ -873,7 +886,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl, skNow] = await Promise.all([
+    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl, skNow, endedAs] = await Promise.all([
       read($, stats),
       read($, seconds),
       read($, info),
@@ -886,6 +899,7 @@ export const register: Register = on => {
       read($, speed),
       read($, model),
       read($, skill),
+      read($, outcome),
     ])
     // What the band draws: each figure as stored, and where a change came from while it plays
     // (see MOTION in chat.ts): `reel` for a figure written out, `from` for a ring or meter.
@@ -927,11 +941,11 @@ export const register: Register = on => {
     // `roll` names the figure's slot roll: a new value rolls in over the old one.
     const cards: { label: string; value: string; icon: IconName; color: string; roll?: string }[] = [
       { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', roll: 'usd' },
-      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'layers' as IconName, color: '#9b8cf7', roll: 'tokens' },
+      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'hash' as IconName, color: '#9b8cf7', roll: 'tokens' },
       // Live: it counts every second while a turn runs, on the band's beat, each second rolling
       // in like the other figures (only the digits that change turn).
-      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'stopwatch' as IconName, color: '#7bd88f', roll: 'time' },
-      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'bot' as IconName, color: '#5eb5f7', roll: 'model' },
+      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'timer' as IconName, color: '#5eb5f7', roll: 'time' },
+      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'sparkles' as IconName, color: '#e8825f', roll: 'model' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
     ]
@@ -945,20 +959,22 @@ export const register: Register = on => {
     // look. Status is held as wide as 'working' and the count as wide as three digits, so
     // nothing on the line moves when a turn starts or the count grows.
     const toolWord = st.tools === 1 ? 'tool' : 'tools'
-    const statusChip = (working: boolean) =>
-      chipSvg(
-        working
-          ? { color: THEME.accent, label: 'working', dots: true, strong: true, motion: true }
-          : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, strong: true, quiet: true },
-      )
+    // Working in red; once the turn ends, how it went: success in green, error, stopped, or idle
+    // before the first turn. Held as wide as the widest, so nothing after it moves.
+    type Status = 'working' | Outcome | 'idle'
+    const STATUS: Record<Status, Parameters<typeof chipSvg>[0]> = {
+      working: { color: THEME.working, label: 'working', dots: true, motion: true },
+      done: { color: THEME.done, label: 'success', icon: 'check' },
+      error: { color: THEME.working, label: 'error', icon: 'cross' },
+      stopped: { color: '#a8a29e', label: 'stopped', icon: 'ban', quiet: true },
+      idle: { color: '#a8a29e', label: 'idle', icon: 'pause', quiet: true },
+    }
+    const status: Status = e.props.isWorking ? 'working' : (endedAs ?? 'idle')
+    const statusW = Math.max(...Object.values(STATUS).map(o => chipSvg({ ...o, strong: true, motion: false }).natural))
+    // The bar rests green unless the turn went wrong.
+    const barRest = status === 'error' || status === 'stopped' ? INK.track : THEME.done
     const chips = [
-      { key: 'status', alt: e.props.isWorking ? 'Working' : 'Idle', art: chipSvg({
-        ...(e.props.isWorking
-          ? { color: THEME.accent, label: 'working', dots: true, motion: true }
-          : { color: '#a8a29e', label: 'idle', icon: 'pause' as IconName, quiet: true }),
-        strong: true,
-        minWidth: Math.max(statusChip(true).natural, statusChip(false).natural),
-      }) },
+      { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: chipSvg({ ...STATUS[status], strong: true, minWidth: statusW }) },
       { key: 'tools', alt: `${st.tools} tool calls`, art: chipSvg({
         color: '#f2c94c',
         icon: 'bolt',
@@ -968,7 +984,7 @@ export const register: Register = on => {
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
       }) },
-      { key: 'version', alt: `UI v${VERSION}`, art: chipSvg({ color: '#8f8985', icon: 'cube', label: `v${VERSION}`, quiet: true }) },
+      { key: 'version', alt: `UI v${VERSION}`, art: chipSvg({ color: '#8f8985', icon: 'tag', label: `v${VERSION}`, quiet: true }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -986,7 +1002,8 @@ export const register: Register = on => {
         ? chips.reduce((w, c) => w + c.art.width, 0) + gapPx * chips.length
         : pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width + countArt.width + 2 * gapPx) +
       gapPx
-    const framePx = 4 * gapPx + 24 // the frame's padding and border, and slack for font differences
+    // The frame's and the line card's padding and border, and slack for font differences.
+    const framePx = 4 * gapPx + 24 + 4 * 8
     const topRoomPx = e.props.bodyColumns * 8 - framePx
     const stacked = leftPx + rightPx > topRoomPx
     // On a line of its own and still too wide: the version chip, the least needed, gives way.
@@ -1003,7 +1020,7 @@ export const register: Register = on => {
     const tiles: Tile[] = [
       {
         key: 'context',
-        icon: 'chip' as IconName,
+        icon: 'brain' as IconName,
         percent: use.percent,
         big: use.percent === null ? '—' : `${use.percent}%`,
         caption: use.tokens !== null && use.window !== null ? `context · ${fmtTokens(use.tokens)}/${fmtTokens(use.window)}` : 'context used',
@@ -1013,7 +1030,7 @@ export const register: Register = on => {
       },
       ...(Array.isArray(use.limits) ? use.limits : []).map(l => ({
         key: l.kind,
-        icon: (l.kind === 'five_hour' ? 'clock' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
+        icon: (l.kind === 'five_hour' ? 'hourglass' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
         percent: l.percentUsed,
         big: `${Math.round(l.shown)}%`,
         reel: reel(`limit-${l.kind}`, `${Math.round(l.shown)}%`),
@@ -1051,7 +1068,8 @@ export const register: Register = on => {
         detail: sk.on ? sk.loaded.filter(p => p !== 'core').join(', ') || undefined : undefined,
         color: sk.on ? SKILL_ON : SKILL_OFF,
         tone: sk.on ? SKILL_ON : SKILL_OFF,
-        ...(e.props.isWorking && sk.on ? { spark: { pulse: true, ...(twinkle ? { enterFrom: SKILL_OFF } : {}) } } : {}),
+        // A switch, as on a smart-home panel: it slides over once as the mode switches on.
+        toggle: { on: sk.on, enter: twinkle },
       },
     ]
     // A tile's ring (or, where pictures are not drawn, a glyph of it), at either size.
@@ -1087,7 +1105,9 @@ export const register: Register = on => {
       label: [t.short, t.detail].filter(Boolean).join(' · '),
       bareLabel: t.short,
       live: t.spark !== undefined,
-      draw: (width, mode = 'line') => {
+      // Each cell on its own glass card (inCard): what it holds is the column less the card.
+      draw: (cardW, mode = 'line') => {
+        const width = cardW === undefined ? undefined : cardW - GLASS.extra
         // Stacked: the name beside the value, what is left and the detail on lines under it;
         // tall: the name under the value too. Every gauge gets as many lines under it (blank
         // where it has less), so a line of gauges keeps one height and one baseline.
@@ -1095,9 +1115,9 @@ export const register: Register = on => {
         const more = [...rest, ...(t.detail ? [t.detail] : [])]
         // A state reads under the value in both, its colour on the line it takes.
         const under = t.tone
-          ? mode === 'stack' || mode === 'tall' ? [name, ...more, '', '', ''].slice(0, mode === 'stack' ? 2 : 3) : undefined
-          : mode === 'stack' ? [...more, '', ''].slice(0, 2) : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
-        return statSvg(t.big, mode === 'stack' ? (t.tone ? '' : name) : mode === 'tall' ? '' : t.short, {
+          ? mode === 'stack' ? [[name, ...more].join(' · ')] : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
+          : mode === 'stack' ? [more.join(' · ')] : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
+        return inCard(statSvg(t.big, mode === 'stack' ? (t.tone ? '' : name) : mode === 'tall' ? '' : t.short, {
           tone: t.tone,
           reel: t.reel,
           detail: mode === 'line' ? t.detail : undefined,
@@ -1107,11 +1127,13 @@ export const register: Register = on => {
           ...(t.key === 'speed'
             ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph, t.from === null || t.from === undefined ? null : t.from / 100) }
             : t.percent === null
-            ? { icon: t.icon, color: t.color ?? THEME.accent, spark: t.spark }
+            ? t.toggle
+              ? { toggle: t.toggle, color: t.color ?? THEME.accent }
+              : { icon: t.icon, color: t.color ?? THEME.accent, spark: t.spark }
             : {
                 ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, { icon: t.icon, bigIcon: true, from: t.from }),
               }),
-        })
+        }))
       },
     }))
     const figureCells: Cell[] = cards.map(c => {
@@ -1123,10 +1145,11 @@ export const register: Register = on => {
         label,
         bareLabel: label,
         // Stacked, the label goes under the value, so the column is no wider than the value.
-        draw: (width, mode = 'line') => {
+        draw: (cardW, mode = 'line') => {
+          const width = cardW === undefined ? undefined : cardW - GLASS.extra
           const under = mode === 'stack' || mode === 'tall'
-          // Plain and muted: the figures are the quiet row, so the meter and the gauges lead.
-          return statSvg(c.value, under ? '' : label, { icon: c.icon, color: THEME.muted, plain: true, width, reel: c.roll ? reel(c.roll, c.value) : null, ...(under ? { stack: [label] } : {}) })
+          // Each figure's icon on a tile tinted its own colour, like the gauges' rings above.
+          return inCard(statSvg(c.value, under ? '' : label, { icon: c.icon, color: c.color, width, reel: c.roll ? reel(c.roll, c.value) : null, ...(under ? { stack: [label] } : {}) }))
         },
       }
     })
@@ -1149,9 +1172,11 @@ export const register: Register = on => {
       fromPercent: from('context', use.percent),
     }
     const ctxColor = ringColor(use.percent ?? 0)
-    const ctxLine = contextSvg(use.percent, ctxColor, ctxOpts)
-    const ctxArt = ctxLine.natural > roomPx ? contextSvg(use.percent, ctxColor, { ...ctxOpts, stack: true }) : ctxLine
-    const cellGapPx = 2 * 8
+    // On its own glass card, like the cells under it.
+    const ctxLine = inCard(contextSvg(use.percent, ctxColor, ctxOpts))
+    const ctxArt = ctxLine.natural > roomPx ? inCard(contextSvg(use.percent, ctxColor, { ...ctxOpts, stack: true })) : ctxLine
+    // The cards keep their own margin (GLASS.margin), so one column between them is enough.
+    const cellGapPx = 8
     const across = Math.max(gaugeCells.length, figureCells.length, 1)
     const layouts: { k: number; mode: Mode }[] = [
       { k: across, mode: 'line' },
@@ -1186,11 +1211,11 @@ export const register: Register = on => {
                 Svg ? (
                   <Box key={`agent-${a.id}`} flexDirection="column">
                     <Box flexDirection="row">
-                      <Svg source={art.head.svg} alt={`${a.name}, ${a.status}`} width={art.head.width} height={art.head.height} />
-                      <Svg source={art.mark.svg} alt={`${a.name} ${a.status === 'running' ? 'working' : a.status}`} width={art.mark.width} height={art.mark.height} {...loop} />
+                      <Svg source={themed(art.head.svg)} alt={`${a.name}, ${a.status}`} width={art.head.width} height={art.head.height} />
+                      <Svg source={themed(art.mark.svg)} alt={`${a.name} ${a.status === 'running' ? 'working' : a.status}`} width={art.mark.width} height={art.mark.height} {...loop} />
                     </Box>
-                    <Svg source={art.body.svg} alt={agentStats(a)} width={art.body.width} height={art.body.height} />
-                    <Svg source={art.strip.svg} alt={`${a.name} progress`} width={art.strip.width} height={art.strip.height} {...loop} />
+                    <Svg source={themed(art.body.svg)} alt={agentStats(a)} width={art.body.width} height={art.body.height} />
+                    <Svg source={themed(art.strip.svg)} alt={`${a.name} progress`} width={art.strip.width} height={art.strip.height} {...loop} />
                   </Box>
                 ) : (
                   <Text key={`agent-${a.id}`} dimColor>{`◈ ${a.name} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
@@ -1204,10 +1229,16 @@ export const register: Register = on => {
         paddingX={1}
         {...(THEME.frame ? { borderStyle: 'round', borderColor: THEME.warm } : {})}
       >
-        <Box flexDirection={stacked ? 'column' : 'row'} columnGap={1} alignItems={stacked ? 'stretch' : 'center'}>
+        <Box
+          flexDirection={stacked ? 'column' : 'row'}
+          columnGap={1}
+          alignItems={stacked ? 'stretch' : 'center'}
+          // On a surface that draws the cards, the top line gets one of its own.
+          {...(Svg ? { borderStyle: 'round', borderColor: THEME.lineCard.border, backgroundColor: THEME.lineCard.bg, paddingX: 1 } : {})}
+        >
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={dotSvg(THEME.accent, e.props.isWorking, 14, true)} alt="" width={14} height={14} {...loop} />
+              <Svg source={themed(dotSvg(THEME.accent, e.props.isWorking, 14, true))} alt="" width={14} height={14} {...loop} />
             ) : (
               <Text color={THEME.accent}>●</Text>
             )}
@@ -1226,11 +1257,12 @@ export const register: Register = on => {
               <Box flexGrow={1} flexShrink={1} minWidth={0} alignItems="center">
                 <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                   <Svg
-                    source={loadingSvg(THEME.barPx, THEME.barHeight, THEME.accent, {
+                    source={themed(loadingSvg(THEME.barPx, THEME.barHeight, THEME.working, {
                       live: e.props.isWorking,
+                      rest: barRest,
                       padBottom: THEME.barGap,
                       motion: true,
-                    })}
+                    }))}
                     alt={e.props.isWorking ? 'Working' : 'Idle'}
                     width={THEME.barPx}
                     height={THEME.barHeight + THEME.barGap}
@@ -1247,7 +1279,7 @@ export const register: Register = on => {
                 {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
                 {Svg ? (
                   // Each second rolls in, like the band's figures.
-                  <Svg source={elapsedArt!.svg} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
+                  <Svg source={themed(elapsedArt!.svg)} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
                 ) : (
                   <Text dimColor>{fmtElapsed(shownSecs)}</Text>
                 )}
@@ -1256,7 +1288,7 @@ export const register: Register = on => {
             {THEME.compact && Svg ? (
               chips
                 .filter(c => showVersion || c.key !== 'version')
-                .map(c => <Svg key={`chip-${c.key}`} source={c.art.svg} alt={c.alt} width={c.art.width} height={c.art.height} {...(c.key === 'status' ? loop : {})} />)
+                .map(c => <Svg key={`chip-${c.key}`} source={themed(c.art.svg)} alt={c.alt} width={c.art.width} height={c.art.height} {...(c.key === 'status' ? loop : {})} />)
             ) : (
               <Box gap={1} alignItems="center">
               {pillEl(
@@ -1267,7 +1299,7 @@ export const register: Register = on => {
                   : { text: 'idle', fg: '#8a8480', bg: '#2a2727', minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
               )}
               {Svg ? (
-                <Svg source={countArt.svg} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
+                <Svg source={themed(countArt.svg)} alt={`${st.tools} tool calls`} width={countArt.width} height={countArt.height} />
               ) : (
                 <Text dimColor>{`⚡ ${st.tools} ${st.tools === 1 ? 'tool' : 'tools'}`}</Text>
               )}
@@ -1294,7 +1326,7 @@ export const register: Register = on => {
           // Compact: the grid chosen above, one Box per line, nothing left to wrap on its own.
           <Box flexDirection="column">
             {chosen.lines.map((line, r) => (
-              <Box key={`line-${r}`} columnGap={2} alignItems="center" flexWrap="nowrap">
+              <Box key={`line-${r}`} columnGap={1} alignItems="center" flexWrap="nowrap">
                 {line.map((c, j) => {
                   if (!Svg)
                     return (

@@ -357,6 +357,70 @@ export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow:
 export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line: '#3a3634', track: '#332f2d' }
 
 /**
+ * The band follows the app's theme from inside each picture: pictures are drawn in their dark
+ * colours, and where the app is light (`prefers-color-scheme: light`) each of those colours is
+ * swapped for its light one by an attribute selector, so no builder needs a second palette.
+ * Light is the glass of a smart-home panel: ink #2b2f36 on white cards, cool grey tracks.
+ */
+export const LIGHT: Record<string, string> = {
+  [INK.value]: '#2b2f36',
+  [INK.label]: '#6b7280',
+  [INK.detail]: '#8a909a',
+  [INK.line]: '#dfe3e9',
+  [INK.track]: '#e6e9ee',
+  '#3b3737': '#e6e9ee', // a ring's track
+  '#3a3433': '#e6e9ee', // the speedometer's track
+  '#4a4846': '#c9ced6', // a toggle switched off
+  '#45403e': '#e6e9ee', // the context slider's track: lighter than a block's, as it sits on glass
+  '#8f8985': '#7d838d', // quiet glyphs
+  '#a8a29e': '#7d838d',
+  // An agent card: its ground, edge, track, name, model.
+  '#1d1c1b': '#ffffff',
+  '#3a3836': '#dfe3e9',
+  '#2b2827': '#e6e9ee',
+  '#ece7e4': '#2b2f36',
+  '#b9b3af': '#5f6672',
+}
+
+/** The light swap as a picture's own `<style>`, and the glass cards' light look (a soft shadow). */
+export const themeStyle = () =>
+  `<style>@media (prefers-color-scheme: light){` +
+  Object.entries(LIGHT)
+    .map(([dark, light]) => `[fill="${dark}"]{fill:${light}}[stroke="${dark}"]{stroke:${light}}`)
+    .join('') +
+  `.glass{fill:#ffffff;fill-opacity:1;stroke:#0f172a;stroke-opacity:.08;filter:url(#glass-shadow)}.glass-hi{stroke-opacity:0}}</style>`
+
+/** A picture that follows the app's theme (`themeStyle`), however it was drawn. */
+export const themed = (svg: string) => svg.replace(/<\/svg>$/, `${themeStyle()}</svg>`)
+
+/**
+ * The glass cards: `pad` inside the card round what it holds, `margin` outside it for the light
+ * theme's shadow, `rx` its corners. Dark, a card is white at 6% with a hairline; light, white
+ * with a soft shadow (themeStyle). A card adds `GLASS.extra` to what it holds, each way.
+ */
+export const GLASS = { pad: 5, margin: 2, rx: 9, extra: 2 * (5 + 2) }
+
+/** `art` on a glass card: the same picture, nested, with the card behind it. */
+export const inCard = <A extends { svg: string; width: number; height: number; natural?: number }>(art: A) => {
+  const { pad, margin: m, rx } = GLASS
+  const W = art.width + 2 * pad
+  const H = art.height + 2 * pad
+  const width = W + 2 * m
+  const height = H + 2 * m
+  const inner = art.svg.replace(/^<svg /, `<svg x="${m + pad}" y="${m + pad}" `)
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    `<defs><filter id="glass-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.10"/></filter></defs>` +
+    `<rect class="glass" x="${m + 0.5}" y="${m + 0.5}" width="${W - 1}" height="${H - 1}" rx="${rx}" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.08"/>` +
+    // A highlight along the top edge, where light would catch the glass.
+    `<path class="glass-hi" d="M${m + rx} ${m + 1}H${m + W - rx}" stroke="#ffffff" stroke-opacity="0.10"/>` +
+    inner +
+    themeStyle() +
+    `</svg>`
+  return { ...art, svg, width, height, ...(art.natural !== undefined ? { natural: art.natural + GLASS.extra } : {}) }
+}
+
+/**
  * The band's motion, on two rules so a redraw never blinks or starts a motion over (the reason
  * v1.8.0 took motion out):
  * - Motion inside a picture (the bar's lights, the working dots, the status dot's halo, the
@@ -378,7 +442,7 @@ export const MOTION = {
   barMs: 2200, // one light's step to where the next one was
   barPeriod: 280, // px between two lights
   barGlow: 150, // px wide each light
-  glowInk: '#ded8ff',
+  glowInk: '#ffffff',
   dotsMs: 1200, // the working dots' wave
   haloMs: 2400, // the status dot's breath
   chipInMs: 260, // the working chip coming in as a turn starts
@@ -728,7 +792,7 @@ export const loadingSvg = (
   width: number,
   height: number,
   color: string,
-  opts: { live?: boolean; padBottom?: number; motion?: boolean } = {},
+  opts: { live?: boolean; padBottom?: number; motion?: boolean; rest?: string } = {},
 ) => {
   const w = Math.max(120, Math.round(width))
   const h = height
@@ -753,7 +817,7 @@ export const loadingSvg = (
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice" shape-rendering="crispEdges">` +
-    `<path d="${blocks}" fill="${opts.live ? color : INK.track}"/>` +
+    `<path d="${blocks}" fill="${opts.live ? color : (opts.rest ?? INK.track)}"/>` +
     glide +
     `</svg>`
   )
@@ -811,8 +875,39 @@ const easeIn = (y: number) => {
   return (lo + hi) / 2
 }
 
+/** The context slider: as wide as the old meter, a rounded track, a gradient fill, a knob. */
+export const SLIDER = { width: METER.segs * (METER.w + METER.gap) - METER.gap, track: 12, knob: 8, heat: ['#f59e63', '#f7c8a3', '#a8c8f0'] }
+
+/**
+ * The context slider as SVG: a track, filled from the left to `percent` with a warm-to-cool
+ * gradient that spans the whole track (so a fuller slider shows more of it), and a white knob at
+ * the end. With `from`, the fill and the knob glide there from that reading (`glideHolder`).
+ */
+export const sliderSvg = (percent: number | null, from?: number | null) => {
+  const S = SLIDER
+  const height = 2 * S.knob + 2
+  const share = (p: number | null) => (p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100)
+  const r = S.knob
+  // The knob's centre runs from its own radius in to the far end less it, so it never hangs out.
+  const at = (p: number | null) => +(r + share(p) * (S.width - 2 * r)).toFixed(1)
+  const y = (height - S.track) / 2
+  const was = from === null || from === undefined ? null : from
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S.width} ${height}" width="${S.width}" height="${height}">` +
+    `<defs><linearGradient id="heat" gradientUnits="userSpaceOnUse" x1="0" x2="${S.width}" y1="0" y2="0">` +
+    S.heat.map((c, i) => `<stop offset="${(i / (S.heat.length - 1)).toFixed(2)}" stop-color="${c}"/>`).join('') +
+    `</linearGradient></defs>` +
+    `<rect x="0" y="${y}" width="${S.width}" height="${S.track}" rx="${S.track / 2}" fill="#45403e"/>` +
+    `<rect x="0" y="${y}" width="${at(percent)}" height="${S.track}" rx="${S.track / 2}" fill="url(#heat)" class="sl-fill"/>` +
+    `<g transform="translate(${at(percent)} 0)" class="sl-knob">` +
+    `<circle cx="0" cy="${height / 2}" r="${r}" fill="#ffffff" stroke="#0f172a" stroke-opacity="0.12"/></g>` +
+    (was === null ? '' : glideStyle('sl-fill', 'width', p => `${at(p)}px`, was, percent ?? 0) + glideStyle('sl-knob', 'transform', p => `translateX(${at(p)}px)`, was, percent ?? 0)) +
+    `</svg>`
+  return { svg, width: S.width, height }
+}
+
 /** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
-export const CONTEXT = { height: 36, fs: 20, labelFs: 11.5, icon: 18, gap: 10, afterValue: 16, baseline: 24, meterGap: 6 }
+export const CONTEXT = { height: 24, fs: 15, labelFs: 11, icon: 15, gap: 10, afterValue: 12, baseline: 17.3, meterGap: 4 }
 
 /**
  * The band's hero line, as one picture: the context figure at CONTEXT.fs, the meter beside it,
@@ -837,7 +932,7 @@ export const contextSvg = (
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CONTEXT
-  const meter = meterSvg(percent, color, opts.fromPercent)
+  const meter = sliderSvg(percent, opts.fromPercent)
   const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
   const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
   const valueX = C.icon + 8
@@ -857,7 +952,7 @@ export const contextSvg = (
   const width = Math.max(natural, opts.width ?? 0)
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    iconGroup('chip', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
+    iconGroup('brain', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
     reelText(valueX, y, C.fs, `${font} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
     `<text x="${wordsX}" y="${y}" ${font} font-size="${C.labelFs}">${words}</text>` +
     `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
@@ -913,11 +1008,39 @@ export const cardSvg = (label: string, value: string, opts: { icon?: IconName; i
   return { svg, width, height }
 }
 
-/** A stat on the compact band: one line at a text row's height, glyph then value then label. */
-export const STAT = { height: 32, glyph: 28, icon: 18, plainIcon: 17, gap: 8, fs: 13.5, labelFs: 11.5, lineH: 18, baseline: 21, stackTop: 15, subFs: 10.5, subLine: 12.5 }
+/** A switch's size: its track, and the knob inside it. */
+export const TOGGLE = { w: 30, h: 18, inset: 3, off: '#4a4846' }
 
 /**
- * One stat of the compact band as SVG: a 28px glyph (a ring passed in as `ring`, else a tinted
+ * A switch as SVG, at the top `y`: a track in `color` (on) or grey (off) and a white knob at its
+ * end. With `enter` it has just switched: the knob slides over from the other end and the track
+ * turns from the other colour, once, on a spring.
+ */
+export const toggleSvg = (on: boolean, color: string, y: number, enter = false) => {
+  const T = TOGGLE
+  const r = T.h / 2 - T.inset
+  const end = (state: boolean) => (state ? T.w - T.h / 2 : T.h / 2)
+  const ink = (state: boolean) => (state ? color : T.off)
+  return (
+    `<rect x="0" y="${y}" width="${T.w}" height="${T.h}" rx="${T.h / 2}" fill="${ink(on)}"${enter ? ' class="tg-track"' : ''}/>` +
+    `<g transform="translate(${end(on)} 0)"${enter ? ' class="tg-knob"' : ''}>` +
+    `<circle cx="0" cy="${y + T.h / 2}" r="${r}" fill="#ffffff"/></g>` +
+    (enter
+      ? motionStyle(
+          `@keyframes tg-knob{from{transform:translateX(${end(!on)}px)}to{transform:translateX(${end(on)}px)}}` +
+            `@keyframes tg-track{from{fill:${ink(!on)}}to{fill:${ink(on)}}}` +
+            `.tg-knob{animation:tg-knob ${Math.round(MOTION.twinkleMs * 0.6)}ms ${EASE.spring} both}` +
+            `.tg-track{animation:tg-track ${Math.round(MOTION.twinkleMs * 0.6)}ms ${EASE.out} both}`,
+        )
+      : '')
+  )
+}
+
+/** A stat on the compact band: one line at a text row's height, glyph then value then label. */
+export const STAT = { height: 28, glyph: 24, icon: 15, plainIcon: 15, gap: 7, fs: 13, labelFs: 11, lineH: 16, baseline: 18.5, stackTop: 13.5, subFs: 10.5, subLine: 12.5 }
+
+/**
+ * One stat of the compact band as SVG: a STAT.glyph-px glyph (a ring passed in as `ring`, else a tinted
  * tile holding `icon`), the value in bold, then its label and an optional detail, dimmer still.
  * Every stat shares the glyph slot, size and baseline, so a row of them reads as one line, and
  * `width` pads each to its column, so two rows line up. The label follows the value as the
@@ -952,6 +1075,11 @@ export const statSvg = (
      * turns in on a spring and the state line rises into place (once). See MOTION.
      */
     spark?: { pulse?: boolean; enterFrom?: string }
+    /**
+     * A switch in the glyph's place, on in `color` or off in grey: a state that is on or off
+     * (the Hanahira mode). `enter`: it has just switched, so the knob slides across (once).
+     */
+    toggle?: { on: boolean; enter?: boolean }
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -963,15 +1091,18 @@ export const statSvg = (
   // A stacked cell grows a line (STAT.subLine) for each line under the value.
   const height = stacked ? Math.max(S.height, Math.ceil(S.stackTop + 4 + S.subLine * under.length)) : S.height
   const g0 = (height - S.glyph) / 2
-  const x = S.glyph + S.gap
+  const T = TOGGLE
+  const x = (opts.toggle ? T.w : S.glyph) + S.gap
   const y = stacked ? S.stackTop : S.baseline
   const io = g0 + (S.glyph - S.icon) / 2
-  const glyph = opts.ring
+  const glyph = opts.toggle
+    ? toggleSvg(opts.toggle.on, color, g0 + (S.glyph - T.h) / 2, opts.toggle.enter === true)
+    : opts.ring
     ? `<g transform="translate(0 ${g0})">${opts.ring}</g>`
     : opts.icon && opts.plain
       ? iconGroup(opts.icon, color, (S.glyph - S.plainIcon) / 2, g0 + (S.glyph - S.plainIcon) / 2, S.plainIcon, 2)
     : opts.icon
-      ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="7" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32"${spark?.enterFrom ? ' class="tile"' : ''}/>` +
+      ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="6" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32"${spark?.enterFrom ? ' class="tile"' : ''}/>` +
         // Across, the icon centres in the tile alone; down, past the row's top margin too.
         (spark ? '<g class="spark">' : '') +
         iconGroup(opts.icon, color, (S.glyph - S.icon) / 2, io, S.icon, 2) +
@@ -1038,7 +1169,7 @@ export const statSvg = (
 }
 
 /** A chip on the compact band's top line: the stats' tile look at a smaller size. */
-export const CHIP_LINE = { height: 24, fs: 12.5, labelFs: 11.5, icon: 14, lead: 7, baseline: 16.5 }
+export const CHIP_LINE = { height: 22, fs: 12, labelFs: 11, icon: 13, lead: 7, baseline: 15.3 }
 
 /**
  * A chip for the compact band's top line (status, tool count, version), drawn in the same
@@ -1121,7 +1252,7 @@ export const chipSvg = (opts: {
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
     (opts.motion ? '<g class="chip">' : '') +
-    `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="7" fill="${opts.color}" fill-opacity="${restOpacity}" stroke="${quiet ? INK.line : opts.color}" stroke-opacity="${quiet ? 1 : 0.32}"/>` +
+    `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="${(h - 1) / 2}" fill="${opts.color}" fill-opacity="${restOpacity}" stroke="${quiet ? INK.line : opts.color}" stroke-opacity="${quiet ? 1 : 0.32}"/>` +
     glyph +
     tail +
     value +

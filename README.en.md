@@ -10,7 +10,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.10.8-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.12.0-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 [🇯🇵 日本語](README.md) ｜ **🇬🇧 English (this page)**
@@ -23,14 +23,14 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 
 | | Feature | What it does |
 | :-: | :-- | :-- |
-| 📊 | **Status band** | Above the prompt: project name, git branch, a loading bar of blocks like the context meter's that lights up while Claude works, elapsed time, state and a tool counter (`⚡ 8 tools`). |
-| ▮▮▮ | **Context meter** | Context used as one big figure with a 30-block meter beside it, the one thing drawn large; what is left and the window's size follow. It turns red past 85%. |
+| 📊 | **Status band** | Above the prompt, every part on its own glass card that follows the app's light or dark theme. The top line: project name, git branch, a bar of blocks that is red while Claude works and green once the turn is done, elapsed time, a status chip (red `working`, then green `success`, or `error` / `stopped`) and a tool counter (`⚡ 8 tools`). |
+| ▮▮▮ | **Context slider** | Context used as one big figure with a slider beside it (orange to cream to blue, a white knob); what is left and the window's size follow. The figure turns red past 85%. |
 | ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed as small rings. The limits say when they reset (e.g. `resets in 3h 20m`). |
-| 💰 | **Totals** | Cost, tokens, time and model as a quiet row of figures. Time is the session's time spent running, counting every second while a turn runs; the top line's clock is the current turn alone. |
+| 💰 | **Totals** | Cost, tokens, time and model, each with its icon on a tile of its own colour. Time is the session's time spent running, counting every second while a turn runs; the top line's clock is the current turn alone. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards. A finished card shows its check for about three seconds, then leaves. |
 | 🧾 | **Transcript styling** | Your message as a card framed like the band. Every row (tool call, folded run, background task) has one layout: a kind tile, a coloured verb, the target (files in monospace), a status pill and the time. Deleting files with `rm` shows as a red **Delete** row. |
 | ✏️ | **Code changes inline** | An Edit or Write shows its change right under its row: numbered lines, added ones on green, removed ones on red, a `⋯` where the patch skips lines, and `+N` / `−N` pills in place of `saved`. The full view (ctrl+o) keeps the engine's own. |
-| 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide over the loading bar's blocks, the working chip comes in and its dots light in a wave, the status dot breathes, a running agent card's ring turns and its bar slides along it and back without a break, and a finished one draws its check in and fills its bar to the end, then stops; the Hanahira sparkle turns in as the mode switches on and breathes while it is on. A figure that changes (context, limits, cost, tokens, tools, model, the Time figure and the top line's clock, every second) rolls in like a slot reel: the old value turns up and out while the new one comes in from below, a touch past its line, and snaps onto it; limit rings glide to the new value, the context meter's blocks light one by one, and the tok/s needle swings to each reading as it streams. Motion is CSS inside each picture, played at the screen's own frame rate with no redraw while it moves, and with no time in it, so a redraw never restarts it, and it stops for anyone who asks for reduced motion; transcript rows stay still. |
+| 🎞️ | **Live motion, no blinking** | While Claude works, soft lights glide over the loading bar's blocks, the working chip comes in and its dots light in a wave, the status dot breathes, a running agent card's ring turns and its bar slides along it and back without a break, and a finished one draws its check in and fills its bar to the end, then stops; the Hanahira switch slides on as the mode switches on. A figure that changes (context, limits, cost, tokens, tools, model, the Time figure and the top line's clock, every second) rolls in like a slot reel: the old value turns up and out while the new one comes in from below, a touch past its line, and snaps onto it; limit rings glide to the new value, the context slider's fill and knob glide along, and the tok/s needle swings to each reading as it streams. Motion is CSS inside each picture, played at the screen's own frame rate with no redraw while it moves, and with no time in it, so a redraw never restarts it, and it stops for anyone who asks for reduced motion; transcript rows stay still. |
 | 🛡️ | **Safety guard** | Blocks Bash commands that remove Compose volumes (`docker compose down -v` or `--volumes`, `docker-compose` too) and `ufw enable`. |
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported; the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
@@ -172,14 +172,16 @@ There is **nothing to configure**. Open Claude Code and the band appears above t
 
 | Element | How to read it |
 | :-- | :-- |
-| **Loading bar** | A glow sweeps while Claude works; a quiet line when idle. |
+| **Loading bar** | Red with a glow sweeping while Claude works; green once the turn is done (grey if it stopped or failed). |
+| **Status chip** | `working` in red, then `success` in green when the turn is done; `error` or `stopped` when it did not finish. |
 | **`⚡ N tools`** | Tool calls made in this prompt. Flashes when it grows. |
-| **Context meter** | Context used, what is left and the window (e.g. `11% ▮▮▮▯▯ context · 889k left · 1M window`). |
+| **Context slider** | Context used, what is left and the window (e.g. `11% ━━○── context · 889k left · 1M window`). |
 | **5-hour / 7-day rings** | Share of each usage limit used, and the time until it resets. Shown only when the account reports rate limits. |
 | **Cost** | The session total the engine reports (marked `≈`). |
 | **Tokens** | Total tokens counted since the plugin loaded, subagents included, with cache reads and writes. |
 | **Time** | Total time spent working. |
-| **Agent cards** | A row above the band's frame. A running card pulses; a finished one flashes green and leaves. |
+| **Hanahira switch** | On (green) while Hanahira Claude UI mode is on, off (grey) otherwise. |
+| **Agent cards** | A row above the band. A running card pulses; a finished one flashes green and leaves. |
 
 
 > **Why the token count looks huge:** Tokens adds up every model response's input, output, cache reads and cache writes. In a long session with a large context, the same context is re-read from the cache on every response, so the total reaches hundreds of millions. A cache read costs far less than ordinary input.

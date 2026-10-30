@@ -421,6 +421,13 @@ describe('loadingSvg', () => {
     expect(svg).not.toContain('@keyframes')
   })
 
+  test('idle can rest in a colour of its own', () => {
+    const svg = loadingSvg(500, 12, '#f2736b', { rest: '#34c38f' })
+    expect(svg).toContain(`fill="#34c38f"/>`)
+    expect(svg).not.toContain('#f2736b')
+    expect(loadingSvg(500, 12, '#f2736b', { live: true, rest: '#34c38f' })).not.toContain('#34c38f')
+  })
+
   test('live lights every block in the colour, still without motion', () => {
     const svg = loadingSvg(500, 12, '#9b8cf7', { live: true })
     expect(svg).toContain(`fill="#9b8cf7"/>`)
@@ -618,7 +625,7 @@ describe('contextSvg', () => {
     expect(c.svg).toContain('>context</tspan>')
     expect(c.svg).toContain('> · 889k left</tspan>')
     expect(c.svg).toContain('> · 1M window</tspan>')
-    expect(c.svg).toContain('shape-rendering="crispEdges"')
+    expect(c.svg).toContain('fill="url(#heat)" class="sl-fill"')
   })
 
   test('stacked: the meter under the figure, in a taller, narrower picture', () => {
@@ -872,7 +879,8 @@ describe('motion', () => {
     expect(chipSvg({ color: '#fff', value: '4', label: 'tools', reel: '3' }).svg).toContain('@keyframes reel')
     const ctx = contextSvg(40, '#e8825f', { from: '20%', fromPercent: 20 }).svg
     expect(ctx).toContain('@keyframes reel')
-    expect(ctx).toContain('@keyframes m{')
+    expect(ctx).toContain('@keyframes sl-fill')
+    expect(ctx).toContain('@keyframes sl-knob')
     expect(contextSvg(40, '#e8825f').svg).not.toContain('<style>')
     // Held, a change is the same picture each time it is drawn.
     const draw = () => contextSvg(40, '#e8825f', { from: '20%', fromPercent: 20 }).svg + speedoSvg(0.5, '#fff', 28, 0.2)
