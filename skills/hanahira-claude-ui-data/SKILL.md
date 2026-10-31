@@ -113,7 +113,7 @@ Read the plan before optimizing (row *Plan*). Guessing at the bottleneck is how 
 
 | Symptom | Check first |
 |---|---|
-| query slow | the plan — full scan (row *Full scan*) on a filtered/joined column = missing index |
+| query slow | the plan — full scan (row *Full scan reads as*) on a filtered/joined column = missing index |
 | index exists but unused | function or type cast on the indexed column in `WHERE`; stale stats (row *Refresh stats*) |
 | many identical queries differing by id | N+1 — fix at the application layer, not with an index |
 | wide rows, few columns used | `SELECT *` — name the columns |

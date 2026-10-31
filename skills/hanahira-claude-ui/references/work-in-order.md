@@ -18,4 +18,6 @@ Read when refactoring, migrating an API/config/dependency, or chasing a failure 
 | a runner's command passed | its exit code and the end of its log, read by me | the runner's summary |
 | requirements met | each requirement checked off | tests passing |
 
+**Scope limits the change, not the check.** A task about one file still runs the project's full test command before "done", and every red test seen goes in the report by name — including ones I didn't cause and won't fix. Failures that were red before my change are the baseline: name them, and "done" then means no new failures. Leaving one out misreports the state.
+
 Report each check as pass, fail, unavailable, or blocked. Reuse a result only if nothing changed after it ran. Focused check before the wider one. Once the proof is complete, stop — no extra polish, cleanup, or unrelated tests.

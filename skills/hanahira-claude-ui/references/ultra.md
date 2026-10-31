@@ -1,6 +1,6 @@
 # Ultra level
 
-Read once when `/Hanahira Claude UI ultra` is set. Ultra keeps every rule of the standard level and removes the grammar around the content. It lasts until `/Hanahira Claude UI on` or `/Hanahira Claude UI off` After a summary, it is still on only if the summary or my previous reply says so; otherwise standard.
+Read once when `/Hanahira Claude UI ultra` is set. Ultra keeps every rule of the standard level and removes the grammar around the content. `/Hanahira Claude UI ultra` switches the mode on at this level even from OFF. It lasts until `/Hanahira Claude UI on` or `/Hanahira Claude UI off`. Every compact banner at this level ends `● ACTIVE · ULTRA`, and a full box gets a `Level: ultra` line right under it; after a summary, ultra is still on only if the summary or my previous banner says so, otherwise standard.
 
 - **Fragments are fine** as long as the order of steps stays clear: "Object prop rebuilt each render, new reference, re-render. Wrap in `useMemo`."
 - **A single word is enough when it carries the answer:** "Yes. Check for null first."

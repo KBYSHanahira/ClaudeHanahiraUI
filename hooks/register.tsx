@@ -52,7 +52,7 @@ import {
 } from './chat'
 export { clip }
 import { iconGroup, iconSvg } from './icons'
-import { VERSION } from './version'
+import { SKILLS_FROM, VERSION } from './version'
 import type { IconName } from './icons'
 
 // Per-call facts the transcript rows read: how long a call took, which Bash
@@ -976,7 +976,7 @@ export const register: Register = on => {
       { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'timer' as IconName, color: '#5eb5f7', roll: 'time' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'sparkles' as IconName, color: '#e8825f', roll: 'model' },
       // The compact band shows the version as dim text in the top row instead.
-      ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION}`, icon: 'cube' as IconName, color: '#f28b82' }]),
+      ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION} ${SKILLS_FROM}`, icon: 'cube' as IconName, color: '#f28b82' }]),
     ]
 
     const cardArt = cards.map(c => cardSvg(c.label, c.value, { icon: c.icon, iconColor: c.color }))
@@ -1013,7 +1013,7 @@ export const register: Register = on => {
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
       }) },
-      { key: 'version', alt: `UI v${VERSION}`, art: chipSvg({ color: '#8f8985', icon: 'tag', label: `v${VERSION}`, quiet: true }) },
+      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: chipSvg({ color: '#8f8985', icon: 'tag', label: `v${VERSION} ${SKILLS_FROM}`, quiet: true }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -1338,7 +1338,7 @@ export const register: Register = on => {
               ) : (
                 <Text dimColor>{`⚡ ${shownTools} ${shownTools === 1 ? 'tool' : 'tools'}`}</Text>
               )}
-              {THEME.compact ? <Text dimColor>{`v${VERSION}`}</Text> : null}
+              {THEME.compact ? <Text dimColor>{`v${VERSION} ${SKILLS_FROM}`}</Text> : null}
               </Box>
             )}
           </Box>

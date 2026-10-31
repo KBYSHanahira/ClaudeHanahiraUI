@@ -14,7 +14,7 @@ Terse mode for debugging and verification. Compress the packaging, never the sub
 
 **Hands off:** once the cause sits in stored data, security settings or the UI, the fix also follows `hanahira-claude-ui-data`, `hanahira-claude-ui-security` or `hanahira-claude-ui-design`. Refactors and failures spread across several components → `hanahira-claude-ui/references/work-in-order.md`.
 
-**Helpers** may each investigate one independent failure in parallel and return the cause with its evidence, and a runner agent may run the slow reproduction or the full suite — only after the lead has passed the *Tests* gate below — and report the first failure as it happens; the lead confirms every fix by rerunning the original symptom.
+**Helpers** may each investigate one independent failure in parallel and return the cause with its evidence, and the slow reproduction or the full suite may run in the background or through a runner agent (core *Who does the work*) — only after the lead has passed the *Tests* gate below; the lead confirms every fix by rerunning the original symptom.
 
 ## Core first
 
@@ -31,6 +31,17 @@ Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI
 - **Fix at the origin** — where the value goes wrong, not where it throws. A guard at the throw site is a bandage: fine under time pressure only if labelled as one with the real fix named, and never one that removes a security control or a confirmation gate.
 - **One change at a time, at the narrowest layer that owns the bug.** Bundled fixes hide which one worked. Preserve unrelated behavior and the user's own uncommitted changes; no cleanup, renames or new abstractions outside the fix. Other problems noticed get one line, not an edit.
 - **Three failed fixes → stop patching.** Say what each attempt showed and question the design (shared state, coupling, wrong layer) with the user before attempt four.
+- **The user doubting me is a stop signal.** "Stop guessing", "is that even happening?", "we're going in circles" — or the same in their language — mean my model of the bug is wrong: stop editing, say which assumption I'm dropping, and go back to evidence.
+
+The thoughts that skip a step, and the answer to each:
+
+| Thought | Answer |
+|---|---|
+| "It's a simple bug, no need to reproduce" | simple bugs have causes too; reproducing is usually the fast part |
+| "I can see the fix, I'll confirm the cause after" | a fix that seems to work on an intermittent bug confirms nothing |
+| "One more fix and it'll work" (after two failed) | that's attempt three, the last patch; a fourth needs the design talk first |
+| "I'll add the regression test after the fix" | a test that never failed hasn't shown it can |
+| "The failing test is flaky, rerun it" | flaky is a diagnosis; measure the rate first |
 
 ## Debug sequence
 
@@ -47,6 +58,7 @@ Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI
 System not mapped yet in this chat → learn it first (`hanahira-claude-ui/references/learn-system.md`): how it runs and tests, and which code owns the failing behavior. Steps 1–4 stay internal unless the user must run them; report cause, fix, verification.
 
 - **Isolate**, cheapest first: binary-search the input, comment out half, `git bisect` once a known-good commit exists, log at the boundary between working and broken state.
+- **Compare with a working case** before guessing: find the nearest thing that works (the same call elsewhere in the repo, the previous commit, the documented example), read it completely, and list every difference from the failing one, however small. The cause is usually on that list.
 - **Locate:** a breakpoint or REPL at the suspect frame (pdb, `node --inspect`, dlv, gdb/lldb, the IDE debugger) is often cheaper than adding logging.
 - **Verify an intermittent bug:** measure the failure rate first (loop N runs, or the runner's repeat/stress flag), then show 0 failures in enough runs to beat that rate. Pin and record the seed when the runner shuffles order. One passing run proves nothing.
 

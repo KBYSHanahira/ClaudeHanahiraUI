@@ -4,15 +4,17 @@
 # Desktop syncs a plugin to the SSH host without its hooks/ folder, and that empty copy
 # (same name) overrides anything installed on the host. So the host gets its own copy
 # under a different name, hanahira-claude-ui-ssh, which the synced copy cannot override.
-# The synced copy does bring skills/, and a second set would list every Hanahira skill twice
-# in an SSH session. So this copy carries skills/ only when the account has no synced copy;
-# HANAHIRA_SSH_SKILLS=1 or 0 overrides that check (1 suits a synced copy stuck on an older
-# version). Claude Code reads skills at session start, so adding or removing the account's
-# plugin later needs a re-run.
+# The synced copy brings skills/ too. In an SSH session the skills should be this clone's (the
+# version being developed), so this copy carries skills/ and the synced one is switched off on
+# this host only: Desktop hands it to the CLI as --plugin-dir, which makes it
+# hanahira-claude-ui@inline, and enabledPlugins in this host's user settings can turn that off.
+# Local sessions read their own settings, so they keep the account's copy. Every Hanahira skill
+# is then listed once, and the band's version chip says which copy it is (SSH or Account).
+# HANAHIRA_SSH_SKILLS=0 goes back to hooks only here, with the account's skills switched on again.
 #
 # Run it ON THE SSH HOST, from a clone of this repository:
 #   scripts/install-ssh.sh            # install or refresh
-#   HANAHIRA_SSH_SKILLS=1 scripts/install-ssh.sh
+#   HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh
 #   CLAUDE=/path/to/claude scripts/install-ssh.sh
 # Re-run it after every `git pull`. Then start a new session in Desktop.
 set -euo pipefail
@@ -30,20 +32,7 @@ CLAUDE="${CLAUDE:-$(command -v claude || true)}"
 
 P="$DEST/$SSH_NAME"
 
-# Desktop re-syncs the account's plugins into ~/.claude/remote/plugins/<org>/<id>/ at each
-# session start and touches .synced there; folders from older syncs stay behind. So the
-# account has the plugin when a copy of its skills carries the newest .synced.
-account_has_skills() {
-  local r="$HOME/.claude/remote/plugins" newest d
-  newest=$(stat -c %Y "$r"/*/*/.synced 2>/dev/null | sort -n | tail -1 || true)
-  [ -n "$newest" ] || return 1
-  for d in "$r"/*/*/; do
-    [ -f "$d/skills/$NAME/SKILL.md" ] && [ "$(stat -c %Y "$d.synced" 2>/dev/null)" = "$newest" ] && return 0
-  done
-  return 1
-}
-if [ -n "${HANAHIRA_SSH_SKILLS:-}" ]; then SKILLS=$HANAHIRA_SSH_SKILLS
-elif account_has_skills; then SKILLS=0; else SKILLS=1; fi
+SKILLS="${HANAHIRA_SSH_SKILLS:-1}"
 
 # A real copy, not links: the CLI refuses a plugin whose files resolve outside its folder.
 rm -rf "$DEST"
@@ -51,9 +40,17 @@ mkdir -p "$P/.claude-plugin" "$P/hooks" "$P/types" "$DEST/.claude-plugin"
 cp "$SRC"/hooks/*.ts "$SRC"/hooks/*.tsx "$SRC"/hooks/hooks.json "$P/hooks/"
 rm -f "$P"/hooks/*.test.ts "$P"/hooks/*.test.tsx
 cp "$SRC/types/index.d.ts" "$P/types/"
-[ "$SKILLS" = 1 ] && cp -r "$SRC/skills" "$P/"
-# Values in $.state belong to the plugin by name, so the name inside the code follows it.
-sed -i "s/$NAME/$SSH_NAME/g" "$P/hooks/register.tsx" "$P/types/index.d.ts"
+if [ "$SKILLS" = 1 ]; then
+  cp -r "$SRC/skills" "$P/"
+  # The banner names the copy too, so a reply shows where its rules came from. Same widths.
+  sed -i -e 's/^\(+ ╭─ (( ^w^ )) Hanahira Claude UI V[0-9]*\) · ● ACTIVE/\1 · SSH · ● ACTIVE/' \
+    -e 's/┃ Version \([0-9]*\) · SKILL  /┃ Version \1 · SSH    /' "$P/skills/$NAME/SKILL.md"
+  sed -i "/SKILLS_FROM/s/= 'Account'/= 'SSH'/" "$P/hooks/version.ts"
+fi
+# Values in $.state belong to the plugin by name, so the name inside the code follows it. Only
+# the quoted name: the skills keep theirs (hanahira-claude-ui*) in either copy, and the pattern
+# that recognises them must not become -ssh, or the band never sees the mode switch on.
+sed -i "s/'$NAME'/'$SSH_NAME'/g" "$P/hooks/register.tsx" "$P/types/index.d.ts"
 
 cat > "$P/.claude-plugin/plugin.json" <<J
 {
@@ -79,5 +76,12 @@ cd /tmp
 "$CLAUDE" plugin marketplace remove "$MARKET" >/dev/null 2>&1 || true
 "$CLAUDE" plugin marketplace add "$DEST"
 "$CLAUDE" plugin install "$SSH_NAME@$MARKET" --scope user
-[ "$SKILLS" = 1 ] && echo "Skills: in this copy ($SSH_NAME:)" || echo "Skills: from the account's synced copy ($NAME:)"
+# The account's synced copy: off on this host while this copy has the skills, on otherwise.
+if [ "$SKILLS" = 1 ]; then
+  "$CLAUDE" plugin disable "$NAME@inline" --scope user >/dev/null
+  echo "Skills: in this copy ($SSH_NAME:); the account's copy is off in SSH sessions on this host"
+else
+  "$CLAUDE" plugin enable "$NAME@inline" --scope user >/dev/null 2>&1 || true
+  echo "Skills: from the account's synced copy ($NAME:)"
+fi
 echo "Done. Start a new session in Desktop."

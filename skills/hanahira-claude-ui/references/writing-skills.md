@@ -8,6 +8,10 @@ Read when creating or changing a skill (SKILL.md), a system prompt, a CLAUDE.md 
 2. **Add the least guidance that fixes it.** Target only the failures seen; write nothing for imagined cases. Rerun the same tasks with the guidance in place and confirm the mistake is gone.
 3. **Close the gaps it finds.** When the agent finds a new excuse, answer that excuse explicitly and test again, until the behavior holds.
 
+**Make the test scenarios hard.** A calm task rarely shows the failure; real ones come with pressure. Stack three or more in one scenario — a deadline, work already sunk, a long session, the user sounding sure ("skip the formalities, I know what X means") — and keep a few prompts that should *not* trigger the rule, to catch it firing everywhere.
+
+**When the mode misbehaved in a real session**, start from that session's transcript, not memory: find the turn where it went wrong, quote the instruction the agent had and what it did, and drop any finding that can't point to a line. That record is the baseline for step 1.
+
 Before running whole scenarios, **check the wording cheaply**: one fresh sample per call, the rule embedded in its real surroundings (the full skill, not the rule alone), a control with no rule, at least five samples per wording, and every flagged sample read by hand. How much the samples vary tells you something — wording that works makes them converge.
 
 ## Pick the form the failure calls for

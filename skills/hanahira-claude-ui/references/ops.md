@@ -25,7 +25,7 @@ Warn above: `down -v` destroys volumes; `system prune -a` removes images that ma
 
 ## Long-running processes
 
-A dev server or watcher is a service start: ask first, bind `127.0.0.1`, start it in the background with output to a log (`nohup <cmd> > <log> 2>&1 &`; PowerShell `Start-Process -RedirectStandardOutput`), then confirm it is ready by requesting its URL or reading the log — never assume.
+A dev server or watcher is a service start: ask first, bind `127.0.0.1`, start it with the shell tool's own background mode where it has one, output to a log; else `nohup <cmd> > <log> 2>&1 &` (PowerShell `Start-Process -RedirectStandardOutput`), then confirm it is ready by requesting its URL or reading the log — never assume.
 
 ## Symptom → first check
 

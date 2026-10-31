@@ -10,7 +10,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.12.4-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.13.0-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 **🇯🇵 日本語（このページ）** ｜ [🇬🇧 English](README.en.md)
@@ -112,7 +112,7 @@ cd ClaudeHanahiraUI
 scripts/install-ssh.sh
 ```
 
-スキルはどちらの場合も 1 回だけ表示されます。claude.ai のアカウントにプラグインがあれば、スキルは Desktop が同期するコピーでいつもの `hanahira-claude-ui:` の名前のまま届き、このコピーに入るのは hooks だけです。アカウントにない場合は、スキルもこのコピーに入ります（`hanahira-claude-ui-ssh:` の名前）。この判定はスクリプト実行時に行われるため、アカウントのプラグインを追加・削除したら再実行してください。`HANAHIRA_SSH_SKILLS=1` または `0` で判定を上書きできます（同期されるコピーが古いバージョンのままのときは `1`）。
+SSH セッションのスキルはこのクローンのもの（`hanahira-claude-ui-ssh:` の名前）になり、開発中のバージョンをそのまま使えます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストの設定でだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシン（ローカル）のセッションでは、これまでどおりアカウントのコピーが使われます。どちらのコピーを使っているかは、バンドのバージョン表示（`v1.13.0 SSH` / `v1.13.0 Account`）とスキルのバナー（`V25 · SSH`）でわかります。`HANAHIRA_SSH_SKILLS=0` で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 その後、Desktop で **新しいセッション** を開きます（開いているセッションには反映されません）。`git pull` で更新したら、もう一度 `scripts/install-ssh.sh` を実行してください。手元のマシン（ローカル）で使う場合はこの手順は不要で、方法 1 のままで動きます。
 

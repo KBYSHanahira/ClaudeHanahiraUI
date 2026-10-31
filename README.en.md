@@ -10,7 +10,7 @@ An interface mod for Claude Code: a status band above the prompt, ring gauges, a
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.12.4-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.13.0-34c38f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 [🇯🇵 日本語](README.md) ｜ **🇬🇧 English (this page)**
@@ -112,7 +112,7 @@ cd ClaudeHanahiraUI
 scripts/install-ssh.sh
 ```
 
-The skills appear once either way. When your claude.ai account has the plugin, they reach the remote with Desktop's synced copy under their usual `hanahira-claude-ui:` names, and this copy carries only the hooks. Without it, the script puts the skills in this copy (named `hanahira-claude-ui-ssh:`). The check runs when the script runs, so re-run it after adding or removing the plugin on your account. `HANAHIRA_SSH_SKILLS=1` or `0` overrides the check, for example `1` when the synced copy is stuck on an older version.
+In SSH sessions the skills come from this clone, named `hanahira-claude-ui-ssh:`, so you work with the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) in this host's settings only, so every skill is listed once; sessions on your local machine keep the account's copy. The band's version chip says which copy is in use (`v1.13.0 SSH` or `v1.13.0 Account`), and so does the skill's banner (`V25 · SSH`). `HANAHIRA_SSH_SKILLS=0` puts it back: hooks only here, skills from the account.
 
 Then open a **new session** in Desktop (open sessions do not pick it up). After a `git pull`, run `scripts/install-ssh.sh` again. Using it on your local machine needs none of this; Option 1 works as is.
 

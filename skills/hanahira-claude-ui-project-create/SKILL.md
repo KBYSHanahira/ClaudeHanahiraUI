@@ -14,7 +14,7 @@ Scaffolds a production-mode Hono + Vite + TypeScript project on Bun, in one Dock
 
 **Hands off:** other stacks → the core's `planning.md` and `ops.md`. Creating the database user and its grants → `hanahira-claude-ui-data`. Firewall changes → this file's steps under `hanahira-claude-ui-security`'s lockout rules. A service that already runs and misbehaves → `ops.md` or `hanahira-claude-ui-debug-test`.
 
-**Helpers** aren't needed to generate files — the work follows templates and is faster done directly. Once the user has approved it, the container build and health check may go to a runner agent (core *Who does the work*) so a failed build is reported the moment it happens.
+**Helpers** aren't needed to generate files — the work follows templates and is faster done directly. Once the user has approved it, the container build and health check run in the background or through a runner agent (core *Who does the work*), and I read the exit code and the log's tail before reporting.
 
 ## Core first
 

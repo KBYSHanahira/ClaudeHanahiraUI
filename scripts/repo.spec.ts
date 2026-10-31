@@ -21,6 +21,15 @@ test('the preview shows this version, and the PNG was drawn from that SVG', () =
   expect(file('docs/preview.png.sha256').toString().trim()).toBe(createHash('sha256').update(svg).digest('hex'))
 })
 
+// scripts/install-ssh.sh marks the SSH copy by rewriting these exact texts with sed; if they
+// change, the copy loses its marks without a word, so they are pinned here.
+test('the texts install-ssh.sh rewrites in the SSH copy are still there', () => {
+  const core = file('skills/hanahira-claude-ui/SKILL.md').toString()
+  expect(core).toMatch(/^\+ ╭─ \(\( \^w\^ \)\) Hanahira Claude UI V\d+ · ● ACTIVE$/m)
+  expect(core.match(/┃ Version \d+ · SKILL  /g)?.length).toBe(2)
+  expect(file('hooks/version.ts').toString()).toMatch(/^export const SKILLS_FROM\b.*= 'Account'$/m)
+})
+
 // Each skill is found by its folder, and the engine names it by the `name:` in its SKILL.md.
 test('every skill folder holds a SKILL.md named after it', () => {
   const dirs = readdirSync(new URL('../skills', import.meta.url), { withFileTypes: true }).filter(d => d.isDirectory())

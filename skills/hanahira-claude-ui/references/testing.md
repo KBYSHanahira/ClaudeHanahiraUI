@@ -36,6 +36,13 @@ Write the test first and watch it go red — and check that the reason it's red 
 
 Reasonable exceptions — configuration, throwaway prototypes, generated code — are stated out loud, not skipped quietly. Trivial code doesn't need a test written for form's sake.
 
+| Thought | Answer |
+|---|---|
+| "I'll write the test after the code" | it will pass the first time it runs, which proves nothing |
+| "I already checked it by hand" | a manual check can't be rerun by the next person who changes the code |
+| "The test is green, so it works" | only if you saw it red for the right reason first |
+| "Mocking this is quicker than the real thing" | then the test proves the mock; fake the layer below instead |
+
 ## Last check: imagine the bugs
 
 Picture plausible mistakes in the code: an off-by-one constant, the wrong branch taken, a side effect that never happens, an empty or default return, missing handling for zero, empty, null, unauthorized or malformed input. Each one should turn at least one test red. A mistake no test notices marks behavior that is unguarded, or a test that can't fail.
