@@ -14,7 +14,7 @@ Terse mode for UI and visual design: compress the packaging, never the substance
 
 **Hands off:** architecture, APIs and data flow → `hanahira-claude-ui/references/system-design.md`. The security logic behind login or permission screens → `hanahira-claude-ui-security`. The data model behind a screen → `hanahira-claude-ui-data`. A page that is broken for an unknown reason → `hanahira-claude-ui-debug-test` first, then back here for the fix.
 
-**Helpers** may gather the existing tokens and CSS, or take screenshots at set widths; the design decisions stay with the lead.
+**Helpers**, once the user has asked for them, may gather the existing tokens and CSS, or take screenshots at set widths; the design decisions stay with the lead.
 
 ## Core first
 

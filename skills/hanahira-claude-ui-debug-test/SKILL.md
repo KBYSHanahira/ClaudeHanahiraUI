@@ -14,7 +14,7 @@ Terse mode for debugging and verification. Compress the packaging, never the sub
 
 **Hands off:** once the cause sits in stored data, security settings or the UI, the fix also follows `hanahira-claude-ui-data`, `hanahira-claude-ui-security` or `hanahira-claude-ui-design`. Refactors and failures spread across several components → `hanahira-claude-ui/references/work-in-order.md`.
 
-**Helpers** may each investigate one independent failure in parallel and return the cause with its evidence, and the slow reproduction or the full suite may run in the background or through a runner agent (core *Who does the work*) — only after the lead has passed the *Tests* gate below; the lead confirms every fix by rerunning the original symptom.
+**Helpers**, once the user has asked for them, may each investigate one independent failure in parallel and return the cause with its evidence; the slow reproduction or the full suite runs in the background (core *Who does the work*) — only after the lead has passed the *Tests* gate below; the lead confirms every fix by rerunning the original symptom.
 
 ## Core first
 

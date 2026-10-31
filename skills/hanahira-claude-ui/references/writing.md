@@ -22,7 +22,7 @@ Missing a fact the draft can't work without (a date, a name, an amount) → leav
 - **Email**: subject line that states the point ("Request to move Project X delivery to Oct 24"), greeting and sign-off in the user's usual register.
 - **Documents and reports**: headings that say something, summary first, numbers with units and dates, decisions and owners explicit.
 - **Register and politeness**: match the user's own voice — polite particles, honorifics and formality as they would write them; no machine-translated phrasing; technical terms stay in English when that's how the team speaks. Thai documents date in the Buddhist Era (พ.ศ. 2569) unless the reader works in CE; one era per document.
-- **Long or high-stakes pieces** may be split across helper models (drafts on a balanced model, critique on a different one, the last pass mine): `references/delegation.md` *Choosing the model and effort* §3. A short message stays mine alone.
+- **Long or high-stakes pieces** stay mine, on the session's model: I draft, then reread cold against the brief before handing it over. A fresh helper critiques only when the user asked for helpers (`references/delegation.md`).
 
 ## Editing someone's text
 

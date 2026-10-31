@@ -1,61 +1,38 @@
 # Handing work to helper agents, running work in parallel, getting a second opinion
 
-Read when splitting work across helper agents (subagents), running separate investigations at the same time, or getting an independent review. **Only when a helper-agent tool is really available** in this session — never describe a dispatch that didn't happen; without one, do the work myself (`references/planning.md` §4).
+Read once the user has asked for helper agents (subagents), parallel runs or a fresh reviewer, or said yes to my one-line offer — never on my own initiative, since every helper spends tokens on top of mine and some accounts can't carry that. **Only when a helper-agent tool is really available** in this session — never describe a dispatch that didn't happen; without one, or without the user's word, do the work myself (`references/planning.md` §4).
 
 What a helper hands back is a claim, not proof: confirm it by reading the diff or rerunning the check (core *Working economy*: done means verified). A helper works under my limits and more: nothing destructive or irreversible, no change to an access path (SSH, firewall, auth), no change to a live system unless the user approved that exact command, and no helpers of its own.
 
 ## Picking the right agent
 
-1. **Read the menu.** List the agent types this session actually offers, with each one's description, tools and model. Never invent a type, and never assume a name from another environment exists here.
+1. **Read the menu.** List the agent types this session actually offers, with each one's description and tools. Never invent a type, and never assume a name from another environment exists here.
 2. **Describe the piece.** Does it only read, or does it write? How much of this conversation does it need? Is it independent of the other pieces? What happens if it's wrong?
 3. **Match in this order:**
    - *capability* — the tools the piece needs (writing files, running commands, web access); an agent without them is out;
    - *specificity* — an agent whose own description names this kind of job beats a general one;
-   - *cost* — among what's left, the cheapest model tier that can do the role well (tiers below).
+   - *the session's model* — prefer a type that runs on the session's own model; one whose definition pins a different model I name in one line before launching.
    Nothing fits and a general-purpose agent exists → use it with a tight brief. No agent tool at all → do it myself.
 4. **Parallel or one after another.** Pieces that only read, or that touch separate files and share no state, go out together in one turn; pieces that edit the same files or share state run one at a time. Plan-task implementers run one at a time unless each has its own worktree (below).
 5. **Don't delegate when** the piece is quicker to do than to explain, needs this conversation's context and no fork is available, is a decision for the user, is destructive, changes an access path, or spans three or more files outside an approved plan task.
 
 **The brief** (a helper sees only this): where the piece fits in one line · the goal · limits (what not to touch) · exact inputs — paths, error text, values · how I resolved anything ambiguous · the report format (below) · where to write it.
 
-## Choosing the model and effort
+## Model and effort: the session's own
 
-Models are not equally good at everything, so the model is chosen per piece, like the agent, and so is how hard it thinks (effort). I decide both myself and name both at every launch where the tool takes them: left out, the helper runs on whatever its agent type sets, else the configured default, else the session's own model — often the most expensive pair. Leave the model out only when the agent type already sets the right one; a fork always runs on my model.
+The user picked the model and the effort for this session, and every helper runs on that same pair. I choose neither: no `model` and no `effort` in a launch, so the helper inherits the session's; a fork always does. I never move a helper to a cheaper or a stronger model, or raise or lower its effort, to fit the piece — the only exception is the user naming a model or an effort for helpers, which holds for the rest of the chat.
 
-**1. Read the model menu.** The agent tool lists the models it accepts (a `model` option or similar); the session's own information may say which family is newest and what each is for. Place each model in a tier from that, never from a name remembered from another environment. In the Claude family: `haiku` is fast, `sonnet` is balanced, `opus` is strongest. Any other model the tool lists (a new family, an experimental name) stays unused unless the environment says what it is for or the user names it.
+**1. Resume, never repeat.** Follow-up work on a piece goes back to the helper that did it while it's still reachable (a message to it, where the tool allows): its context is worth more than a fresh brief. A helper that fails twice doesn't get a third try: I take the piece back and do it myself, with its failure report in hand. Never resend the same task unchanged.
 
-**2. Match the piece to a tier and an effort.**
+**2. How many at once.** Up to four helpers in flight together, and never more than the user asked for; more pieces queue or merge, since a wide burst costs more than it saves and every report lands in my context.
 
-| The piece | Tier | Effort | Why |
-|---|---|---|---|
-| finding files or symbols, reading and summarising known files, counting, listing, running a command and reporting | fast | low | the answer is in the text; speed and cost matter, depth doesn't |
-| code from a plan that already holds the design, tests from listed cases, a doc or README section from notes, translation, many similar edits | balanced | low–medium | clear input and a clear shape; needs care, not invention |
-| re-review of a fix against the findings it answers; review of a small mechanical diff (renames, one value in many files) | balanced | low | the question is narrow — was each finding addressed, did anything else move |
-| critique of a draft against its brief; review of an ordinary change | strongest | low–medium | a different eye matters more than long thought |
-| architecture, a bug that crosses components or has no obvious cause, security or concurrency review, a migration plan, the final review of a branch | strongest | high | a wrong call is expensive, and the hard part is judgement |
-| writing where the reader's reaction is the point — a post, a pitch, an apology, a proposal, a hard email | strongest | medium | tone and argument, not just facts |
-| prose in a language or register the user named, at volume | balanced, then I edit | low | the draft is bulk; the voice is set in my edit |
-
-**Effort, never more than the piece needs.** Effort multiplies time and cost, and on a clear task more of it buys nothing. Size it by the piece, not by how important the project feels: a short or well-specified piece is low even on the strongest model; high only where the row above says so. The levels above high (xhigh, max) only when the user asks for them. Where the agent tool takes effort only on instruction (a user's or a skill's), this skill gives that instruction: pass the effort from this table on every launch. With no effort option, the tier alone carries it.
-
-Where the environment or the user says a model is better at something (a language, long documents, code in one stack), that beats the table and holds for the chat.
-
-**3. Writing with more than one model.** For writing that matters (code or prose):
-- *Split by strength*: I set the outline, the facts and the voice; a balanced helper drafts the sections from that brief; I edit the whole into one voice. The lead always does the last pass: a reader should never feel the seams.
-- *Draft and critique on different models*: one model writes, a different one reviews against the brief, so the review catches what the writer's habits miss. The same model reviewing its own draft mostly agrees with itself.
-- *Two drafts* only when the choice is genuinely open (a headline, a name, an opening): two models each write one, and I keep the stronger or merge them, saying in one line which and why. Not for routine text — it doubles the cost.
-
-**4. Resume, step up, never repeat.** Follow-up work on a piece goes back to the helper that did it while it's still reachable (a message to it, where the tool allows): its context is worth more than a fresh brief. A helper that fails twice is replaced once, one step up, with its failure report in the new brief: effort one level first (the cheaper step), then the tier, and never past high without the user. Never resend the same task to the same model and effort unchanged. A piece that turns out simpler than expected drops a step next time.
-
-**5. How many at once.** Up to four helpers in flight together; more pieces queue or merge, since a wide burst costs more than it saves and every report lands in my context. The user asking for more lifts this.
-
-**6. Say it.** The one-line plan names each helper's agent, model and effort ("search → search agent/fast/low, draft → general agent/balanced/medium, review → general agent/strongest/high"), so the user can redirect before it runs. The user naming a model or an effort, or saying "no helpers", overrides every row above.
+**3. Say it.** The one-line plan names each helper's agent and what it does ("search → search agent, review → general agent"), so the user can redirect before it runs. "No helpers" from the user ends them for the chat.
 
 ## Commands through a runner agent
 
 **One long command** (builds, full test suites, dependency installs, container builds, migration dry runs — anything likely past thirty seconds): where the shell tool has a background mode that notifies me when the command exits, use that, with output to a log; on the notice, read the exit code and the log's tail. That costs nothing extra and nothing is left unwatched.
 
-**A runner agent** instead when several long checks should run side by side (lint, type check and unit tests each get one), when the output would flood my context, or when the shell has no notifying background mode. The runner stays with its command from start to finish, stops at the first real error, and sends only a short report. A helper reports only when it finishes, so a runner is for keeping my context clean, not for hearing sooner.
+**A runner agent** instead, only once the user has helpers on, when several long checks should run side by side (lint, type check and unit tests each get one), when the output would flood my context, or when the shell has no notifying background mode. The runner stays with its command from start to finish, stops at the first real error, and sends only a short report. A helper reports only when it finishes, so a runner is for keeping my context clean, not for hearing sooner.
 
 **Keep with me:** quick one-liners (faster to run than to brief), interactive commands, anything that needs a password or secret typed, and any state-changing command the user hasn't approved yet — the yes comes first, then the dispatch.
 
@@ -95,11 +72,10 @@ For a plan whose tasks are mostly independent: each task gets its own new implem
   - **finished** → review it
   - **finished, with concerns** → read them; anything about correctness or scope is settled before review
   - **missing information** → provide it and send the task again
-  - **stuck** → if information is missing, add it; if it needs harder reasoning, use a stronger model; if the task is too big, split it; if the plan is wrong, record a ruling and resend. Never resend the same task to the same model unchanged.
+  - **stuck** → if information is missing, add it; if it needs harder reasoning, I take the task back myself; if the task is too big, split it; if the plan is wrong, record a ruling and resend. Never resend the same task unchanged.
 - The task review checks both that it meets the spec and that it's well made; the implementer's own review never counts instead. Give the reviewer the diff as a file.
-- **Fix loop, capped at five rounds.** Findings go back to the same implementer for rounds 1–3 (its context is intact); rounds 4–5 go to a fresh implementer one step up, told how many rounds failed and handed the last report. Each re-review sees only the fix diff and the findings, and marks each one addressed or not; anything new it notices outside the fix is written down for later and never extends the loop. This loop replaces §4's step-up for review findings. After round five, a critical finding still open stops the work and goes to the user; the rest I decide myself and record as rulings.
+- **Fix loop, capped at five rounds.** Findings go back to the same implementer for rounds 1–3 (its context is intact); rounds 4–5 go to a fresh implementer, told how many rounds failed and handed the last report. Each re-review sees only the fix diff and the findings, and marks each one addressed or not; anything new it notices outside the fix is written down for later and never extends the loop. This loop replaces §1's two-failure rule for review findings. After round five, a critical finding still open stops the work and goes to the user; the rest I decide myself and record as rulings.
 - Many identical trivial edits (one value changed in many files) go out as one task and are reviewed as one diff.
-- **Which model** (*Choosing the model and effort* above): plan already contains the full code → fast; work spanning several files → balanced; design judgement and the final review → strongest, on a different model from the implementers. Implementers working from a prose spec start at the balanced tier, because cheap models take more rounds; reviewers follow the table in *Choosing the model and effort*.
 - Progress file, the pre-start comparison, rulings and stopping conditions work exactly as when I execute a plan myself.
 
 ## Ask for a fixed report format

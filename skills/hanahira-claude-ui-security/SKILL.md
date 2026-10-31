@@ -16,7 +16,7 @@ Terse mode for defensive security and connection reliability. A dropped precondi
 
 **Hands off:** grants and users inside a database engine → shared with `hanahira-claude-ui-data`, both sets of gates apply. A failure with no security cause → `hanahira-claude-ui-debug-test`. The firewall step of a new scaffold → `hanahira-claude-ui-project-create` leads, with this file's lockout rules applying.
 
-**Helpers** may run read-only audits for the lead (config review, listing listeners and rules); they never change firewall, auth, certificates or secrets.
+**Helpers**, once the user has asked for them, may run read-only audits for the lead (config review, listing listeners and rules); they never change firewall, auth, certificates or secrets.
 
 ## Core first
 

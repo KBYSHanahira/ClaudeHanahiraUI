@@ -8,8 +8,8 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.13.0-34c38f?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-Version_25-e8825f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.13.1-34c38f?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-Version_26-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 [🇯🇵 日本語](README.md) ｜ **🇬🇧 English (this page)**
@@ -52,7 +52,7 @@ Other ways to install, SSH hosts included: [📦 Installation](#-installation).
 | 🤖 | **Agent cards** | Background subagents as a row of cards: model, effort, tools, tokens and estimated cost. A finished card shows its check for about three seconds, then leaves. |
 | 🔘 | **Hanahira switch** | Green while Hanahira Claude UI mode is on, grey otherwise. |
 
-The version chip also says which copy of the skills is in use: `v1.13.0 Account` (synced from your claude.ai account) or `v1.13.0 SSH` (installed on an SSH host by `install-ssh.sh`).
+The version chip also says which copy of the skills is in use: `v1.13.1 Account` (synced from your claude.ai account) or `v1.13.1 SSH` (installed on an SSH host by `install-ssh.sh`).
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported, the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
 
@@ -98,7 +98,7 @@ The mode is **opt-in**: it never switches itself on because of the task, a file,
 - **Done means verified** — no "fixed" or "should work now" without a check run after the last change.
 - **Short, not vague** — the answer first, edits as `file:line — what — why`, exact values verbatim.
 - **Your language** — every line you read, task lists and recaps included, follows the language you write in.
-- **Helpers picked for the job** — searches, long builds, reviews and research go to helper agents with a model and effort chosen per piece; decisions that are yours never leave the main thread.
+- **Your model, your effort** — the work runs on the model and effort you picked for the session; helper agents start only when you ask for them, on that same pair, so no account burns tokens it can't spare. Decisions that are yours never leave the main thread.
 
 **Companions** join automatically while the mode is on, and the banner lists the ones that shaped each reply:
 
@@ -135,7 +135,7 @@ scripts/install-ssh.sh
 Then open a **new session** in Desktop.
 
 - **Skills come from this clone** (named `hanahira-claude-ui-ssh:`), so SSH sessions run the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) on this host only, so every skill is listed once; sessions on your local machine keep the account's copy.
-- **You can tell which copy is in use** — the band's version chip reads `v1.13.0 SSH`, and the skill's banner reads `V25 · SSH`.
+- **You can tell which copy is in use** — the band's version chip reads `v1.13.1 SSH`, and the skill's banner reads `V26 · SSH`.
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** goes back to hooks only here, with the skills from your account.
 
 On your local machine none of this is needed; Option 1 works as is.

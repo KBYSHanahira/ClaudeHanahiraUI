@@ -8,8 +8,8 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.13.0-34c38f?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-Version_25-e8825f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.13.1-34c38f?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-Version_26-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 **🇯🇵 日本語（このページ）** ｜ [🇬🇧 English](README.en.md)
@@ -52,7 +52,7 @@ SSH 接続先を含むほかの入れ方：[📦 インストール](#-インス
 | 🤖 | **エージェントカード** | バックグラウンドのサブエージェントを横並びのカードで表示：モデル、effort、ツール数、トークン、概算費用。完了したカードは約 3 秒チェックを見せて消えます。 |
 | 🔘 | **Hanahira スイッチ** | Hanahira Claude UI モードがオンの間は緑、それ以外はグレー。 |
 
-バージョン表示は、どのスキルのコピーを使っているかも示します：`v1.13.0 Account`（claude.ai のアカウントから同期）または `v1.13.0 SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
+バージョン表示は、どのスキルのコピーを使っているかも示します：`v1.13.1 Account`（claude.ai のアカウントから同期）または `v1.13.1 SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
 
 > **正直さの原則：** エージェントカードの表示はすべて実際の値です。モデル名は API が返したもの、effort はエンジンが送った値だけで、不明なものは推測せず省略するか `model pending` と表示します。エージェントごとの費用は `hooks/agents.ts` の価格表からの **概算** で、`≈` を付けています。
 
@@ -98,7 +98,7 @@ Compose のボリュームを削除する Bash コマンド（`docker compose do
 - **完了 ＝ 確認済み** — 最後の変更のあとに確認を実行するまで「直りました」「動くはずです」とは言いません。
 - **短く、でも曖昧にしない** — 答えが先、編集は `file:line — 何を — なぜ`、正確な値はそのまま。
 - **あなたの言語で** — タスクリストや要約も含め、読む文はすべて、あなたが書いた言語に合わせます。
-- **作業に合ったヘルパー** — 検索、長いビルド、レビュー、調査はヘルパーエージェントに任せ、モデルと effort を作業ごとに選びます。あなたが決めるべきことは手放しません。
+- **あなたのモデルと effort で** — 作業はセッションで選んだモデルと effort で進めます。ヘルパーエージェントはあなたが頼んだときだけ、同じ組み合わせで動くので、トークンに余裕のないアカウントでも無駄に消費しません。あなたが決めるべきことは手放しません。
 
 **コンパニオン** はモードがオンの間、自動で加わります。バナーには、その返答に使われたものが並びます。
 
@@ -135,7 +135,7 @@ scripts/install-ssh.sh
 その後、Desktop で **新しいセッション** を開きます。
 
 - **スキルはこのクローンのもの**（`hanahira-claude-ui-ssh:` の名前）になり、SSH セッションでは開発中のバージョンが動きます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストでだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシンのセッションでは、これまでどおりアカウントのコピーが使われます。
-- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `v1.13.0 SSH`、スキルのバナーは `V25 · SSH` になります。
+- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `v1.13.1 SSH`、スキルのバナーは `V26 · SSH` になります。
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 手元のマシンで使う場合はこの手順は不要で、方法 1 のままで動きます。

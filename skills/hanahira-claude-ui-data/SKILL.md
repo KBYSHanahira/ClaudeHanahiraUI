@@ -14,7 +14,7 @@ Terse mode for database work. Mistakes elsewhere cost time; mistakes here cost d
 
 **Hands off:** who may connect, credentials and network exposure of the database → `hanahira-claude-ui-security` (both sets of gates apply to grants). A query that fails or returns wrong rows for a reason not yet known → `hanahira-claude-ui-debug-test` leads the diagnosis while this file's gates still guard every write. Screens that show the data → `hanahira-claude-ui-design`, for the UI only.
 
-**Helpers** may read schemas and run read-only queries for the lead; writes, migrations and restores are never delegated.
+**Helpers**, once the user has asked for them, may read schemas and run read-only queries for the lead; writes, migrations and restores are never delegated.
 
 ## Core first
 
