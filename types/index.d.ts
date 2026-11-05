@@ -37,6 +37,8 @@ export type Agent = {
   output: number
   cacheRead: number
   cacheWrite: number
+  /** A subagent, or a shell command running in the background; left out (older records) = agent. */
+  kind?: 'agent' | 'shell'
 }
 
 declare module 'claude-code' {

@@ -2,11 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Agent, Info, Outcome, Skill, Stats, Tokens, Usage } from '../types'
-import { agentCardParts, agentStats, prettyModel, visibleAgents } from './agents'
+import { agentChipParts, agentStats, kindLabel, prettyModel, settledStatus, taskNotice, visibleAgents } from './agents'
 import {
-  KIND_COLOR,
-  KIND_GLYPH,
-  KIND_ICON,
+  HUE,
   INK,
   PILL,
   badgeSvg,
@@ -16,12 +14,8 @@ import {
   contextSvg,
   countSvg,
   dotSvg,
-  describe,
-  fileChange,
-  relPath,
   fmtClock,
   fmtCost,
-  fmtDuration,
   fmtElapsed,
   fmtReset,
   fmtSpeed,
@@ -34,15 +28,11 @@ import {
   pillSvg,
   chipSvg,
   ROW,
-  taskKind,
-  taskPill,
-  taskSummary,
   STAT,
   liveSpeed,
   speedScale,
   speedoSvg,
   statSvg,
-  statusPill,
   tickerSvg,
   GLASS,
   type Since,
@@ -52,23 +42,12 @@ import {
 } from './chat'
 export { clip }
 import { iconGroup, iconSvg } from './icons'
-import { SKILLS_FROM, VERSION } from './version'
+import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
 import type { IconName } from './icons'
 
-// Per-call facts the transcript rows read: how long a call took, which Bash
-// commands are repeats. Plain module state; a row redraws when its call resolves.
-const durations = new Map<string, number>()
-const reruns = new Set<string>()
-const seenCommands = new Set<string>()
 const remember = <V,>(m: Map<string, V>, k: string, v: V) => {
   m.set(k, v)
   if (m.size > 400) m.delete(m.keys().next().value as string)
-}
-/** Adds to a set that keeps only its latest 400, so a long session does not grow it for good. */
-const keep = (s: Set<string>, k: string) => {
-  s.delete(k)
-  s.add(k)
-  if (s.size > 400) s.delete(s.values().next().value as string)
 }
 
 const NO_TOKENS: Tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
@@ -94,7 +73,7 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
 // `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: boolean }; reel?: Since<string> | null; from?: Since<number> | null }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
@@ -112,8 +91,8 @@ const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, []
 const skill = atom({ plugin: 'hanahira-claude-ui', key: 'skill' } as const, { on: false, loaded: [] } as Skill)
 // How the latest main turn ended; none before the first one ends, and none while one runs.
 const outcome = atom({ plugin: 'hanahira-claude-ui', key: 'outcome' } as const, null as Outcome | null)
-const SKILL_ON = '#34c38f' // the green of the mode's own banner
-const SKILL_OFF = '#f2736b' // the red of its switch-off box, as the rings' red
+const SKILL_ON = HUE.petal // the mascot's pink: the mode is awake
+const SKILL_OFF = INK.detail // asleep: quiet grey, nothing is wrong
 export const asSkill = (v: unknown): Skill => {
   const s = v as Partial<Skill> | null | undefined
   const loaded = Array.isArray(s?.loaded) ? s.loaded.filter((x): x is string => typeof x === 'string') : []
@@ -197,10 +176,6 @@ const efforts = new Map<string, string>()
 // Each holds where it came from while it plays, so a redraw then sends the same picture.
 const glides = glideHolder()
 const reels = reelHolder()
-// The Hanahira mode as the band last drew it, and whether it switched on in this turn: the
-// sparkle turns in once, as it does, and the picture keeps that until the turn ends.
-let lastOn: boolean | null = null
-let twinkle = false
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
@@ -215,12 +190,14 @@ const RING = 38
 const CARD_MIN = 18
 
 const THEME = {
-  accent: '#9b8cf7', // the status dot
-  working: '#f2736b', // the loading bar and the status chip while Claude works
-  done: '#34c38f', // both once the turn is done
+  accent: HUE.fur, // the speedometer and other calm gauges
+  working: HUE.petal, // the status dot, the loading bar and the status chip while Claude works
+  done: '#8fdcb9', // both once the turn is done
   // The top line's card, in grey at low alpha so it reads on the light theme and the dark.
-  lineCard: { bg: '#8080800f', border: '#8080802e' },
-  warm: '#e8825f', // frame, the context meter, the limit rings
+  // The top line's card is a Box, which cannot follow the theme from inside a picture: black at
+  // 30% darkens whatever the app's ground is, as the glass cards' black at 42% does.
+  lineCard: { bg: '#0000004d', border: '#ffffff14' },
+  warm: HUE.fur, // frame, the context meter, the limit rings at rest
   muted: INK.detail, // the figures' icons: quiet, so the meter leads
   fallbackTitle: 'Hanahira',
   // The band's rounded frame; off since each cell is its own glass card.
@@ -229,7 +206,7 @@ const THEME = {
   // three-line tiles over tall cards: about half the height. false brings back the full band.
   compact: true,
   barPx: 900, // widest the loading bar grows, in px
-  barHeight: 8, // its height in px
+  barHeight: 6, // its height in px: slim beads
   barGap: 4, // room under the bar, in px: keeps it off the rings below
   listAgents: 4, // agent cards on the strip: running first, then the latest finished
   keepFinishedMs: 3000, // a finished agent's card stays this long (to show the check), then goes
@@ -343,10 +320,11 @@ export const meter = (percent: number, width: number) => {
 }
 
 /** Green while there is room, amber as it fills, red near the limit. */
-export const tone = (percent: number) => (percent >= 85 ? '#f2736b' : percent >= 60 ? '#f2c94c' : '#7bd88f')
+export const tone = (percent: number) => (percent >= 85 ? '#f2879a' : percent >= 60 ? '#f3cf7a' : '#8fdcb9')
 
 /** Ring colour:the theme's warm tone, red once the window is nearly spent. */
-export const ringColor = (percent: number) => (percent >= 85 ? '#f2736b' : THEME.warm)
+// A limit's colour says how near it is: calm fur, butter from 60%, rose from 85%.
+export const ringColor = (percent: number) => (percent >= 85 ? HUE.rose : percent >= 60 ? HUE.butter : THEME.warm)
 
 /** A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. */
 export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean; from?: Since<number> | number | null } = {}) => {
@@ -362,7 +340,7 @@ export const ringSvg = (percent: number, color: string, size: number, opts: { ic
   // A disc tinted the arc's colour fills the middle, and the icon fills the disc: big enough
   // to read at a glance, so the gauge reads as one piece.
   const disc = `<circle cx="22" cy="22" r="${opts.bigIcon ? 17 : 15}" fill="${color}" fill-opacity="0.13"/>`
-  const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/>`
+  const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2c2c31" stroke-width="${stroke}"/>`
   const fill =
     arc > 0
       ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${dash(percent)}" transform="rotate(-90 22 22)" class="arc"/>` +
@@ -435,99 +413,11 @@ const pillEl = (els: { Text: any; Svg: any; Box?: any }, p: PillSpec) => {
 
 /** The busy pill of a running row. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const runningPill = (els: { Text: any; Svg: any; Box?: any }) => pillEl(els, { text: 'running', running: true, ...PILL.busy })
-
 /** A small icon where the surface draws SVG, else a plain glyph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, size: number, fallback: string) => {
   const { Text, Svg } = els
   return Svg ? <Svg source={themed(iconSvg(name, color, size))} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
-}
-
-/** The transcript's own colours, beside the kinds' and the pills'. */
-const CHAT = {
-  // The band's frame (THEME.warm at 55% over the band), so your card and the band read as one.
-  userEdge: '#8e5541',
-  userGround: '#221d1b',
-  diffEdge: INK.line,
-}
-
-type RowSpec = {
-  color: string
-  icon: IconName
-  glyph: string
-  verb: string
-  target: string
-  /** The target is a file or a pattern: set in the surface's monospaced face. */
-  mono?: boolean
-  running?: boolean
-  status: unknown
-  ms?: number
-}
-
-/**
- * One transcript row, the grammar every tool, group and task row shares: the kind tile, the
- * verb in the kind's colour and the target, then the status and the time at the right. The verb
- * and target give way (cut in the middle, so a file name stays); the right side never shrinks.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const toolRow = (els: { Box: any; Text: any; Svg: any }, r: RowSpec) => {
-  const { Box, Text, Svg } = els
-  return (
-    <Box justifyContent="space-between" alignItems="center" gap={1}>
-      <Box gap={1} alignItems="center" flexShrink={1} minWidth={0}>
-        {Svg ? (
-          <Svg source={badgeSvg(r.color, r.icon, ROW.tile, r.running === true)} alt={r.verb} width={ROW.tile} height={ROW.tile} />
-        ) : (
-          <Text color={r.color} bold>{` ${r.glyph} `}</Text>
-        )}
-        <Text wrap="truncate-middle">
-          <Text weight="semibold" color={r.color}>{r.verb}</Text>
-          <Text> </Text>
-          <Text mono={r.mono === true}>{r.target}</Text>
-        </Text>
-      </Box>
-      <Box gap={1} alignItems="center" flexShrink={0}>
-        {r.status}
-        {r.ms !== undefined ? <Text dimColor tabular>{fmtDuration(r.ms)}</Text> : null}
-      </Box>
-    </Box>
-  )
-}
-
-/** What a file write changed, as two pills: +added, −removed. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const changePills = (els: { Box: any; Text: any; Svg: any }, added: number, removed: number) => {
-  const { Box } = els
-  return (
-    <Box gap={1} alignItems="center">
-      {added > 0 ? pillEl(els, { text: `+${added}`, ...PILL.ok }) : null}
-      {removed > 0 ? pillEl(els, { text: `−${removed}`, ...PILL.bad }) : null}
-    </Box>
-  )
-}
-
-/**
- * The change itself, under the row, the way an editor shows it: the file's path, then the
- * lines in the engine's own `Code` diff, with its syntax colours, line numbers and change
- * markers on every surface.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const diffCard = (els: { Box: any; Text: any; Code: any }, d: { source: string; path: string; more: number }) => {
-  const { Box, Text, Code } = els
-  return (
-    <Box flexDirection="column" marginLeft={4}>
-      {d.path ? (
-        <Box paddingX={1}>
-          <Text mono color={INK.label} wrap="truncate-start">{d.path}</Text>
-        </Box>
-      ) : null}
-      <Box flexDirection="column" borderStyle="round" borderColor={CHAT.diffEdge} paddingX={1} overflow="hidden">
-        <Code source={d.source} format="diff" {...(d.path ? { path: d.path } : {})} wrap="truncate-end" />
-        {d.more > 0 ? <Text dimColor>{`… ${d.more} more lines`}</Text> : null}
-      </Box>
-    </Box>
-  )
 }
 
 // A second beat while an agent runs: it can outlive the turn that started it.
@@ -572,7 +462,9 @@ const reconcileAgents = async ($: EngineInterface) => {
     s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
   await update($, agents, l =>
     asList(l).map(a => {
-      const status = a.status === 'running' ? settled(byId.get(a.id)) : null
+      // A background command is no agent: the engine's agent list never names it, so only its
+      // notification settles it (prompt.submit).
+      const status = a.status === 'running' && a.kind !== 'shell' ? settled(byId.get(a.id)) : null
       return status ? { ...a, status, endedAt: now } : a
     }),
   )
@@ -646,8 +538,20 @@ export const register: Register = on => {
   // passes it on past this one, and the engine then prints a skipped-hook line on every load.
 
   on('prompt.submit', async ($, e, next) => {
+    // A background task's notification settles its card (an agent's or a command's) and,
+    // being nobody's typing, switches nothing.
+    const notice = taskNotice(e.text)
+    if (notice) {
+      const status = settledStatus(notice.status)
+      const list = asList(await read($, agents))
+      if (status && list.some(a => a.id === notice.id && a.status === 'running')) {
+        const now = await $.clock.now()
+        await update($, agents, l => asList(l).map(a => (a.id === notice.id && a.status === 'running' ? { ...a, status, endedAt: now } : a)))
+        $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+      }
+    }
     // A prompt the person did not type (isMeta, newer engines) switches nothing.
-    const typed = !(e as { isMeta?: true }).isMeta
+    const typed = !(e as { isMeta?: true }).isMeta && !notice
     const cmd = typed ? skillCommand(e.text, (e as { command?: unknown }).command) : null
     const s = cmd ? (cmd.on ? 'on' : 'off') : typed ? modeSwitch(e.text) : null
     switchedOff = s === 'off'
@@ -719,13 +623,10 @@ export const register: Register = on => {
     if (dangerous(e.command)) {
       return { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }
     }
-    const key = e.command.trim()
-    if (seenCommands.has(key)) keep(reruns, e.tool_use_id)
-    keep(seenCommands, key)
     return next(e)
   })
 
-  // Every tool call: stats and timing. One unmatched hook only.
+  // Every tool call: stats, and an agent's start and end. One unmatched hook only.
   on('tool.call', async ($, e, next) => {
     const name = short(e.tool as string)
 
@@ -757,7 +658,35 @@ export const register: Register = on => {
     const t0 = await $.clock.now()
     const result = await next(e)
     const t1 = await $.clock.now()
-    remember(durations, e.tool_use_id, t1 - t0)
+
+    // A command sent to the background (by Claude, or with Ctrl+B): a card of its own, kind
+    // `shell`, kept until its notification arrives. The main loop's only.
+    if (name === 'Bash' && !agentId) {
+      const out = (result as { result?: unknown }).result as { backgroundTaskId?: string } | undefined
+      const input = e as unknown as { description?: string; command?: string }
+      if (out?.backgroundTaskId) {
+        const id = out.backgroundTaskId
+        const rec: Agent = {
+          id,
+          name: input.description || clip((input.command ?? 'command').replace(/\s+/g, ' '), 40),
+          type: 'shell',
+          kind: 'shell',
+          model: '',
+          effort: null,
+          background: true,
+          status: 'running',
+          startedAt: t1,
+          endedAt: null,
+          tools: 0,
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        }
+        await update($, agents, list => [...asList(list).filter(x => x.id !== id), rec].slice(-12))
+        agentBeat($)
+      }
+    }
 
     // The Agent tool's own record carries the id and the model (a launch the spawn hook missed
     // is caught here), and, for a foreground agent, that it is already done.
@@ -901,7 +830,6 @@ export const register: Register = on => {
       await update($, runMs, t => (t ?? 0) + ran)
     }
     startedAt = 0
-    twinkle = false
     await locate($).catch(() => undefined)
     await reconcileAgents($)
     await reconcileMode($)
@@ -939,11 +867,8 @@ export const register: Register = on => {
     }
     const sp = spNow
     const sk = asSkill(skNow)
-    if (lastOn === false && sk.on) twinkle = true
-    if (!sk.on) twinkle = false
-    lastOn = sk.on
     // The looping pictures (status dot, loading bar, working chip) are drawn in the surface's
-    // sandboxed frame while Claude works, the only place SMIL runs: as a plain image a loop
+    // sandboxed frame while Claude works, where a loop keeps running: as a plain image a loop
     // would show one still frame and move only when the band redraws. Idle they hold no loop,
     // so they go back to plain images and the motion stops.
     const loop = e.props.isWorking ? { isInteractive: true } : {}
@@ -969,14 +894,14 @@ export const register: Register = on => {
     const allTokens = (tk.input ?? 0) + (tk.output ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheWrite ?? 0)
     // `roll` names the figure's slot roll: a new value rolls in over the old one.
     const cards: { label: string; value: string; icon: IconName; color: string; roll?: string }[] = [
-      { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f2c94c', roll: 'usd' },
-      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'hash' as IconName, color: '#9b8cf7', roll: 'tokens' },
+      { label: 'Cost', value: use.usd === null ? '—' : `≈${fmtCost(use.usd)}`, icon: 'coin' as IconName, color: '#f3cf7a', roll: 'usd' },
+      { label: 'Tokens', value: fmtTokens(allTokens), icon: 'hash' as IconName, color: '#a9b6ec', roll: 'tokens' },
       // Live: it counts every second while a turn runs, on the band's beat, each second rolling
       // in like the other figures (only the digits that change turn).
-      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'timer' as IconName, color: '#5eb5f7', roll: 'time' },
-      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'sparkles' as IconName, color: '#e8825f', roll: 'model' },
+      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'timer' as IconName, color: '#8fdcb9', roll: 'time' },
+      { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'sparkles' as IconName, color: HUE.petal, roll: 'model' },
       // The compact band shows the version as dim text in the top row instead.
-      ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION} ${SKILLS_FROM}`, icon: 'cube' as IconName, color: '#f28b82' }]),
+      ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION} ${SKILLS_FROM}`, icon: 'cube' as IconName, color: '#f6b896' }]),
     ]
 
     const cardArt = cards.map(c => cardSvg(c.label, c.value, { icon: c.icon, iconColor: c.color }))
@@ -994,9 +919,9 @@ export const register: Register = on => {
     const STATUS: Record<Status, Parameters<typeof chipSvg>[0]> = {
       working: { color: THEME.working, label: 'working', dots: true, motion: true },
       done: { color: THEME.done, label: 'success', icon: 'check' },
-      error: { color: THEME.working, label: 'error', icon: 'cross' },
-      stopped: { color: '#a8a29e', label: 'stopped', icon: 'ban', quiet: true },
-      idle: { color: '#a8a29e', label: 'idle', icon: 'pause', quiet: true },
+      error: { color: HUE.rose, label: 'error', icon: 'cross' },
+      stopped: { color: '#a3a3ab', label: 'stopped', icon: 'ban', quiet: true },
+      idle: { color: '#a3a3ab', label: 'idle', icon: 'pause', quiet: true },
     }
     const status: Status = e.props.isWorking ? 'working' : (endedAs ?? 'idle')
     const statusW = Math.max(...Object.values(STATUS).map(o => chipSvg({ ...o, strong: true, motion: false }).natural))
@@ -1005,7 +930,7 @@ export const register: Register = on => {
     const chips = [
       { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: chipSvg({ ...STATUS[status], strong: true, minWidth: statusW }) },
       { key: 'tools', alt: `${shownTools} tool calls`, art: chipSvg({
-        color: '#f2c94c',
+        color: '#f3cf7a',
         icon: 'bolt',
         value: String(shownTools),
         reel: reel('tools', String(shownTools)),
@@ -1013,7 +938,7 @@ export const register: Register = on => {
         minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
         quiet: true,
       }) },
-      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: chipSvg({ color: '#8f8985', icon: 'tag', label: `v${VERSION} ${SKILLS_FROM}`, quiet: true }) },
+      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: chipSvg({ color: '#86868f', icon: 'tag', label: `v${VERSION} ${SKILLS_FROM}`, quiet: true }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -1041,8 +966,13 @@ export const register: Register = on => {
 
     // The agent strip: running agents first, then the ones that finished lately.
     const crew = visibleAgents(asList(roster), nowMs, { max: THEME.listAgents, keepMs: THEME.keepFinishedMs })
-    // Each card in four pictures (agentCardParts): its figures swap as an image, its ring and bar run on.
-    const crewCards = crew.shown.map(a => ({ a, art: agentCardParts(a, { padBottom: THEME.stripGap, motion: e.props.isWorking }) }))
+    // Each a small one-line card in two pictures (agentChipParts): the name holds still, the ring runs on.
+    // A running agent's ring turns by its own state, not the session's: a background agent works on
+    // while the session sits idle, and a ring that stopped then would read as stuck.
+    const crewCards = crew.shown.map(a => {
+      const moving = e.props.isWorking || a.status === 'running'
+      return { a, moving, art: agentChipParts(a, { padBottom: THEME.stripGap, motion: moving }) }
+    })
 
     // Stat tiles: a ring when the figure is a percentage, else the icon.
     const speedPct = sp.tps === null ? 0 : Math.min(100, (sp.tps / speedScale(sp.peak ?? 0)) * 100)
@@ -1085,20 +1015,22 @@ export const register: Register = on => {
         color: THEME.accent,
         calm: true,
       },
-      // Hanahira Claude UI mode: active or not, under the name, and the companions loaded
-      // beside the core.
+      // Hanahira Claude UI mode: active or not and the skills' version, under the name, and the
+      // companions loaded beside the core.
       {
         key: 'skill',
         icon: 'sparkle' as IconName,
         percent: null,
         big: 'Hanahira',
-        caption: `Claude UI ${sk.on ? 'active' : 'deactive'}`,
-        short: sk.on ? 'Active' : 'Deactive',
+        caption: `Claude UI V${SKILLS_VERSION} ${sk.on ? 'active' : 'deactive'}`,
+        short: `${sk.on ? 'Active' : 'Deactive'} · V${SKILLS_VERSION}`,
         detail: sk.on ? sk.loaded.filter(p => p !== 'core').join(', ') || undefined : undefined,
         color: sk.on ? SKILL_ON : SKILL_OFF,
         tone: sk.on ? SKILL_ON : SKILL_OFF,
         // A switch, as on a smart-home panel: it slides over once as the mode switches on.
-        toggle: { on: sk.on, enter: twinkle },
+        // How long ago the mode woke (a glide held like the figures'), so the mascot's hop is
+        // anchored to that moment and never replays on a later redraw.
+        toggle: { on: sk.on, enter: from('mascot-awake', sk.on ? 1 : 0)?.age ?? null, motion: sk.on && e.props.isWorking },
       },
     ]
     // A tile's ring (or, where pictures are not drawn, a glyph of it), at either size.
@@ -1133,7 +1065,7 @@ export const register: Register = on => {
       value: t.big,
       label: [t.short, t.detail].filter(Boolean).join(' · '),
       bareLabel: t.short,
-      live: t.spark !== undefined,
+      live: t.spark !== undefined || t.toggle?.motion === true,
       // Each cell on its own glass card (inCard): what it holds is the column less the card.
       draw: (cardW, mode = 'line') => {
         const width = cardW === undefined ? undefined : cardW - GLASS.extra
@@ -1241,19 +1173,15 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
           {crewCards.length > 0 ? (
-            <Box columnGap={2} rowGap={1} alignItems="center" flexWrap="wrap">
-              {crewCards.map(({ a, art }) =>
+            <Box columnGap={1} rowGap={0} alignItems="center" flexWrap="wrap">
+              {crewCards.map(({ a, moving, art }) =>
                 Svg ? (
-                  <Box key={`agent-${a.id}`} flexDirection="column">
-                    <Box flexDirection="row">
-                      <Svg source={themed(art.head.svg)} alt={`${a.name}, ${a.status}`} width={art.head.width} height={art.head.height} />
-                      <Svg source={themed(art.mark.svg)} alt={`${a.name} ${a.status === 'running' ? 'working' : a.status}`} width={art.mark.width} height={art.mark.height} {...loop} />
-                    </Box>
-                    <Svg source={themed(art.body.svg)} alt={agentStats(a)} width={art.body.width} height={art.body.height} />
-                    <Svg source={themed(art.strip.svg)} alt={`${a.name} progress`} width={art.strip.width} height={art.strip.height} {...loop} />
+                  <Box key={`agent-${a.id}`} flexDirection="row">
+                    <Svg source={themed(art.body.svg)} alt={`${kindLabel(a)} ${a.name}: ${a.kind === 'shell' ? 'running in the background' : agentStats(a)}`} width={art.body.width} height={art.body.height} />
+                    <Svg source={themed(art.mark.svg)} alt={`${a.name} ${a.status === 'running' ? 'working' : a.status}`} width={art.mark.width} height={art.mark.height} {...(moving ? { isInteractive: true } : {})} />
                   </Box>
                 ) : (
-                  <Text key={`agent-${a.id}`} dimColor>{`◈ ${a.name} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
+                  <Text key={`agent-${a.id}`} dimColor>{`◈ ${kindLabel(a)} · ${a.name} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
                 ),
               )}
               {crew.more > 0 ? <Text dimColor>{`+${crew.more} more`}</Text> : null}
@@ -1273,15 +1201,15 @@ export const register: Register = on => {
         >
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={themed(dotSvg(THEME.accent, e.props.isWorking, 14, true))} alt="" width={14} height={14} {...loop} />
+              <Svg source={themed(dotSvg(THEME.working, e.props.isWorking, 14, true))} alt="" width={14} height={14} {...loop} />
             ) : (
-              <Text color={THEME.accent}>●</Text>
+              <Text color={THEME.working}>●</Text>
             )}
-            {iconEl({ Text, Svg }, 'folder', '#a8a29e', 14, '')}
+            {iconEl({ Text, Svg }, 'folder', '#a3a3ab', 14, '')}
             <Text bold>{title}</Text>
             {branch ? (
               <Box gap={1} alignItems="center">
-                {iconEl({ Text, Svg }, 'branch', '#a8a29e', 14, '⎇')}
+                {iconEl({ Text, Svg }, 'branch', '#a3a3ab', 14, '⎇')}
                 <Text dimColor>{branch}</Text>
               </Box>
             ) : null}
@@ -1311,7 +1239,7 @@ export const register: Register = on => {
             {shownSecs !== null ? (
               // As wide as '59m 59s' from the start, so the pill does not step right as it grows.
               <Box gap={1} alignItems="center" minWidth={9}>
-                {iconEl({ Text, Svg }, 'clock', '#a8a29e', 14, '⏱')}
+                {iconEl({ Text, Svg }, 'clock', '#a3a3ab', 14, '⏱')}
                 {Svg ? (
                   // Each second rolls in on the beat, like the band's figures.
                   <Svg source={themed(elapsedArt!.svg)} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
@@ -1331,7 +1259,7 @@ export const register: Register = on => {
                 // Idle is held as wide as working, so nothing after the pill moves when a turn starts.
                 e.props.isWorking
                   ? { text: 'working', running: true, ...PILL.busy }
-                  : { text: 'idle', fg: '#8a8480', bg: '#2a2727', minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
+                  : { text: 'idle', fg: INK.label, bg: INK.line, minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
               )}
               {Svg ? (
                 <Svg source={themed(countArt.svg)} alt={`${shownTools} tool calls`} width={countArt.width} height={countArt.height} />
@@ -1409,7 +1337,7 @@ export const register: Register = on => {
                 key={`card-${c.label}`}
                 flexDirection="column"
                 borderStyle="round"
-                borderColor="#4a4240"
+                borderColor={INK.line}
                 paddingX={2}
                 minWidth={CARD_MIN}
               >
@@ -1427,143 +1355,9 @@ export const register: Register = on => {
     )
   })
 
-  // ---- Transcript ----------------------------------------------------------
-
-  // The prompt you typed: a card framed in the band's own warm edge, on a faintly warm ground.
-  // A task's notification: a row of the same grammar as a tool's, its status as a pill.
-  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
-    if (e.props.isExpanded && e.props.origin.kind !== 'composer') return next(e)
-    const table = $.ui.resolve(e)
-    const { Box, Text } = table
-    const Svg = 'Svg' in table ? table.Svg : null
-    if (e.props.origin.kind === 'composer') {
-      if (!e.props.isExpanded) return next(e)
-      return (
-        <Box borderStyle="round" borderColor={CHAT.userEdge} backgroundColor={CHAT.userGround} paddingX={1}>
-          <Text>{e.props.text}</Text>
-        </Box>
-      )
-    }
-    const task = e.props.task
-    if (e.props.origin.kind !== 'task-notification' || !task) return next(e)
-    const kind = taskKind(task.type)
-    const verb = kind === 'run' ? 'Task' : 'Agent'
-    return toolRow({ Box, Text, Svg }, {
-      color: KIND_COLOR[kind],
-      icon: KIND_ICON[kind],
-      glyph: KIND_GLYPH[kind],
-      verb,
-      target: clip(taskSummary(e.props.text, verb), 96),
-      status: pillEl({ Box, Text, Svg }, taskPill(task.status)),
-      ms: task.durationMs,
-    })
-  })
-
-  // A tool call: kind tile, coloured verb, target, status pill, duration. An Edit or Write that
-  // changed lines counts them in its pills and shows the change under the row.
-  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-    const p = e.props
-    const d = describe(p.tool, p.input, reruns.has(p.tool_use_id))
-    const ms = durations.get(p.tool_use_id)
-    const table = $.ui.resolve(e)
-    const { Box, Text, Code } = table
-    const Svg = 'Svg' in table ? table.Svg : null
-    const els = { Box, Text, Svg }
-
-    // What the call changed, when it is a file write that landed. Drawn here, in the row, so it
-    // shows wherever the row does; the ToolResult under it then draws nothing (see below).
-    // (`isExpanded` read loosely: older engines' props do not have it.)
-    const expanded = (p as { isExpanded?: boolean }).isExpanded === true
-    const change = !p.isRunning && !p.isErrored && !p.isInterrupted && !expanded ? fileChange(p.tool, p.output) : null
-    const status = p.isRunning
-      ? runningPill(els)
-      : change && change.added + change.removed > 0
-        ? changePills({ Box, Text, Svg }, change.added, change.removed)
-        : pillEl(els, statusPill(p.tool, p))
-    const row = toolRow({ Box, Text, Svg }, {
-      color: KIND_COLOR[d.kind],
-      icon: KIND_ICON[d.kind],
-      glyph: KIND_GLYPH[d.kind],
-      verb: d.verb,
-      target: d.target,
-      mono: d.kind === 'read' || d.kind === 'edit' || d.kind === 'write' || d.kind === 'delete',
-      running: p.isRunning,
-      status,
-      ms: p.isRunning ? undefined : ms,
-    })
-    if (!change || change.rows.length === 0) return row
-    const cwd = await $.session.cwd().catch(() => null)
-    return (
-      <Box flexDirection="column">
-        {row}
-        {diffCard({ Box, Text, Code }, { ...change, path: relPath(change.path, cwd) })}
-      </Box>
-    )
-  })
-
-  // The result block under a standalone row. An Edit or Write's change is drawn in its ToolUse
-  // row already, so here it is nothing; the full view (ctrl+o) keeps the engine's own.
-  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
-    const p = e.props
-    if ((p as { isExpanded?: boolean }).isExpanded === true || p.isErrored) return next(e)
-    const change = fileChange(p.tool, p.output)
-    if (!change || change.rows.length === 0) return next(e)
-    const { Box } = $.ui.resolve(e)
-    return <Box />
-  })
-
-  // A folded run of reads and searches: one summary row, counted by what each call did.
-  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
-    if (e.props.isExpanded) return next(e)
-    const calls = e.props.calls
-    const counts: Record<string, number> = {}
-    for (const c of calls) {
-      const verb = describe(c.tool, c.input).verb
-      counts[verb] = (counts[verb] ?? 0) + 1
-    }
-    const summary = top(counts, 4)
-      .map(([verb, n]) => `${verb} ${n}`)
-      .join(' · ')
-    const isRunning = calls.some(c => c.isRunning)
-    const isErrored = calls.some(c => c.isErrored)
-    const pill = isErrored
-      ? { text: 'error', icon: 'cross' as const, ...PILL.bad }
-      : { text: `${calls.length} calls`, icon: 'check' as const, ...PILL.ok }
-    const table = $.ui.resolve(e)
-    const { Box, Text } = table
-    const Svg = 'Svg' in table ? table.Svg : null
-
-    return toolRow({ Box, Text, Svg }, {
-      color: KIND_COLOR.search,
-      icon: KIND_ICON.search,
-      glyph: KIND_GLYPH.search,
-      verb: 'Explore',
-      target: summary,
-      running: isRunning,
-      status: isRunning ? runningPill({ Box, Text, Svg }) : pillEl({ Box, Text, Svg }, pill),
-    })
-  })
-
   // A `Client` that failed on a surface says why in the log; the engine draws the site again.
   on('ui.fault', ($, e, next) => {
     $.ui.log(`${e.surface} ${e.component} ${e.module} [${e.element}] ${e.phase}: ${e.reason}`)
     return next(e)
-  })
-
-  // The end-of-turn line: a pill instead of a dim word.
-  on('ui.render', { component: 'TurnDuration' }, async ($, e, next) => {
-    // While the line waits on background agents it says so, not "done"; ctrl+o shows the engine's own.
-    // (Read loosely: older engines' props have neither field.)
-    const extra = e.props as { waitingFor?: unknown; isExpanded?: boolean }
-    if (extra.waitingFor || extra.isExpanded) return next(e)
-    const table = $.ui.resolve(e)
-    const { Box, Text } = table
-    const Svg = 'Svg' in table ? table.Svg : null
-    return (
-      <Box gap={1} alignItems="center">
-        {pillEl({ Box, Text, Svg }, { text: e.props.word, icon: 'check' as const, ...PILL.ok })}
-        <Text dimColor>{fmtDuration(e.props.durationMs)}</Text>
-      </Box>
-    )
   })
 }

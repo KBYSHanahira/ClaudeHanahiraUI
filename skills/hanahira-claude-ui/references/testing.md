@@ -4,6 +4,10 @@ Read when writing or changing tests, introducing a mock or fake, or adding a hel
 
 A test is worth keeping only if a realistic bug would turn it red. Everything below serves that one aim.
 
+## Before running
+
+Suites truncate or seed tables: confirm from config that `DATABASE_URL` / `DB_NAME` / `.env.test` target a test database, never prod or a shared dev DB someone else relies on. Can't confirm → ask before running. No real calls to paid or production services. This gate holds for every test run — mine, a helper's, a runner's — and a helper's brief names the confirmed target and the exact command.
+
 ## Decide what failure it guards
 
 Before writing the body, say which change to production code ought to break it, and whether that change would be a bug or a deliberate decision.
@@ -24,17 +28,19 @@ expect(buildQuery({tag:'urgent'})).toBe('tag:"urgent"');
 ## Prefer the real component
 
 - An assertion on a mock only proves the mock was wired in. Either assert something the real component did, or drop the assertion.
-- **Fake the layer below, not the thing under test.** Find out what the real method actually does first; replace only the slow or external dependency beneath it. Unsure what matters → run once against the real implementation and observe.
+- **Fake the layer below, not the thing under test.** Find out what the real method actually does first; replace only the slow or external dependency beneath it. Unsure what matters → run once against the real implementation — a local or containerised instance, never a paid or production service — and observe.
 - **Make fakes strict.** If the contract cares which arguments are passed, how many calls happen, or in what sequence, check those. Give success, error and malformed-input cases separate fixtures so one branch can't accidentally satisfy another's check.
 - **Fakes carry the full shape of real data.** A fake missing a field passes here and fails in integration.
 - **Cleanup for tests belongs in test helpers**, never as an extra method on a production class.
 - If arranging the fakes takes more code than the test itself, write an integration test with real parts instead.
+- Hard to test is a design signal: when everything needs faking or the setup dwarfs the test, simplify the interface before adding more fakes.
+- Warnings in the test output are findings: green means passing with clean output.
 
 ## See it fail first
 
-Write the test first and watch it go red — and check that the reason it's red is the one you intended — before writing the fix or feature. A test you never saw fail has not shown it can. For a regression test the proof is two runs: red with the fix removed, green with it back (table in `references/work-in-order.md`).
+Write the test first and watch it go red — and check that the reason it's red is the one you intended — before writing the fix or feature. A test you never saw fail has not shown it can. For a regression test the proof is two runs: red with the fix removed, green with it back (table in `references/work-in-order.md`). For new code written before its test, set the code aside (stash or revert it), watch the test go red for the intended reason, then bring the code back and watch it go green.
 
-Reasonable exceptions — configuration, throwaway prototypes, generated code — are stated out loud, not skipped quietly. Trivial code doesn't need a test written for form's sake.
+Reasonable exceptions — configuration, throwaway prototypes, generated code, code with no branch or computation — are stated out loud, not skipped quietly.
 
 | Thought | Answer |
 |---|---|

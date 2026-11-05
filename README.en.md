@@ -8,8 +8,8 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.13.1-34c38f?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-Version_26-e8825f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.13.2-34c38f?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-Version_27-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 [🇯🇵 日本語](README.md) ｜ **🇬🇧 English (this page)**
@@ -22,7 +22,7 @@
 
 One plugin, two parts:
 
-- **🖥️ The interface** — a status band above the prompt (context, usage limits, cost, tokens, speed, agents) and card-style transcript rows with code changes shown inline. Always on, nothing to configure.
+- **🖥️ The interface** — a status band above the prompt (context, usage limits, cost, tokens, speed, agents) Always on, nothing to configure.
 - **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Five companions add rules for data, design, security, debugging and new projects.
 
 ## 🚀 Quick start
@@ -52,27 +52,15 @@ Other ways to install, SSH hosts included: [📦 Installation](#-installation).
 | 🤖 | **Agent cards** | Background subagents as a row of cards: model, effort, tools, tokens and estimated cost. A finished card shows its check for about three seconds, then leaves. |
 | 🔘 | **Hanahira switch** | Green while Hanahira Claude UI mode is on, grey otherwise. |
 
-The version chip also says which copy of the skills is in use: `v1.13.1 Account` (synced from your claude.ai account) or `v1.13.1 SSH` (installed on an SSH host by `install-ssh.sh`).
+The version chip also says which copy of the skills is in use: `v1.13.2 Account` (synced from your claude.ai account) or `v1.13.2 SSH` (installed on an SSH host by `install-ssh.sh`).
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported, the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
 
 > **Why the token count looks huge:** Tokens adds up every response's input, output, cache reads and cache writes. In a long session the same context is re-read from the cache on every response, so the total reaches hundreds of millions. A cache read costs far less than ordinary input.
 
-### The transcript
-
-<div align="center">
-
-<img src="docs/preview-chat.svg" alt="Hanahira Claude UI transcript rows: your card, tool rows with kind tiles and status pills, an edit with its inline diff, a delete, a folded run, a running call, a task notification, an error" width="780">
-
-</div>
-
-- **One layout for every row** — tool call, folded run, background task: a kind tile, a coloured verb, the target (files in monospace), a status pill (green `Done`, red `Error`, purple `Running`) and the time. Your own message is a card framed like the band.
-- **Code changes inline** — an Edit or Write shows its patch under its row: numbered lines, additions on green, removals on red, `⋯` where lines are skipped, and `+N` / `−N` pills. The full view (ctrl+o) keeps the engine's own.
-- **Deletes stand out** — `rm` shows as a red **Delete** row.
-
 ### Motion
 
-Figures roll in like a slot reel when they change, rings and the context slider glide to their new value, the tok/s needle follows the stream, and the loading bar and running agent cards move while Claude works. All of it is CSS inside each picture, played at the screen's frame rate: a redraw never restarts or blinks it, and it stops when the system asks for reduced motion. Transcript rows stay still.
+Figures roll in like a slot reel when they change, rings and the context slider glide to their new value, the tok/s needle follows the stream, and the loading bar and running agent cards move while Claude works. All of it is CSS inside each picture, played at the screen's frame rate: a redraw never restarts or blinks it, and it stops when the system asks for reduced motion.
 
 ### Safety guard
 
@@ -135,7 +123,7 @@ scripts/install-ssh.sh
 Then open a **new session** in Desktop.
 
 - **Skills come from this clone** (named `hanahira-claude-ui-ssh:`), so SSH sessions run the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) on this host only, so every skill is listed once; sessions on your local machine keep the account's copy.
-- **You can tell which copy is in use** — the band's version chip reads `v1.13.1 SSH`, and the skill's banner reads `V26 · SSH`.
+- **You can tell which copy is in use** — the band's version chip reads `v1.13.2 SSH`, and the skill's banner reads `V27 · SSH`.
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** goes back to hooks only here, with the skills from your account.
 
 On your local machine none of this is needed; Option 1 works as is.
@@ -168,7 +156,7 @@ Open a **new session** afterwards; open sessions do not pick up changes. If noth
 | Compact band (two rows of one-line gauges, on by default) or full cards | `THEME.compact` in `hooks/register.tsx` |
 | Colours, icons, ring size, bar length, agent card count and how long a finished one stays | `THEME` and `RING` at the top of `hooks/register.tsx` |
 | Blocked commands | `dangerous` in `hooks/register.tsx` |
-| Transcript row look | `hooks/chat.ts` |
+| Band pictures (SVG, formats, charts) | `hooks/chat.ts` |
 | Agent cards and the price table | `hooks/agents.ts` |
 | Icons | `hooks/icons.ts` |
 
@@ -183,7 +171,6 @@ Open a **new session** afterwards; open sessions do not pick up changes. If noth
 bun test                                        # unit tests (hooks/*.test.ts, scripts/repo.spec.ts)
 claude plugin validate /path/to/hanahira-claude-ui
 bun scripts/preview.ts                          # redraw docs/preview.svg and .png
-bun scripts/preview-chat.ts                     # redraw docs/preview-chat.svg
 ```
 
 `scripts/test-preload.ts` stands in for the engine's modules under `bun test`. `scripts/repo.spec.ts` keeps the version in `plugin.json`, `hooks/version.ts` and the preview equal, and pins the texts `install-ssh.sh` rewrites.
@@ -205,7 +192,7 @@ To stop, remove the two `env` keys and turn `-ssh` back on.
 .claude-plugin/     plugin.json, marketplace.json
 hooks/
   hooks.json        module registration
-  register.tsx      the hooks: band, transcript, agents, safety guard
+  register.tsx      the hooks: band, agents, safety guard
   chat.ts           pure display helpers (SVG, formats, charts)
   agents.ts         agent cards, price table
   icons.ts          the line-icon set
@@ -222,7 +209,6 @@ scripts/
   update.sh         one-command update
   dev.ts            live renamed copy for hot reload (systemd/ keeps it running)
   preview.ts        draws docs/preview.svg / .png
-  preview-chat.ts   draws docs/preview-chat.svg
   test-preload.ts   engine stand-ins for bun test
 types/index.d.ts    the shape of the state ($.state)
 ```

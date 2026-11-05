@@ -23,7 +23,8 @@ const app = new Hono();
 const log = logger();
 app.use("*", (c, next) => (c.req.path === "/health" ? next() : log(c, next)));
 // Security headers from day one, before any route. HSTS starts short and
-// without includeSubDomains: raise it only once every subdomain serves HTTPS.
+// without includeSubDomains: raise max-age once HTTPS here is stable; add
+// includeSubDomains only after every subdomain serves HTTPS.
 app.use(
   "*",
   secureHeaders({

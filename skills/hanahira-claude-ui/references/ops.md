@@ -1,10 +1,14 @@
-# Ops — Docker and first checks
+# Ops — first checks, then Docker
 
-Read when the task touches a running service, a build, a deploy, or a service that won't start or won't connect. Use the commands for the user's OS — never Linux commands on Windows.
+Read when the task touches a running service, a build, a deploy, or a service that won't start or won't connect at all (connects but drops or slows → `hanahira-claude-ui-security`). Use the commands for the user's OS — never Linux commands on Windows.
+
+## First find how it runs
+
+Compose file, Dockerfile, systemd unit, Windows service, launchd plist, Procfile, k8s manifest, process-manager config (PM2, supervisord) — then use that tool's own status and logs.
 
 ## Docker (only when the project uses it)
 
-Any task touching a running service, build, or deploy starts with:
+With Docker, a task touching a running service, build, or deploy starts with:
 
 ```bash
 ls compose.yaml compose.yml docker-compose.yaml docker-compose.yml Dockerfile docker/ 2>/dev/null; docker compose ps
@@ -16,7 +20,7 @@ A compose project is the deploy path: edit compose/Dockerfile/mounted source, re
 
 ```bash
 docker compose up -d --build <service>     # recreates the container — ask first
-docker compose up -d <service>             # .env/compose change: recreates, no rebuild (`restart` keeps the old env)
+docker compose up -d <service>             # .env/compose change: recreates, no rebuild — ask first (`restart` keeps the old env)
 docker compose build --no-cache <service>  # stale layer
 docker compose ps && docker compose logs --tail=50 <service>   # verify after, never assume
 ```

@@ -6,9 +6,11 @@ Read when creating or changing a skill (SKILL.md), a system prompt, a CLAUDE.md 
 
 1. **Watch it fail without help.** Give a fresh agent a realistic task that invites the mistake, with no guidance at all. Write down what it actually did and the reasons it gave, word for word. If it doesn't make the mistake, there's nothing to fix — stop.
 2. **Add the least guidance that fixes it.** Target only the failures seen; write nothing for imagined cases. Rerun the same tasks with the guidance in place and confirm the mistake is gone.
-3. **Close the gaps it finds.** When the agent finds a new excuse, answer that excuse explicitly and test again, until the behavior holds.
+3. **Close the gaps it finds.** When the agent finds a new excuse, answer that excuse explicitly and test again, until the behavior holds. When it fails with the guidance in place, ask it what wording would have made the right choice unmistakable, then sort the answer: it read the rule and set it aside → state the principle earlier and firmer; the rule was missing → add it; it never saw the rule → move it up or make it stand out.
 
 **Make the test scenarios hard.** A calm task rarely shows the failure; real ones come with pressure. Stack three or more in one scenario — a deadline, work already sunk, a long session, the user sounding sure ("skip the formalities, I know what X means") — and keep a few prompts that should *not* trigger the rule, to catch it firing everywhere.
+
+**Test each kind of guidance by what it is for.** A rule: a pressure scenario that invites breaking it. A how-to: hand it a fresh case and look for the step it leaves out. A reference: ask questions only it can answer and check they come back right.
 
 **When the mode misbehaved in a real session**, start from that session's transcript, not memory: find the turn where it went wrong, quote the instruction the agent had and what it did, and drop any finding that can't point to a line. That record is the baseline for step 1.
 
@@ -21,6 +23,7 @@ Before running whole scenarios, **check the wording cheaply**: one fresh sample 
 | Agent knows the rule but drops it under pressure | a firm prohibition, the excuses it uses with a reply to each, and warning signs | gentle "prefer" or "consider" |
 | Agent complies but produces the wrong shape | a description of what the output is, with its parts in order | a list of things not to do |
 | A required part keeps going missing | a slot for it in the template being filled | a reminder somewhere nearby |
+| A rule a script, test, lint or hook could verify | that check, and no prose for it | another line in a file loaded on every turn |
 | The right behavior depends on a situation | a condition on something observable ("if a brief exists, cite it") | a general rule with exceptions bolted on |
 
 Avoid soft escape hatches ("don't do X unless it matters") — they reopen the debate every time. A genuine exception gets its own condition. Exceptions written as add-ons don't contain the rule; restructure so the rule never reaches the case it shouldn't cover.
@@ -34,7 +37,7 @@ Avoid soft escape hatches ("don't do X unless it matters") — they reopen the d
 ## The body
 
 - Give the reason behind each rule; capable models extend reasons to new cases, while capital letters only add pressure.
-- Keep it lean: each line must change what the agent does. Put rarely needed detail in reference files loaded on demand, and state exactly when each should be read. Skills loaded often must stay small.
+- Keep it lean: each line must change what the agent does. Put rarely needed detail in reference files loaded on demand, and state exactly when each should be read. Skills loaded often must stay small. Link reference files straight from the skill file, never through another reference; a long reference opens with a short contents list, since agents often read only its start. Call bundled scripts through their interpreter (`python3 x.py`, `bash x.sh`), as packaging can drop execute bits. One term per concept, everywhere.
 - Prefer one strong illustration to several weak ones, and skip stories about how a problem was once solved.
 - Point to other skills by name instead of copying their content.
 

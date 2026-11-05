@@ -4,7 +4,7 @@ Hono + Vite + TypeScript on Bun. Single Docker container. MySQL runs on the host
 
 ## Rebuild after every change
 
-This project runs in production mode only. There is no hot reload — source edits do nothing until the image is rebuilt.
+This project runs in production mode only. There is no hot reload — source edits do nothing until the image is rebuilt. The rebuild stops and recreates the running container — on a live host, ask before running it.
 
 ```bash
 cd docker && docker compose up -d --build
@@ -39,7 +39,7 @@ The container runs `network_mode: host` — it shares the host's network namespa
 
 `restart: unless-stopped` brings it back after a crash or a daemon restart, but not after a manual `docker compose stop`.
 
-Host mode needs a native, rootful Linux engine. Docker Desktop (any OS, Linux included), Colima, OrbStack and Rancher Desktop/Lima run the engine in a VM, and rootless Docker in its own network namespace, so "host" is not this machine: MySQL on `127.0.0.1` is not this machine's. There, use bridge mode with `ports:` and `host.docker.internal`.
+Host mode needs a native, rootful Linux engine. Docker Desktop (any OS, Linux included), Colima, OrbStack and Rancher Desktop/Lima run the engine in a VM, and rootless Docker in its own network namespace, so "host" is not this machine: MySQL on `127.0.0.1` is not this machine's. There, use bridge mode with `ports:`; Linux engines also need `extra_hosts: ["host.docker.internal:host-gateway"]`, and MySQL must accept the bridge subnet (a network-exposure change — review it). Rootless Docker can't reach host loopback.
 
 ## Database
 
@@ -64,9 +64,9 @@ The server binds `HOST` from `.env`: `127.0.0.1` (the default) is loopback-only,
 ## Gotchas
 
 - Bun server binds `HOST` (default `127.0.0.1`); `0.0.0.0` under host mode means every host interface.
-- Security headers come from `secureHeaders()` in `src/server/index.ts`. HSTS starts at `max-age=300` without `includeSubDomains`; raise it only once every subdomain serves HTTPS.
+- Security headers come from `secureHeaders()` in `src/server/index.ts`. HSTS starts at `max-age=300` without `includeSubDomains`; raise `max-age` once HTTPS on this host is stable, add `includeSubDomains` only after every subdomain serves HTTPS.
 - Static routes are registered after API routes so `/api/*` isn't swallowed by the SPA fallback.
 - Nothing else on the host may use port `<port>` — host mode shares the port space.
 - `bun.lock` is committed; the image builds with `--frozen-lockfile`. Run `bun install` after changing dependencies (no Bun on the host → `docker run --rm -u $(id -u):$(id -g) -v "$PWD":/app -w /app oven/bun:<bun-version> bun install`), then commit the lockfile.
 - `.env` is mode 600 and never committed. If it ever gets committed, rotate every secret in it.
-- Never run `ufw enable` on a remote box without allowing SSH first — it cuts the session.
+- Never run `ufw enable` on a remote box without first allowing the SSH port actually in use (`sudo sshd -T | grep -i '^port'`) and arming a timed rollback — it cuts the session.

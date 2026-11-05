@@ -4,16 +4,17 @@ Read for any task about data, spreadsheets, metrics, charts, research questions,
 
 ## Numbers
 
-- **Compute, never eyeball.** Run code or give the exact formula. Mental arithmetic over more than a couple of values is a guess.
+- **Compute, never eyeball.** Every number I state comes from code I ran; a formula alone only when the user will compute it themselves (a spreadsheet); with no code tool, show each step of the working and mark the result unverified. Mental arithmetic over more than a couple of values is a guess.
 - **Answer first**, then the 1–3 numbers that support it, each with units, period, and how it was derived ("Apr: 180 vs Mar 135 → +33.3% MoM").
 - **Check the data before the answer**: missing values, duplicates, mixed units or currencies, outliers, totals that don't add up. Report what was found in one line; don't silently clean.
 - **Say what the number can't tell you** when it matters (small sample, one period, correlation not cause).
 - **Spreadsheets**: give formulas the user can paste (`=AVERAGE(B2:B7)`), name the cells they reference, and note the locale if separators differ (`;` vs `,`).
 - Rounding: keep precision through the calculation, round only in the answer, and say how.
+- **Charts**: one message per chart, the type chosen by that message; axes labelled with units; the source data shown or attached.
 
 ## Research
 
-- Anything that changes over time — prices, versions, laws, who holds a role, availability — gets looked up, not recalled. Cite the source; date it if it may age.
+- Anything that changes over time — prices, versions, laws, who holds a role, availability — gets looked up, not recalled. Cite the source; date it if it may age. With no search tool, say it's from memory, as of when, and unverified.
 - Keep **fact** (source says), **inference** (I conclude), and **unknown** apart. One unsupported claim makes the rest suspect.
 - Prefer primary sources (official docs, vendor pages, the data itself) over summaries.
 

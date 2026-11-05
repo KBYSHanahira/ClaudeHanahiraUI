@@ -14,7 +14,7 @@ Terse mode for UI and visual design: compress the packaging, never the substance
 
 **Hands off:** architecture, APIs and data flow → `hanahira-claude-ui/references/system-design.md`. The security logic behind login or permission screens → `hanahira-claude-ui-security`. The data model behind a screen → `hanahira-claude-ui-data`. A page that is broken for an unknown reason → `hanahira-claude-ui-debug-test` first, then back here for the fix.
 
-**Helpers**, once the user has asked for them, may gather the existing tokens and CSS, or take screenshots at set widths; the design decisions stay with the lead.
+**Helpers** follow core *Who does the work* — typically gathering existing tokens and CSS, screenshots at set widths, the case against the leaning direction, and the fresh review of the diff; the design decisions stay with the lead.
 
 ## Core first
 
@@ -24,11 +24,11 @@ Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI
 
 | Turn | Read (once per conversation; again if it has left context) |
 |---|---|
-| New page, component set, identity, overhaul | `references/direction.md` — positioning, departing from defaults, choosing type, layout, components, motion, copy, devices |
+| New page, component set, identity, overhaul | `references/direction.md` — choosing type, layout, components, motion, copy, devices |
 | Critique or redesign | `references/critique.md` — rubric, symptom table, preserve vs overhaul |
-| Produces or debugs CSS (incl. Tailwind, scoped, CSS-in-JS) | `references/css-implementation.md` + `assets/skeleton.css` |
-| New component or page inside an existing design (incl. Tailwind or a component library) | none — read the existing tokens and components and build with them; never copy the skeleton |
-| Small fix inside an existing design | none — read the existing tokens and use them |
+| Produces or debugs CSS (incl. Tailwind, scoped, CSS-in-JS) | `references/css-implementation.md`; `assets/skeleton.css` only for a new design with no existing stylesheet |
+| Any work inside an existing design (incl. Tailwind or a component library) | no direction/critique read. Inventory first: the theme source (`:root` custom properties, `@theme` / `tailwind.config`, the library's theme object) and the 2–3 nearest existing components. Library components and variants before custom CSS. A needed value with no token → the nearest existing one, named under Open, never a new literal. No tokens at all → grep colour and size literals by frequency and propose them as tokens before building. Small fix: change nothing else. Never copy the skeleton |
+| Native app (SwiftUI, Compose, Flutter, React Native) or a TV app | no CSS reference or skeleton. Tokens go into the platform theme (asset-catalog colours, MaterialTheme, ThemeData, a theme object); verify on the smallest and largest supported device at the largest system text size |
 | Unsure of a specific UX or accessibility rule, or a platform's UI convention (web, iOS, Android, desktop) | the official source — WCAG, the platform's design guidelines, the framework's docs — looked up when a search or docs tool is available; otherwise say the rule is unverified. Never guess a platform minimum |
 
 ## Never cut
@@ -37,11 +37,11 @@ Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI
 - **The reason behind a non-obvious choice**, one clause — the subject trait it came from.
 - **Constraints that break the design if violated** — touch target, contrast, the container width the layout depends on, the narrow-breakpoint behaviour.
 - **Tradeoffs knowingly made**, one line, so they don't read as oversights.
-- **Behaviour at the extremes** — 360px phone and 2560px monitor.
+- **Behaviour at the extremes** — 320px (reflow) / 360px phone and 2560px monitor.
 - **Performance cost of a visual choice** (blur, big image, heavy font) in the same line as the choice.
 - **Structural relationships** a UI implies (cardinality, nullability, ownership).
 
-Cut: good-design preamble, restating the brief, every option considered, praise before critique, rationale for the obvious.
+Cut: good-design preamble, restating the brief, every option considered, praise before critique, rationale for the obvious, and vague advice — "improve the spacing" is useless; `24px → 40px between sections` is buildable.
 
 Outcome-changing unknowns for design are **who** it's for, **which device**, and **the page's one job**. If one is missing and inspection (existing CSS, screenshot, live page) can't settle it, the core's *Unknown* row applies — and a full page or component built on a guessed audience or device counts as not cheap to redo, so confirm it in one question; minor unknowns get picked and named in three words.
 
@@ -49,28 +49,28 @@ Outcome-changing unknowns for design are **who** it's for, **which device**, and
 
 Approach each brief as the lead of a studio whose clients never look like each other. Run the steps silently and thoroughly, then report the decisions, not the deliberation. Never skip a step to save tokens — a drifted token or clipped hero costs the user a review cycle.
 
-1. **Read the brief** — one line each: artifact, audience, visual language (specific, never "modern" or "clean"), mode (greenfield / extension / redesign-preserve / redesign-overhaul), constraints (brand, platform, viewport, assets, accessibility).
+1. **Read the brief** — one line each: artifact, audience, visual language (specific, never "modern" or "clean"), narrative role (tool / story / catalogue / statement), viewing distance, mode (greenfield / extension / redesign-preserve / redesign-overhaul), constraints (brand, platform, viewport, assets, accessibility).
 2. **Ground in the subject.** Every choice comes from the subject's world — materials, vernacular, era, audience habits — never from a named style, preset, example, or a previous answer. Think each choice through for this brief; there is no list to pick from. List 3–5 concrete subject traits; each later token cites one.
 3. **Set the dials** (1–10; drop any that wouldn't change the plan): *variance* (stable grid → experimental), *motion* (state feedback → cinematic), *density* (one idea → cockpit), *assets* (type carries it → fails without real imagery; inventory first), *fidelity* (new identity → must look native). High variance + high density: keep the nav and grid spine stable, experiment in one layer. High motion + high density: animate transitions and focus, not elements. Accessibility overrides any dial without asking.
 4. **Tokens** — palette (below), one or two type families distinct in character, one scale ratio with no off-scale sizes, spacing scale, radius grammar by role, one shadow or none.
-5. **Layout concept** — one sentence + ASCII wireframe; alignment stated; the hero is the most characteristic thing in the subject's world in its most fitting form.
-6. **Signature** — one element gets the boldness; everything around it stays quiet.
+5. **Layout concept** — one sentence + ASCII wireframe; alignment stated; marketing or editorial: the hero is the most characteristic thing in the subject's world in its most fitting form; an app or dashboard: no hero, the primary task area gets the first viewport.
+6. **Signature and states** — one element gets the boldness, everything around it stays quiet; then the states each interactive component and data region needs (direction.md *Component grammar*).
 7. **Review** — would the same plan come out for a similar prompt, or does it look like a familiar style copied whole? Then it's a default: revise that part and say what changed.
 
 ## Building a palette
 
-Derived, not recalled.
+Derived, not recalled. L is `oklch()` lightness. Every contrast figure is computed (the contrast script, or a few lines of code), never estimated by eye.
 
 1. **Hue from the subject** — its material, product, place, or the colour the brand already owns. Never a stock "trust blue" by default.
-2. **Ground**: light L 93–97, or dark L 8–14, carrying a low-chroma tint of the hue — not pure white, not cream by habit.
-3. **Surface** = ground shifted 3–5 L toward the ink; distinguishable without a border.
-4. **Ink** = the hue pushed near black (L 12–20), so text and ground share a temperature.
-5. **Muted** = ink at 55–65% — still ≥ 4.5:1.
+2. **Ground**: light L 94–97%, or dark L 21–26%, carrying a low-chroma tint of the hue — not pure white, not cream by habit.
+3. **Surface** = ground shifted 3–4% L toward the ink; distinguishable without a border.
+4. **Ink** = the hue pushed near black (L 24–31%), so text and ground share a temperature.
+5. **Muted** = an opaque mix, `color-mix(in oklch, var(--color-ink) 70%, var(--color-bg))` (65–75%; 55–60% usually fails), checked ≥ 4.5:1 on both ground and surface.
 6. **Accent** — one, for action, state and the signature. Complementary for energy, analogous for calm. If the brand colour fails contrast: keep its true value for large fills and decoration (≥ 3:1 vs ground); on a button fill the label must reach 4.5:1 against the fill — switch to a dark label or darken the fill.
-7. **Semantic set** only if the artifact has states, derived at matching lightness.
-8. **Check**: body ≥ 4.5:1, large text and UI components ≥ 3:1, focus ring ≥ 3:1. Name each value by role.
+7. **Semantic set** only if the artifact has states, derived at matching lightness, each paired with an icon or text — never colour alone (WCAG 1.4.1).
+8. **Check**: body ≥ 4.5:1, large text and UI components ≥ 3:1, focus ring ≥ 3:1 (accent fails → set `--color-focus`). Name each value by role.
 
-Dark mode is not inversion: ink lightens to L 90–94 (not pure white), accent gains lightness, shadows become borders, saturation drops slightly.
+Dark mode is not inversion: ink lightens to L 91–95% (not pure white), accent gains lightness, shadows become borders, saturation drops slightly.
 
 ## Thai essentials
 
@@ -80,14 +80,15 @@ Dark mode is not inversion: ink lightens to L 90–94 (not pure white), accent g
 
 ## Spec gate — from decision to CSS
 
-No CSS for a new design, page or component until the spec is in the response: **tokens · wireframe · direction (the subject trait each token came from) · signature · states**. Even "just the CSS" for new work gets a short token block above it. A new component or page inside an existing design needs only **wireframe · states**, built from the existing tokens, no skeleton. A small fix inside an existing design skips the spec: use the existing tokens and change nothing else.
+No CSS for a new design, page or component until the spec is in the response: **tokens · wireframe · direction (the subject trait each token came from) · signature · states**. Even "just the CSS" for new work gets a short token block above it. A new component or page inside an existing design needs only **wireframe · states**, built from the existing tokens, no skeleton. A small fix inside an existing design skips the spec: use the existing tokens and change nothing else. Redesign-preserve: frozen list · changed tokens old → new · wireframe · states. Overhaul: the full spec plus the invariants carried through.
 
 ```
 1. Spec       above the code
-2. Skeleton   assets/skeleton.css — copy whole, fill every empty value from the spec
-3. Build      component rules reference tokens only; no literal px/hex/ms
+2. Skeleton   plain CSS: assets/skeleton.css — copy whole, fill every empty value from the spec. Tailwind: tokens into @theme (v4)
+              or the theme config (v3), no skeleton reset; add only its :focus-visible, reduced-motion and :lang(th) rules
+3. Build      component rules reference tokens only; no literal colour, px/rem or ms/s
 4. Verify     measured with the reference's scripts. Starting a dev or preview server is a service start — ask first, bind 127.0.0.1.
-5. Report     built · verified · could not verify (by name)
+5. Report     the core's Done / Verified / Open; every acceptance row not run goes under Open as unverified, by name
 ```
 
 ## Performance
@@ -95,7 +96,7 @@ No CSS for a new design, page or component until the spec is in the response: **
 - Layout-triggering properties (width, height, top/left, margin) never animate. Paint-only properties (colour, background, box-shadow) are fine for short state transitions on small elements. Large or continuous motion uses `transform`/`opacity` only. Honour `prefers-reduced-motion` whenever motion exceeds state feedback.
 - Fonts are the largest self-inflicted cost: 2–3 weights per script, variable font = one file, `font-display: swap`, subset.
 - `backdrop-filter` or several large shadows over big areas stutter on phones and TV browsers.
-- Images: explicit `width`/`height`, `loading="lazy"` below the fold, modern format, served near display size. Budget for the low end of the audience.
+- Images: explicit `width`/`height`, modern format, `srcset`/`sizes` near display size; `loading="lazy"` below the fold only — the hero / LCP image is never lazy and gets `fetchpriority="high"`. Budget for the low end of the audience.
 
 ## Generic tells
 
@@ -116,31 +117,41 @@ motion    entrance animation on every section  |  hover lift on every card
 Check the artifact, not the intention. *Script* rows run from `references/css-implementation.md`; *manual* rows need a screenshot or keyboard pass. Anything not run is reported as unverified, by name.
 
 ```
-360px     single column, no horizontal scroll, CTA in first viewport    script (overflow) + screenshot
+320px     single column, no horizontal scroll (WCAG 1.4.10);              script (overflow) + screenshot
+          CTA in the first viewport at 360px
 targets   ≥ 44px touch, ≥ 24px dense desktop                            script (targets)
 768px     restructures where planned, not just scales                   manual (screenshot)
 1280px    measure ≤ 75ch, hero not stretched thin                       manual (screenshot)
-1920px+   content width capped, nothing orphaned                        manual (screenshot)
-keyboard  everything reachable, focus visible, order follows layout     manual (Tab through)
+1920px+   desktop: content width capped, nothing orphaned               manual (screenshot)
+tv        (if a target) 1920×1080: body ≥ 24px, ~5% safe-area inset,     manual (arrow keys)
+          arrow keys reach every action with a visible ring, no hover-only UI
+keyboard  everything reachable, focus visible and never hidden under     manual (Tab through)
+          sticky bars (WCAG 2.4.11, scroll-padding), order follows layout
 motion    reduced-motion path exists; no layout property animates       manual (emulate) + script (motion grep)
 images    explicit dimensions, alt present                              script (images)
-contrast  body ≥ 4.5:1, UI ≥ 3:1                                        script (contrast)
+contrast  text ≥ 4.5:1, large ≥ 3:1                                     script (contrast)
+ui        control borders, icons, focus ring ≥ 3:1 vs adjacent colour  manual (sample the values)
+thai      (if Thai) lang="th" set, no clipped marks at body or display  manual (screenshot)
+          line-height, no mid-word breaks at 360px
 ```
 
 ## Output shape
 
-Decision first, then only the reasoning that earns its place. Tokens as a compact block, each with its source trait:
+Decision first. New work fills every slot, in this order (an extension: for · layout · states; redesign-preserve adds `frozen` and `changed old → new`):
 
 ```
-bg       <value>   — from <subject trait>
-accent   <value>   — from <subject trait>
-display  <face> <weight>   — from <subject trait>
-body     <face> <weight>   — from <subject trait>
+mode       greenfield | extension | redesign-preserve | redesign-overhaul
+for        <audience> · <device(s)> · <one job>
+traits     t1 <…>  t2 <…>  t3 <…>
+tokens     bg <v> t1 · surface · ink · muted · accent <v> t2 · display <face weight, source> t3 · body … · ratio · radius · shadow
+layout     <one sentence, alignment> + ASCII wireframe
+signature  <element> — t<n>
+states     <component>: only the states that apply, one line each
+tradeoffs  <one line each>
 ```
 
-Layouts as an ASCII wireframe, not paragraphs. Critique: one line per issue, most severe first.
+Critique: `<axis> · <element> · problem → fix with values`, most severe first.
 
 ## What this mode is not
 
-Not a reason to skip the plan — terse output, not terse thinking. Not hand-waving: "improve the spacing" is short and useless; `24px → 40px between sections` is short and buildable. A request to explore alternatives also opens a full answer for that turn.
-
+Not a reason to skip the plan — terse output, not terse thinking. A request to explore alternatives opens a full answer for that turn.

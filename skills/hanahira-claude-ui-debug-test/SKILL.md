@@ -10,11 +10,11 @@ Terse mode for debugging and verification. Compress the packaging, never the sub
 
 ## Role
 
-**Owns:** anything broken, crashing, flaky or failing — reproduce it, find the real cause, make the smallest fix, prove it — plus the quality of tests.
+**Owns:** anything broken, crashing, flaky or failing — reproduce it, find the real cause, make the smallest fix, prove it. How tests are written: `hanahira-claude-ui/references/testing.md`.
 
 **Hands off:** once the cause sits in stored data, security settings or the UI, the fix also follows `hanahira-claude-ui-data`, `hanahira-claude-ui-security` or `hanahira-claude-ui-design`. Refactors and failures spread across several components → `hanahira-claude-ui/references/work-in-order.md`.
 
-**Helpers**, once the user has asked for them, may each investigate one independent failure in parallel and return the cause with its evidence; the slow reproduction or the full suite runs in the background (core *Who does the work*) — only after the lead has passed the *Tests* gate below; the lead confirms every fix by rerunning the original symptom.
+**Helpers** are the default while working out a fix, in this order: after step 1 (or the evidence gathered when it can't be reproduced), causes still standing go one per hypothesis helper; a fix choice costly to reverse gets a contrarian; the verified fix gets the fresh reviewer; independent failures get one investigator each; long runs go to runners (core *Who does the work*, `hanahira-claude-ui/references/delegation.md` *Thinking a fix through with helpers*). Before any helper runs a test or the reproduction, I pass the *Tests* gate below and put the confirmed target and the exact command in its brief; it runs no other test or reproduction. I confirm every fix by rerunning the original symptom.
 
 ## Core first
 
@@ -25,7 +25,7 @@ Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI
 **Reproduce before fixing. Confirm the cause before changing code.** This file owns single-bug discipline. Refactors, failures across several components, and what "done" needs: `hanahira-claude-ui/references/work-in-order.md`.
 
 - **Reproduce where it's safe** — local or staging. **Gate:** never reproduce on prod by triggering real side effects (charges, emails, SMS, deletes, third-party webhooks); use logs, a replay against a copy, or a test double.
-- **Not reproduced yet → gather the evidence yourself first:** run it, read logs and traces, check recent changes. Ask only for what you can't reach — one question, last, with the default you'd take. Still can't reproduce (rare, prod-only) → state the leading hypothesis as unverified, add logging at the suspect boundary, and name the event that would confirm it.
+- **Not reproduced yet → gather the evidence yourself first:** run it, read logs and traces, check recent changes. Ask only for what you can't reach — one question, last, with the default you'd take. Still can't reproduce (rare, prod-only) → state the leading hypothesis as unverified, add logging at the suspect boundary, and name the event that would confirm it. A full investigation that ends at "external" or "timing" is usually an unfinished one: say what was checked, add handling (retry, timeout, a clear error) and monitoring for it, and keep it labelled unconfirmed.
 - **No fix before the cause is confirmed.** "Probably X, try changing it" is a guess dressed as a fix — name the check that confirms X first. Rank hypotheses by evidence and by how cheaply each can be falsified. A fix on a guess either fails, or seems to work because the bug was intermittent and nobody looks again.
 - **Diagnose ≠ edit.** A request to diagnose gets cause and proof, not an edit, unless the user authorized a fix.
 - **Fix at the origin** — where the value goes wrong, not where it throws. A guard at the throw site is a bandage: fine under time pressure only if labelled as one with the real fix named, and never one that removes a security control or a confirmation gate.
@@ -51,7 +51,8 @@ The thoughts that skip a step, and the answer to each:
 3. Locate        find the exact line and state where it goes wrong
 4. Explain       why that produces this symptom
 5. Fix           smallest change at the cause
-6. Verify        the original symptom re-run, now gone
+6. Verify        the original symptom re-run, now gone — against the running thing when the fix
+                 affects one (core *Check the running thing*)
 7. Regress       full suite — nothing else broke
 ```
 
@@ -101,7 +102,7 @@ Cut: debugging-is-methodical preamble, explaining what a stack trace is, several
 
 How to write tests: `hanahira-claude-ui/references/testing.md`. Bug fix → regression test first; it must fail for the right reason before the fix and pass after.
 
-**Gate — check where tests point before running them.** Suites truncate or seed tables: confirm from config that `DATABASE_URL` / `DB_NAME` / `.env.test` target a test database, never prod or a shared dev DB someone else relies on. Can't confirm → ask before running. No real calls to paid or production services.
+**Gate — check where tests point before running them.** Suites truncate or seed tables: confirm from config that `DATABASE_URL` / `DB_NAME` / `.env.test` target a test database, never prod or a shared dev DB; can't confirm → ask first; no real calls to paid or production services. Full rule, including helper runs: `hanahira-claude-ui/references/testing.md` *Before running*.
 
 No dependence on other tests, run order, wall-clock time, or external/shared services; integration tests use local or containerised dependencies the test controls. A flaky suite gets ignored, which is worse than none. Before "done", run the full suite; if it can't run here, say so and give the command. Temporary aids come out before "done": the deliberate breakage, extra debug logging (it may be writing secrets or PII), commented-out code. Verbose logging on prod costs disk, latency and sensitive data in logs — name it and turn it back off.
 
@@ -137,10 +138,6 @@ FIX    build_order() always sets discount=0 — every reader gets it
 CHECK  test_order_without_promo_has_zero_discount fails before the fix, passes after; then full suite
 ```
 "If `build_order()` can't change now, `order.get('discount', 0)` at line 47 is a bandage — other readers still hit the KeyError."
-
-**Input:** Write tests for this function.
-
-**Good:** find the function in the repo if it isn't in the chat; write tests per `testing.md` — one behaviour per test, names stating it, in the repo's test layout. Only with no access to the code: "Paste the function — I'd be inventing its contract otherwise."
 
 ## What this mode is not
 

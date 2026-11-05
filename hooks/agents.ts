@@ -1,17 +1,17 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { clip, EASE, fmtClock, fmtTokens, MOTION, motionStyle } from './chat'
+import { clip, DISPLAY_FAMILY, EASE, fmtClock, fmtTokens, MOTION, motionStyle } from './chat'
 import { iconGroup } from './icons'
 
 const EFFORT_COLOR: Record<string, string> = {
-  low: '#34c38f',
-  medium: '#4aa3f0',
-  high: '#e0a03a',
-  xhigh: '#f2736b',
-  max: '#f2736b',
+  low: '#8fdcb9',
+  medium: '#a9b6ec',
+  high: '#f6b896',
+  xhigh: '#c3b5f7',
+  max: '#c3b5f7',
 }
-const FAMILY_COLOR: Record<string, string> = { haiku: '#34c38f', sonnet: '#4aa3f0', opus: '#e0a03a', fable: '#9b8cf7' }
+const FAMILY_COLOR: Record<string, string> = { haiku: '#8fdcb9', sonnet: '#a9b6ec', opus: '#f6b896', fable: '#c3b5f7' }
 
 /**
  * The card's accent colour: by the effort when it is known, else by model family, else grey.
@@ -20,7 +20,7 @@ const FAMILY_COLOR: Record<string, string> = { haiku: '#34c38f', sonnet: '#4aa3f
 export const accentFor = (effort: string | null, model: string) => {
   if (effort && EFFORT_COLOR[effort]) return EFFORT_COLOR[effort]
   const family = /(haiku|sonnet|opus|fable)/i.exec(model)?.[1]?.toLowerCase()
-  return (family && FAMILY_COLOR[family]) || '#a8a29e'
+  return (family && FAMILY_COLOR[family]) || '#a3a3ab'
 }
 
 const FAMILY = '(haiku|sonnet|opus|fable|mythos)'
@@ -137,7 +137,7 @@ export const spriteInner = (seed: string, color: string) => {
     `<rect x="-1" y="-1" width="9" height="9" rx="2" fill="${color}" fill-opacity="0.14"/>` +
     `<path d="M2 1h3v4H2z" fill="${color}"/>` +
     `<path d="${cells.join('')}" fill="${color}"/>` +
-    `<rect x="2" y="2" width="1" height="1" fill="#1b1818"/><rect x="4" y="2" width="1" height="1" fill="#1b1818"/>`
+    `<rect x="2" y="2" width="1" height="1" fill="#0c0c0d"/><rect x="4" y="2" width="1" height="1" fill="#0c0c0d"/>`
   )
 }
 
@@ -179,10 +179,10 @@ const cardPieces = (a: Agent, opts: { padBottom?: number; barless?: boolean }) =
   const modelW = Math.round(modelText.length * 6.3)
   const statsText = agentStats(a)
   const stats = esc(statsText)
-  const font = 'font-family="ui-sans-serif,system-ui,sans-serif"'
+  const font = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif"'
 
   // A running card's border holds its accent: with the ring and the bar, it says "busy".
-  const edge = running ? accent : '#3a3836'
+  const edge = running ? accent : '#2a2a2f'
   const edgeOpacity = running ? 0.55 : 1
 
   const sr = 6
@@ -191,25 +191,25 @@ const cardPieces = (a: Agent, opts: { padBottom?: number; barless?: boolean }) =
     ? `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2.2"/>` +
       `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}"/>`
     : a.status === 'done'
-      ? iconGroup('check', '#7bd88f', W - 29, 9, 16, 3)
+      ? iconGroup('check', '#8fdcb9', W - 29, 9, 16, 3)
       : a.status === 'error'
-        ? iconGroup('cross', '#f2736b', W - 29, 9, 16, 3)
-        : iconGroup('ban', '#ffd9a0', W - 29, 9, 16, 2.6)
+        ? iconGroup('cross', '#f2879a', W - 29, 9, 16, 3)
+        : iconGroup('ban', '#f3cf7a', W - 29, 9, 16, 2.6)
 
   const barX = 10
   const barW = W - 20
   const barY = H - 12
   const litW = running ? Math.round(barW * 0.3) : barW
-  const track = `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="#2b2827"/>`
+  const track = `<rect x="${barX}" y="${barY}" width="${barW}" height="4" rx="2" fill="#2c2c31"/>`
   const lit = (cls = '') => `<rect x="${barX}" y="${barY}" width="${litW}" height="4" rx="2" fill="${accent}"${cls ? ` class="${cls}"` : ''}/>`
 
-  const frame = `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#1d1c1b" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5"/>`
+  const frame = `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="12" fill="#161618" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5"/>`
   const sprite = `<svg x="10" y="9" width="38" height="38" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
-  const nameLine = `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ece7e4"${nameFit}>${name}</text>`
+  const nameLine = `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="#ededf0"${nameFit}>${name}</text>`
   const figures =
-    `<text x="58" y="38" ${font} font-size="11" fill="#b9b3af">${model}</text>` +
+    `<text x="58" y="38" ${font} font-size="11" fill="#a3a3ab">${model}</text>` +
     (effort ? `<text x="${58 + modelW + 7}" y="38" ${font} font-size="11" font-weight="700" fill="${accent}">${effort}</text>` : '') +
-    `<text x="58" y="53" ${font} font-size="10.5" fill="#8f8985">${stats}</text>`
+    `<text x="58" y="53" ${font} font-size="10.5" fill="#86868f">${stats}</text>`
   const body = sprite + nameLine + figures + mark
   return { W, H, pad, running, accent, frame, sprite, nameLine, figures, mark, body, track, lit, barX, barY, barW, litW }
 }
@@ -235,6 +235,87 @@ export const agentCardSvg = (
     svg: svgBox(p.W, 0, p.H + p.pad, p.frame + p.body + (opts.barless ? '' : p.track + p.lit())),
     width: p.W,
     height: p.H + p.pad,
+  }
+}
+
+/** The small card the strip draws: one line, about the height of the band's chips. */
+export const AGENT_CHIP = { W: 196, H: 24, markW: 24 }
+
+/** A background command's card colour: warm, apart from every model's and effort's. */
+export const SHELL_COLOR = '#f6b896'
+
+/** What a card says it is: a subagent, or a command running in the background. */
+export const kindLabel = (a: Agent) => (a.kind === 'shell' ? 'Bg app' : 'Agent')
+
+/**
+ * A background task's notification, as the session receives it: its id and how it ended
+ * (`completed`, `failed`, `killed`), or null for any other text.
+ */
+export const taskNotice = (text: string): { id: string; status: string } | null => {
+  if (!text.includes('<task-notification>')) return null
+  const id = /<task-id>\s*([^<\s]+)\s*<\/task-id>/.exec(text)?.[1]
+  const status = /<status>\s*([^<\s]+)\s*<\/status>/.exec(text)?.[1]
+  return id && status ? { id, status } : null
+}
+
+/** How a notification's word settles a card; null leaves it running. */
+export const settledStatus = (s: string): Agent['status'] | null =>
+  s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' || s === 'stopped' ? 'stopped' : null
+
+/**
+ * One agent as a small card in two pictures laid edge to edge: `body`, the sprite and the name
+ * on a pill wearing the accent while it runs; `mark`, the right end, where a ring turns while it
+ * runs (`motion`) and a finished one draws its check in once. The stats ride on the picture's
+ * alt text (agentStats), not on the card, so the strip stays one line.
+ */
+export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: boolean } = {}) => {
+  const { W, H, markW } = AGENT_CHIP
+  const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
+  const accent = a.kind === 'shell' ? SHELL_COLOR : accentFor(a.effort, a.model)
+  const running = a.status === 'running'
+  const motion = opts.motion === true
+  const font = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif"'
+  const edge = running ? accent : '#2a2a2f'
+  const frame = `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="${H / 2}" fill="#161618" stroke="${edge}" stroke-opacity="${running ? 0.55 : 1}" stroke-width="1.5"/>`
+  // A subagent wears its pixel creature; a background command, a terminal.
+  const sprite =
+    a.kind === 'shell'
+      ? iconGroup('terminal', accent, 5, 4, 16, 2)
+      : `<svg x="5" y="4" width="16" height="16" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
+  // What it is, as a small tag before the name.
+  const kind = kindLabel(a)
+  const tagW = Math.round(kind.length * 5.6) + 10
+  const tag =
+    `<rect x="26" y="6" width="${tagW}" height="12" rx="6" fill="${accent}" fill-opacity="0.16"/>` +
+    `<text x="${26 + tagW / 2}" y="15" text-anchor="middle" ${font} font-size="9" font-weight="700" fill="${accent}">${kind}</text>`
+  // The name must stop short of the mark: pinned to the room it has.
+  const nameX = 26 + tagW + 6
+  const nameFull = clip(a.name, 20)
+  const nameMax = W - nameX - markW - 2
+  const nameFit = Math.round(nameFull.length * 6.6) > nameMax ? ` textLength="${nameMax}" lengthAdjust="spacingAndGlyphs"` : ''
+  const name = tag + `<text x="${nameX}" y="16" font-family="${DISPLAY_FAMILY}" font-size="12" font-weight="700" fill="#ededf0"${nameFit}>${esc(nameFull)}</text>`
+  const cx = W - markW / 2 - 2
+  const r = 5
+  const sc = 2 * Math.PI * r
+  const ring =
+    `<circle cx="${cx}" cy="${H / 2}" r="${r}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2"/>` +
+    `<circle cx="${cx}" cy="${H / 2}" r="${r}" fill="none" stroke="${accent}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}"${motion ? ' class="spin"' : ''}/>` +
+    (motion ? motionStyle(`@keyframes spin{to{transform:rotate(360deg)}}.spin{transform-box:fill-box;transform-origin:center;animation:spin ${MOTION.spinMs}ms linear infinite}`) : '')
+  const icon = (n: 'check' | 'cross' | 'ban', color: string) => iconGroup(n, color, cx - 6, H / 2 - 6, 12, n === 'ban' ? 2.4 : 2.8)
+  const mark = running
+    ? ring
+    : a.status === 'done'
+      ? motion
+        ? `<g class="tick">${icon('check', '#8fdcb9')}</g>` +
+          motionStyle(`@keyframes tick{from{stroke-dashoffset:24}}.tick path{stroke-dasharray:24;animation:tick ${MOTION.checkMs}ms ${EASE.out} both}`)
+        : icon('check', '#8fdcb9')
+      : a.status === 'error'
+        ? icon('cross', '#f2879a')
+        : icon('ban', '#f3cf7a')
+  const bodyW = W - markW
+  return {
+    body: { svg: svgWindow(0, 0, bodyW, H + pad, frame + sprite + name), width: bodyW, height: H + pad },
+    mark: { svg: svgWindow(bodyW, 0, markW, H + pad, frame + mark), width: markW, height: H + pad },
   }
 }
 

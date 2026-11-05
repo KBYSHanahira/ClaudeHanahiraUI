@@ -14,7 +14,7 @@ Terse mode for database work. Mistakes elsewhere cost time; mistakes here cost d
 
 **Hands off:** who may connect, credentials and network exposure of the database → `hanahira-claude-ui-security` (both sets of gates apply to grants). A query that fails or returns wrong rows for a reason not yet known → `hanahira-claude-ui-debug-test` leads the diagnosis while this file's gates still guard every write. Screens that show the data → `hanahira-claude-ui-design`, for the UI only.
 
-**Helpers**, once the user has asked for them, may read schemas and run read-only queries for the lead; writes, migrations and restores are never delegated.
+**Helpers** may read schemas and run read-only queries for the lead; writes, migrations and restores are never delegated.
 
 ## Core first
 
@@ -33,10 +33,11 @@ Terseness never overrides this. Gated:
 - Running any migration (`prisma migrate dev/deploy`, `rails db:migrate`, `alembic upgrade`, `artisan migrate`, `knex migrate:latest`, `typeorm migration:run`, `manage.py migrate`) — gate it by the most destructive statement it contains. Resets and schema pushes: `prisma migrate reset`, `db push --accept-data-loss`, `migrate:fresh`, `drizzle-kit push`, `db:reset`/`db:drop`, `manage.py flush`, `schema:drop`, `sync({ force: true })`, `synchronize: true` against real data. Never `prisma migrate dev` against a shared DB — on drift it offers a reset.
 - `docker compose down -v` or `docker volume rm` on a database volume; deleting data directories or backup files.
 - Any restore or dump load that can overwrite — see **Backups**.
+- Every other write too — `INSERT`, `insertOne`/`insertMany`, running additive DDL (`CREATE TABLE/INDEX`, `ADD COLUMN`) — needs a yes; the count, preview and backup steps below are for the destructive ones.
 
 A `DELETE` or `REPLACE` of a parent row counts as everything its `ON DELETE CASCADE` reaches — count the children too.
 
-An app user gets `SELECT, INSERT, UPDATE, DELETE` on `<db>.*` from `'localhost'`/`'127.0.0.1'` — never `ALL` or `*.*`.
+An app user gets read/write on its own database only, reachable from the app's address only — MySQL `'user'@'127.0.0.1'` when it shares the host's network (a host-mode container included), the bridge subnet for a bridge-mode container on the same host, the app server's IP otherwise, never `'%'`; PostgreSQL a `pg_hba.conf` line for that address; SQL Server and MongoDB a role scoped to that database — never `ALL`, `*.*`, superuser or `db_owner`; migrations run as a separate DDL user.
 
 The gate is on **running** a write — through a tool, or handing the user a destructive statement to paste. Writing a migration file or an additive statement for review (`ADD COLUMN`, `CREATE INDEX`) is an edit; running it is the write and needs a yes. Schema and data changes that readers depend on go expand → backfill → verify → contract: old and new readers keep working while versions overlap, backfills are idempotent and batched, and the contract step (drop the old column/table) is a separate, later yes — never folded into the same run.
 
@@ -49,7 +50,7 @@ Before any of these:
 
 If the user asks for a destructive operation directly, still show the count first. One round trip is cheap next to a wrong `WHERE`.
 
-A yes covers that exact statement and that count. Run it inside an explicit transaction, compare the affected-row count to the preview, and `ROLLBACK` if it differs — then report: the data changed, or the filter isn't what it seemed. Under autocommit the count arrives after the commit, so this check only works inside `BEGIN`. Keep the transaction short; never hold it open while waiting for the user. An earlier yes never covers a later, different statement.
+A yes covers that exact statement and that count. Run it inside an explicit transaction, compare the affected-row count to the preview, and `ROLLBACK` if it differs — then report: the data changed, or the filter isn't what it seemed. Under autocommit the count arrives after the commit, so this check only works inside `BEGIN`. MySQL `UPDATE`: compare `Rows matched` (the client prints `Rows matched: N  Changed: M`), not the changed count. Where the engine can't roll the statement back (row *Rollback*: standalone MongoDB, MyISAM, DDL on MySQL), the backup comes first and the write runs as one statement whose filter matches the preview exactly. Keep the transaction short; never hold it open while waiting for the user. An earlier yes never covers a later, different statement.
 
 ## Standard sequence
 
@@ -80,7 +81,7 @@ Engine unknown → infer it from the connection string, driver or migration dial
 | **Backup** | `mysqldump --single-transaction --routines --events` | `pg_dump -Fc` (+ `pg_dumpall --globals-only` for roles) | `sqlite3 db ".backup out.db"` or `VACUUM INTO`; never `cp` a live file | `BACKUP DATABASE … WITH COPY_ONLY` (keeps the backup chain) | `mongodump` (`--oplog` on a replica set) |
 | **Load overwrites** | `LOAD DATA … REPLACE` replaces rows on key clash; dumps carry `DROP TABLE IF EXISTS` by default; `--databases`/`-A` dumps carry `USE <original_db>`, ignoring the target you named | `pg_dump -c`/`-C`, `pg_restore --clean`/`-C`; plain dumps may `\connect` | `.restore` replaces the whole DB | `RESTORE … WITH REPLACE` | `mongorestore --drop`; `mongoimport --drop`, `--mode upsert\|merge` |
 | **Integrity off** (gated) | `SET FOREIGN_KEY_CHECKS=0` | `SET session_replication_role = replica`, `DISABLE TRIGGER ALL` | `PRAGMA foreign_keys = OFF` | `NOCHECK CONSTRAINT` | — |
-| **Password** | `-p` prompt, `--defaults-extra-file` (600) or `mysql_config_editor`; not `MYSQL_PWD` | `-W` prompt or `~/.pgpass` (600); not `PGPASSWORD=` on the line | file permissions | omit `-P` (prompts), or integrated auth | `--password` with no value (prompts) |
+| **Password** | `-p` prompt, `--defaults-extra-file` (600) or `mysql_config_editor`; not `MYSQL_PWD` | `-W` prompt or `~/.pgpass` (600); not `PGPASSWORD=` on the line | file permissions | omit `-P` (prompts), or integrated auth | `--username <u>` and no `--password` (prompts) |
 
 ## Never cut
 
@@ -91,8 +92,8 @@ Engine unknown → infer it from the connection string, driver or migration dial
 - **Reversibility** — "adding a nullable column: reversible" vs "dropping the column destroys its data".
 - **Lock and downtime impact.** Size matters, and so does the lock queue: even an instant `ALTER` waits behind a long query and blocks everything queued after it. Set the lock timeout (row *Lock wait*) to a few seconds and retry.
 - **Transaction boundaries** — and whether DDL rolls back on this engine (row *Rollback*).
-- **Credentials off the command line**, every engine: no `-pSECRET`, `sqlcmd -P`, or password in a connection URI — argv lands in shell history and `ps`. Use a prompt or a mode-600 file (row *Password*).
-- **Dumps are data.** A dump holds everything the DB holds, PII included: write it `chmod 600`, outside the repo and any web root, and say where it went.
+- **Credentials off the command line**, every engine: no `-pSECRET`, `sqlcmd -P`, or a password inside a connection URI passed as an argument — argv lands in shell history and `ps`; a URI in a mode-600 `.env` is fine. Use a prompt or a mode-600 file (row *Password*).
+- **Dumps are data.** A dump holds everything the DB holds, PII included: write it owner-only (`chmod 600`; Windows: `icacls <file> /inheritance:r /grant:r %USERNAME%:F`), outside the repo and any web root, and say where it went.
 - **Genuine uncertainty about the data.** Never assume a column's contents, a constraint's existence, or a row count. Query it or ask.
 
 Cut: backup-is-important preamble, explaining `SELECT`, listing every index type before recommending one, restating the schema, ORM-vs-SQL philosophy.
@@ -124,7 +125,7 @@ Read the plan before optimizing (row *Plan*). Guessing at the bottleneck is how 
 
 Before any risky operation, confirm a backup exists and is recent — "there's a nightly" is not confirmation if the change is happening now. Take it with the row *Backup* command. A backup is only real once a restore has been tested; say this once, when it matters.
 
-Before loading any dump, inspect it: `grep -m5 -nE '^(DROP|CREATE DATABASE|USE|\\connect)' dump.sql` (for `pg_restore` archives, `pg_restore -l`). Anything in row *Load overwrites* makes the load a destructive restore: gate it, and name the database it will actually write to.
+Before loading any dump, inspect it: `grep -nE '^(/\*![0-9]+ )?(DROP|CREATE DATABASE|USE )|^\\connect' dump.sql | head -20` (for `pg_restore` archives, `pg_restore -l`). Anything in row *Load overwrites* makes the load a destructive restore: gate it, and name the database it will actually write to.
 
 ## Output shape
 

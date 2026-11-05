@@ -8,8 +8,8 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.13.1-34c38f?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-Version_26-e8825f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.13.2-34c38f?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-Version_27-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 **🇯🇵 日本語（このページ）** ｜ [🇬🇧 English](README.en.md)
@@ -22,7 +22,7 @@
 
 ひとつのプラグインに 2 つの部分があります。
 
-- **🖥️ インターフェース** — プロンプトの上のステータスバンド（コンテキスト、利用制限、費用、トークン、速度、エージェント）と、コード変更をその場で見せるカード風の会話ログ。常にオンで、設定は不要です。
+- **🖥️ インターフェース** — プロンプトの上のステータスバンド（コンテキスト、利用制限、費用、トークン、速度、エージェント）。常にオンで、設定は不要です。
 - **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・セキュリティ・デバッグ・新規プロジェクト向けの 5 つのコンパニオンがルールを加えます。
 
 ## 🚀 クイックスタート
@@ -52,27 +52,15 @@ SSH 接続先を含むほかの入れ方：[📦 インストール](#-インス
 | 🤖 | **エージェントカード** | バックグラウンドのサブエージェントを横並びのカードで表示：モデル、effort、ツール数、トークン、概算費用。完了したカードは約 3 秒チェックを見せて消えます。 |
 | 🔘 | **Hanahira スイッチ** | Hanahira Claude UI モードがオンの間は緑、それ以外はグレー。 |
 
-バージョン表示は、どのスキルのコピーを使っているかも示します：`v1.13.1 Account`（claude.ai のアカウントから同期）または `v1.13.1 SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
+バージョン表示は、どのスキルのコピーを使っているかも示します：`v1.13.2 Account`（claude.ai のアカウントから同期）または `v1.13.2 SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
 
 > **正直さの原則：** エージェントカードの表示はすべて実際の値です。モデル名は API が返したもの、effort はエンジンが送った値だけで、不明なものは推測せず省略するか `model pending` と表示します。エージェントごとの費用は `hooks/agents.ts` の価格表からの **概算** で、`≈` を付けています。
 
 > **トークン数が大きく見える理由：** Tokens は応答ごとの入力・出力・キャッシュ読み込み・キャッシュ書き込みをすべて足した累計です。長いセッションでは同じ文脈が毎回キャッシュから読み直されるため、数億になります。キャッシュ読み込みは通常の入力よりずっと安価です。
 
-### 会話ログ
-
-<div align="center">
-
-<img src="docs/preview-chat.svg" alt="Hanahira Claude UI の会話ログ：自分のカード、種類タイルと状態ピルつきのツール行、差分つきの編集、削除、まとめられた実行、実行中の呼び出し、タスク通知、エラー" width="780">
-
-</div>
-
-- **すべての行が同じ形** — ツール呼び出し、まとめられた実行、バックグラウンドタスク：種類タイル、色付きの動詞、対象（ファイルは等幅）、状態ピル（緑の `Done`、赤の `Error`、紫の `Running`）、所要時間。自分のメッセージはバンドと同じ枠のカードです。
-- **コード変更をその場で表示** — Edit・Write は行のすぐ下に差分を表示：行番号つき、追加は緑、削除は赤、飛ばした所は `⋯`、ピルは `+N` / `−N`。全体表示（ctrl+o）はエンジン本来の表示のままです。
-- **削除は目立つように** — `rm` は赤い **Delete** 行になります。
-
 ### 動き
 
-値が変わるとスロットのリールのように切り替わり、リングとコンテキストスライダーは新しい値へなめらかに動き、tok/s の針はストリームに合わせて振れ、作業中はローディングバーと実行中のエージェントカードが動きます。すべて各画像内の CSS で、画面のフレームレートで再生されます。再描画でやり直しや点滅は起きず、「視差効果を減らす」設定では止まります。会話ログの行は静止のままです。
+値が変わるとスロットのリールのように切り替わり、リングとコンテキストスライダーは新しい値へなめらかに動き、tok/s の針はストリームに合わせて振れ、作業中はローディングバーと実行中のエージェントカードが動きます。すべて各画像内の CSS で、画面のフレームレートで再生されます。再描画でやり直しや点滅は起きず、「視差効果を減らす」設定では止まります。
 
 ### 安全ガード
 
@@ -135,7 +123,7 @@ scripts/install-ssh.sh
 その後、Desktop で **新しいセッション** を開きます。
 
 - **スキルはこのクローンのもの**（`hanahira-claude-ui-ssh:` の名前）になり、SSH セッションでは開発中のバージョンが動きます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストでだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシンのセッションでは、これまでどおりアカウントのコピーが使われます。
-- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `v1.13.1 SSH`、スキルのバナーは `V26 · SSH` になります。
+- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `v1.13.2 SSH`、スキルのバナーは `V27 · SSH` になります。
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 手元のマシンで使う場合はこの手順は不要で、方法 1 のままで動きます。
@@ -168,7 +156,7 @@ curl -fsSL https://raw.githubusercontent.com/KBYSHanahira/ClaudeHanahiraUI/main/
 | コンパクトなバンド（1 行ゲージの 2 段、既定でオン）か、従来のカードか | `hooks/register.tsx` の `THEME.compact` |
 | 色、アイコン、リングの大きさ、バーの長さ、エージェントカードの数と完了カードの表示時間 | `hooks/register.tsx` 冒頭の `THEME` と `RING` |
 | ブロックするコマンド | `hooks/register.tsx` の `dangerous` |
-| 会話ログの行の見た目 | `hooks/chat.ts` |
+| バンドの画像（SVG、書式、チャート） | `hooks/chat.ts` |
 | エージェントカードと価格表 | `hooks/agents.ts` |
 | アイコン | `hooks/icons.ts` |
 
@@ -183,7 +171,6 @@ curl -fsSL https://raw.githubusercontent.com/KBYSHanahira/ClaudeHanahiraUI/main/
 bun test                                        # 単体テスト（hooks/*.test.ts、scripts/repo.spec.ts）
 claude plugin validate /path/to/hanahira-claude-ui
 bun scripts/preview.ts                          # docs/preview.svg と .png を描き直す
-bun scripts/preview-chat.ts                     # docs/preview-chat.svg を描き直す
 ```
 
 `scripts/test-preload.ts` は `bun test` でエンジンのモジュールの代わりをします。`scripts/repo.spec.ts` は `plugin.json`・`hooks/version.ts`・プレビューのバージョンが一致していることを確かめ、`install-ssh.sh` が書き換える文字列を固定しています。
@@ -205,7 +192,7 @@ Desktop は空の `hanahira-claude-ui` をすべてのセッションに同期�
 .claude-plugin/     plugin.json、marketplace.json
 hooks/
   hooks.json        モジュールの登録
-  register.tsx      フック本体：バンド、会話ログ、エージェント、安全ガード
+  register.tsx      フック本体：バンド、エージェント、安全ガード
   chat.ts           表示用の純粋関数（SVG、書式、チャート）
   agents.ts         エージェントカード、価格表
   icons.ts          線画アイコン
@@ -222,7 +209,6 @@ scripts/
   update.sh         1 コマンドでアップデート
   dev.ts            ホットリロード用の名前を変えたコピー（systemd/ で常駐）
   preview.ts        docs/preview.svg / .png を描く
-  preview-chat.ts   docs/preview-chat.svg を描く
   test-preload.ts   bun test 用のエンジンの代役
 types/index.d.ts    状態（$.state）の形
 ```

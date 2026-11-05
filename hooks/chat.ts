@@ -1,68 +1,13 @@
-// Pure helpers for the transcript: no engine calls here, so tests run them as is.
+// Pure display helpers for the band: no engine calls here, so tests run them as is.
 
 import { hasIcon, iconGroup } from './icons'
 import type { IconName } from './icons'
 
-export type Kind = 'read' | 'edit' | 'write' | 'delete' | 'run' | 'search' | 'agent' | 'web' | 'plan' | 'other'
-
-export const KIND_COLOR: Record<Kind, string> = {
-  read: '#7cb7ff',
-  edit: '#ffb86b',
-  write: '#ff7ab6',
-  delete: '#f2736b',
-  run: '#ffd166',
-  search: '#5fd3c4',
-  agent: '#9b8cf7',
-  web: '#6fc3ff',
-  plan: '#7bd88f',
-  other: '#a8a29e',
-}
-
-export const KIND_GLYPH: Record<Kind, string> = {
-  read: '▤',
-  edit: '✎',
-  write: '✚',
-  delete: '✕',
-  run: '>_',
-  search: '⌕',
-  agent: '◈',
-  web: '◍',
-  plan: '☑',
-  other: '⚙',
-}
-
-export const KIND_ICON: Record<Kind, IconName> = {
-  read: 'file',
-  edit: 'pencil',
-  write: 'filePlus',
-  delete: 'trash',
-  run: 'terminal',
-  search: 'search',
-  agent: 'bot',
-  web: 'globe',
-  plan: 'checklist',
-  other: 'cube',
-}
-
 /**
- * The transcript row's measures, in px: the kind tile's picture (the tile itself is 25 of its
- * 32 units), and the status pill's height.
+ * A status pill's measures, in px: its mark's tile picture (the tile itself is 25 of its
+ * 32 units), and the pill's height.
  */
 export const ROW = { tile: 32, pill: 22 }
-
-/** `rm`, `git rm`, `unlink`, `rmdir` at the head of a command, after an optional sudo. */
-const DELETE_CMD = /^\s*(?:sudo\s+)?(?:git\s+rm|rm|unlink|rmdir)\s+/
-
-/** The paths a delete command names: its words after the command, less the flags. */
-const deleted = (command: string) =>
-  command
-    .replace(DELETE_CMD, '')
-    .split(/[;&|\n]/)[0]!
-    .split(/\s+/)
-    // After `--` every word is a path, even one that starts with a dash.
-    .filter((w, i, ws) => w && w !== '--' && (!w.startsWith('-') || ws.slice(0, i).includes('--')))
-    .map(base)
-    .join(' ')
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 /** At most n characters, the last an ellipsis when cut. Counts whole characters, so an emoji or
@@ -74,117 +19,16 @@ export const clip = (s: string, n: number) => {
 }
 /** The last part of a path, for POSIX and Windows paths alike (C:\\work\\app → app). */
 export const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
-const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
-
-type Input = Record<string, unknown>
-const str = (v: unknown) => (typeof v === 'string' ? v : '')
-/** A description that opens with the row's own verb drops it: `Run` + `Run the tests` would say it twice. */
-const unsaid = (text: string, verbs: RegExp) => {
-  const rest = text.replace(verbs, '')
-  return rest && rest !== text ? rest : text
-}
-
-/** What a tool row says: a coloured verb and the thing it acted on. */
-export const describe = (tool: string, raw: unknown, isRerun = false) => {
-  const i = (raw ?? {}) as Input
-  const name = short(tool)
-  const path = str(i.file_path) || str(i.path) || str(i.notebook_path)
-  switch (name) {
-    case 'Bash':
-      // Removing files is a change to the code as much as an edit: it reads as one.
-      if (DELETE_CMD.test(str(i.command)))
-        return {
-          kind: 'delete' as Kind,
-          verb: 'Delete',
-          target: clip(unsaid(str(i.description), /^(?:delete|remove)\s+/i) || deleted(str(i.command)), 64),
-        }
-      return {
-        kind: 'run' as Kind,
-        verb: isRerun ? 'Rerun' : 'Run',
-        target: clip(unsaid(str(i.description), /^(?:re)?run\s+/i) || str(i.command).replace(/\s+/g, ' '), 64),
-      }
-    case 'Read':
-      return { kind: 'read' as Kind, verb: 'Read', target: base(path) }
-    case 'Edit':
-    case 'NotebookEdit':
-      return { kind: 'edit' as Kind, verb: 'Edit', target: base(path) }
-    case 'Write':
-      return { kind: 'write' as Kind, verb: 'Write', target: base(path) }
-    case 'Grep':
-      return { kind: 'search' as Kind, verb: 'Search', target: clip(str(i.pattern), 48) }
-    case 'Glob':
-      return { kind: 'search' as Kind, verb: 'Find', target: clip(str(i.pattern), 48) }
-    case 'Agent':
-    case 'Task':
-      return { kind: 'agent' as Kind, verb: 'Delegate', target: clip(str(i.description), 56) }
-    case 'WebFetch': {
-      const url = str(i.url)
-      return { kind: 'web' as Kind, verb: 'Fetch', target: clip(url.replace(/^https?:\/\//, ''), 56) }
-    }
-    case 'WebSearch':
-      return { kind: 'web' as Kind, verb: 'Search web', target: clip(str(i.query), 56) }
-    // Which skill, not only that one ran: `Use Skill` alone tells the reader nothing.
-    case 'Skill':
-      return { kind: 'other' as Kind, verb: 'Skill', target: clip(str(i.skill) || str(i.command) || 'skill', 64) }
-    case 'AskUserQuestion': {
-      const first = Array.isArray(i.questions) ? ((i.questions[0] ?? {}) as { question?: string }).question : ''
-      return { kind: 'agent' as Kind, verb: 'Ask', target: clip(first ?? '', 64) }
-    }
-    case 'TodoWrite':
-    case 'update_plan': {
-      const n = Array.isArray(i.todos) ? i.todos.length : Array.isArray(i.items) ? i.items.length : 0
-      return { kind: 'plan' as Kind, verb: 'Plan', target: n > 0 ? `${n} steps` : 'update' }
-    }
-    default:
-      return { kind: 'other' as Kind, verb: 'Use', target: name }
-  }
-}
-
-export const parseTests = (text: string) => {
-  const passed = /(\d+)\s+pass(?:ed)?\b/i.exec(text)
-  const failed = /(\d+)\s+fail(?:ed|ures?)?\b/i.exec(text)
-  return {
-    passed: passed ? Number(passed[1]) : null,
-    failed: failed ? Number(failed[1]) : null,
-  }
-}
-
 export type PillIcon = 'check' | 'cross' | 'ban'
 export type Pill = { text: string; fg: string; bg: string; color?: string; running?: boolean; icon?: PillIcon }
 
 // `fg` and `bg` paint a capsule; `color` is the state's own colour, for its tile and word in a
 // row (the way a row's kind shows its tile and verb).
 export const PILL = {
-  ok: { fg: '#a9e6b4', bg: '#2d4232', color: '#34c38f' },
-  bad: { fg: '#f4a1b3', bg: '#4a2b33', color: '#f2736b' },
-  busy: { fg: '#c4baff', bg: '#2d2a3f', color: '#9b8cf7' },
-  warn: { fg: '#ffd9a0', bg: '#3a3224', color: '#e8a33a' },
-}
-
-/** The status at the right of a tool row: its word, mark and colours (drawn by pillEl). */
-export const statusPill = (
-  tool: string,
-  s: { isRunning: boolean; isErrored: boolean; isInterrupted: boolean; output?: unknown },
-): Pill => {
-  if (s.isRunning) return { text: 'running', running: true, ...PILL.busy }
-  if (s.isInterrupted) return { text: 'interrupted', icon: 'ban', ...PILL.warn }
-  if (s.isErrored) return { text: 'error', icon: 'cross', ...PILL.bad }
-
-  const out = (s.output ?? {}) as Input
-  const name = short(tool)
-  if (name === 'Bash') {
-    const t = parseTests(`${str(out.stdout)}\n${str(out.stderr)}`)
-    if (t.failed) return { text: `${t.failed} failed`, icon: 'cross', ...PILL.bad }
-    if (t.passed) return { text: `${t.passed} passed`, icon: 'check', ...PILL.ok }
-    return { text: 'done', icon: 'check', ...PILL.ok }
-  }
-  if (name === 'Edit' || name === 'Write' || name === 'NotebookEdit') return { text: 'saved', icon: 'check', ...PILL.ok }
-  if (name === 'Read') {
-    const file = (out.file ?? {}) as Input
-    const n = typeof file.numLines === 'number' ? file.numLines : null
-    return { text: n === null ? 'read' : n === 1 ? '1 line' : `${n} lines`, icon: 'check', ...PILL.ok }
-  }
-  return { text: 'done', icon: 'check', ...PILL.ok }
+  ok: { fg: '#a9e6b4', bg: '#2d4232', color: '#8fdcb9' },
+  bad: { fg: '#f4a1b3', bg: '#4a2b33', color: '#f2879a' },
+  busy: { fg: '#f9c6dc', bg: '#3a2430', color: '#f5a3c7' },
+  warn: { fg: '#f3cf7a', bg: '#3a3224', color: '#f3cf7a' },
 }
 
 /** Whole seconds as s / m / h / d: 7s, 1m 4s, 2h 5m, 3d 4h. */
@@ -196,12 +40,8 @@ export const fmtElapsed = (totalSecs: number) => {
   return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
 }
 
-/** Tenths of a second under a minute; compared after rounding so 59.96 s reads 1m 0s, not 60.0 s. */
-export const fmtDuration = (ms: number) =>
-  Math.round(Math.max(0, ms) / 100) < 600 ? `${(Math.max(0, ms) / 1000).toFixed(1)} s` : fmtElapsed(Math.round(ms / 1000))
-
 /**
- * A tool row's kind tile: a rounded square tinted in the kind's colour, its icon in the middle,
+ * A pill's mark tile: a rounded square tinted in the state's colour, its icon in the middle,
  * the same tile the band's cards carry. A running tile's edge is dimmer. `icon` 'dots' draws
  * three dots, dim to bright (a status still under way).
  */
@@ -222,133 +62,6 @@ export const badgeSvg = (color: string, icon: string, size: number, running = fa
   )
 }
 
-/** One line of a diff card; `@` is the gap between two hunks, the lines the patch skipped. */
-export type DiffRow = { n: number | null; sign: '+' | '-' | ' ' | '@'; text: string }
-
-/**
- * Rows of a unified patch, numbered like an editor: new-file lines, old lines for removals.
- * Between two hunks, a gap row, so a jump in the numbers never reads as adjacent lines.
- */
-export const diffRows = (hunks: unknown, fallback?: string, max = 14) => {
-  const rows: DiffRow[] = []
-  if (Array.isArray(hunks) && hunks.length > 0) {
-    for (const [k, h] of (hunks as { oldStart: number; newStart: number; lines: string[] }[]).entries()) {
-      if (k > 0) rows.push({ n: null, sign: '@', text: '' })
-      let oldLine = h.oldStart
-      let newLine = h.newStart
-      for (const line of h.lines ?? []) {
-        // `\ No newline at end of file` notes the line before it; it is no line of the file.
-        if (line[0] === '\\') continue
-        const sign = line[0] === '+' ? '+' : line[0] === '-' ? '-' : ' '
-        const text = line.slice(1)
-        if (sign === '+') rows.push({ n: newLine++, sign, text })
-        else if (sign === '-') rows.push({ n: oldLine++, sign, text })
-        else {
-          rows.push({ n: newLine, sign, text })
-          oldLine++
-          newLine++
-        }
-      }
-    }
-  } else if (fallback) {
-    // A file's last newline ends its last line; it starts no line of its own.
-    fallback.replace(/\n$/, '').split('\n').forEach((text, i) => rows.push({ n: i + 1, sign: '+', text }))
-  }
-  const shown = rows.slice(0, max)
-  // A gap with nothing shown after it says nothing: the "more" note covers what follows.
-  if (shown.length < rows.length && shown[shown.length - 1]?.sign === '@') shown.pop()
-  // `more` counts the file's lines left out, not the gap rows between hunks.
-  const more = rows.slice(shown.length).filter(r => r.sign !== '@').length
-  // Counted over every row, so the header's "added" and "removed" do not stop at the rows shown.
-  return { rows: shown, more, ...countChanges(rows) }
-}
-
-type Hunk = { oldStart: number; newStart: number; lines: string[] }
-
-/**
- * The first `max` lines of a patch as unified-diff text, for the engine's `Code` element to
- * highlight. Each hunk's header counts only the lines kept, since a hunk cut short does not
- * parse. A new file's content is one hunk of additions. Control characters (a CRLF file's
- * `\r`) are dropped and a long line is clipped, so the source stays drawable.
- */
-export const diffSource = (hunks: unknown, fallback?: string, max = 14) => {
-  const list: Hunk[] =
-    Array.isArray(hunks) && hunks.length > 0
-      ? (hunks as Hunk[])
-      : fallback
-        ? [{ oldStart: 0, newStart: 1, lines: fallback.replace(/\n$/, '').split('\n').map(l => `+${l}`) }]
-        : []
-  const out: string[] = []
-  let left = max
-  for (const h of list) {
-    if (left <= 0) break
-    const kept = (h.lines ?? [])
-      .filter(l => l[0] !== '\\')
-      .slice(0, left)
-      .map(l => (l[0] === '+' || l[0] === '-' ? l[0] : ' ') + clip(l.slice(l[0] === '+' || l[0] === '-' || l[0] === ' ' ? 1 : 0).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ''), 400))
-    if (kept.length === 0) continue
-    left -= kept.length
-    const olds = kept.filter(l => l[0] !== '+').length
-    const news = kept.filter(l => l[0] !== '-').length
-    out.push(`@@ -${h.oldStart},${olds} +${h.newStart},${news} @@`, ...kept)
-  }
-  return out.join('\n')
-}
-
-/** A path as the project knows it: under `cwd`, relative to it; anywhere else, whole. */
-export const relPath = (path: string, cwd: string | null) => {
-  if (!cwd) return path
-  const root = cwd.replace(/[\\/]+$/, '')
-  return path.startsWith(`${root}/`) || path.startsWith(`${root}\\`) ? path.slice(root.length + 1) : path
-}
-
-/**
- * What an Edit or Write call changed, from its result: the diff card's rows and the counts,
- * the same lines as diff text for `Code`, and the file's path. Null for any other tool; no
- * rows for a result with no patch (an error's text, a no-op).
- */
-export const fileChange = (tool: string, output: unknown) => {
-  const name = short(tool)
-  if (name !== 'Edit' && name !== 'Write') return null
-  const out = (output !== null && typeof output === 'object' ? output : {}) as { structuredPatch?: unknown; content?: unknown; type?: unknown; filePath?: unknown }
-  const fallback = out.type === 'create' && typeof out.content === 'string' ? out.content : undefined
-  const d = diffRows(out.structuredPatch, fallback)
-  // As many file lines as the rows show, so the "more" note counts the same lines.
-  const source = diffSource(out.structuredPatch, fallback, d.rows.filter(r => r.sign !== '@').length)
-  return { ...d, source, path: str(out.filePath) }
-}
-
-/** A background task's kind, from its notification: a shell command runs, anything else is an agent. */
-export const taskKind = (type: string | undefined): Kind => (/bash|shell|command|monitor/i.test(type ?? '') ? 'run' : 'agent')
-
-/**
- * What a notification row says, from its summary: the first line, less what the row already
- * says, the verb in front (`Agent`) and the ending behind (`completed`, which the pill shows),
- * and the quotes round a name left on its own. A name that opens with the verb drops it too:
- * `Agent` + `Agent smoke test` would say it twice.
- */
-export const taskSummary = (text: string, verb: string) => {
-  let s = (text.split('\n').find(l => l.trim()) ?? '').trim()
-  if (s.toLowerCase().startsWith(`${verb.toLowerCase()} `)) s = s.slice(verb.length + 1).trim()
-  s = s.replace(/\s+(?:has\s+|was\s+)?(?:completed|finished|failed|stopped|killed|cancell?ed|done)\.?$/i, '').trim()
-  const quoted = /^"([^"]+)"$/.exec(s)
-  return quoted ? unsaid(quoted[1]!, new RegExp(`^${verb}\\s+`, 'i')) : s
-}
-
-/** A background task's ending as a pill: done, failed or stopped; a status not known reads as itself. */
-export const taskPill = (status: string | undefined): Pill => {
-  const s = (status ?? '').toLowerCase()
-  if (s === 'completed' || s === 'done' || s === 'success') return { text: 'done', icon: 'check', ...PILL.ok }
-  if (s === 'failed' || s === 'error') return { text: 'failed', icon: 'cross', ...PILL.bad }
-  if (s === 'killed' || s === 'stopped' || s === 'cancelled' || s === 'canceled') return { text: 'stopped', icon: 'ban', ...PILL.warn }
-  return { text: s || 'update', ...PILL.busy }
-}
-
-export const countChanges = (rows: DiffRow[]) => ({
-  added: rows.filter(r => r.sign === '+').length,
-  removed: rows.filter(r => r.sign === '-').length,
-})
-
 // A cheap deterministic hash in [0, 1): the same bar draws the same dots every time.
 const noise = (x: number, y: number) => {
   let h = (x * 374761393 + y * 668265263) >>> 0
@@ -357,10 +70,33 @@ const noise = (x: number, y: number) => {
 }
 
 /** The surface every card and chart sits on: a soft top-lit gradient and a hairline edge. */
-export const PANEL = { top: '#2a2625', bottom: '#1e1b1a', edge: '#443e3b', glow: '#ffffff' }
+export const PANEL = { top: '#1c1c1f', bottom: '#141416', edge: '#2a2a2f', glow: '#ffffff' }
+
+/**
+ * The band's hues, all from its mascot, a white cat-eared rabbit: `petal` the pink inside its ears
+ * and on its cheeks (and the name, Hanahira: a petal) is the one accent, for work and the mode;
+ * `fur` the periwinkle shade under its coat is the calm colour of every gauge; mint, butter and
+ * rose say ok, careful and stop, and only when a value means it. `card` is the near-black ground
+ * every card sits on, `snow` and `night` the mascot's coat and eyes.
+ */
+export const HUE = {
+  petal: '#f5a3c7',
+  fur: '#a9b6ec',
+  mint: '#8fdcb9',
+  butter: '#f3cf7a',
+  rose: '#f2879a',
+  peach: '#f6b896',
+  lilac: '#c3b5f7',
+  card: '#161618',
+  snow: '#f4f1fb',
+  night: '#0c0c0d',
+}
+
+/** The mascot's outline: dark enough to edge its white coat, swapped lighter on a white card (LIGHT). */
+export const MASCOT_LINE = '#4a4a52'
 
 /** The band's text and line colours: ink for values, label and detail for words (each at least 4.5:1 on the band), quiet for lines and muted icons. */
-export const INK = { value: '#f1ece8', label: '#a39b96', detail: '#8f8782', line: '#3a3634', track: '#332f2d' }
+export const INK = { value: '#ededf0', label: '#a3a3ab', detail: '#86868f', line: '#2a2a2f', track: '#2c2c31' }
 
 /**
  * The band follows the app's theme from inside each picture: pictures are drawn in their dark
@@ -373,26 +109,27 @@ export const LIGHT: Record<string, string> = {
   [INK.label]: '#6b7280',
   [INK.detail]: '#8a909a',
   [INK.line]: '#dfe3e9',
-  [INK.track]: '#e6e9ee',
-  '#3b3737': '#e6e9ee', // a ring's track
-  '#3a3433': '#e6e9ee', // the speedometer's track
-  '#4a4846': '#c9ced6', // a toggle switched off
-  '#45403e': '#e6e9ee', // the context slider's track: lighter than a block's, as it sits on glass
-  '#8f8985': '#7d838d', // quiet glyphs
-  '#a8a29e': '#7d838d',
-  // An agent card: its ground, edge, track, name, model.
-  '#1d1c1b': '#ffffff',
-  '#3a3836': '#dfe3e9',
-  '#2b2827': '#e6e9ee',
-  '#ece7e4': '#2b2f36',
-  '#b9b3af': '#5f6672',
+  [INK.track]: '#e6e9ee', // every track: rings, speedometer, slider, bar, agent marks
+  // An agent card's ground; its edge, name and words are INK's.
+  [HUE.card]: '#ffffff',
+  // The mascot keeps its coat (its own outline shows it on white); its eyes and the pastel hues
+  // darken enough to read on white.
+  [HUE.night]: '#2b2f36',
+  [HUE.petal]: '#d9609a',
+  [HUE.fur]: '#5b6fc9',
+  [HUE.mint]: '#2f9e74',
+  [HUE.butter]: '#b88a14',
+  [HUE.rose]: '#d4475f',
+  [HUE.peach]: '#c9774a',
+  [HUE.lilac]: '#6f5cd0',
+  [MASCOT_LINE]: '#8a909a', // the mascot's outline, so its white coat shows on white
 }
 
 /** The light swap as a picture's own `<style>`, and the glass cards' light look (a soft shadow). */
 export const themeStyle = () =>
   `<style>@media (prefers-color-scheme: light){` +
   Object.entries(LIGHT)
-    .map(([dark, light]) => `[fill="${dark}"]{fill:${light}}[stroke="${dark}"]{stroke:${light}}`)
+    .map(([dark, light]) => `[fill="${dark}"]{fill:${light}}[stroke="${dark}"]{stroke:${light}}[stop-color="${dark}"]{stop-color:${light}}`)
     .join('') +
   `.glass{fill:#ffffff;fill-opacity:1;stroke:#0f172a;stroke-opacity:.08;filter:url(#glass-shadow)}.glass-hi{stroke-opacity:0}}</style>`
 
@@ -417,9 +154,9 @@ export const inCard = <A extends { svg: string; width: number; height: number; n
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     `<defs><filter id="glass-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.10"/></filter></defs>` +
-    `<rect class="glass" x="${m + 0.5}" y="${m + 0.5}" width="${W - 1}" height="${H - 1}" rx="${rx}" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.08"/>` +
-    // A highlight along the top edge, where light would catch the glass.
-    `<path class="glass-hi" d="M${m + rx} ${m + 1}H${m + W - rx}" stroke="#ffffff" stroke-opacity="0.10"/>` +
+    `<rect class="glass" x="${m + 0.5}" y="${m + 0.5}" width="${W - 1}" height="${H - 1}" rx="${rx}" fill="#000000" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.07"/>` +
+    // A faint sheen along the top edge, so the near-black card still reads as raised.
+    `<path class="glass-hi" d="M${m + rx} ${m + 1}H${m + W - rx}" stroke="#ffffff" stroke-opacity="0.05"/>` +
     inner +
     themeStyle() +
     `</svg>`
@@ -455,6 +192,8 @@ export const MOTION = {
   twinkleMs: 700, // the Hanahira sparkle turning in as the mode switches on
   sparkMs: 2400, // its breath while the mode is on and Claude works
   spinMs: 1100, // a running agent card's ring, once round
+  earMs: 4200, // the mascot's ears twitch once a period
+  blinkMs: 3600, // and its open eye blinks once a period
   agentBarMs: 1600, // a running agent card's lit stretch, one way along its bar
   checkMs: 420, // a finished agent card's check, drawn in
   agentFillMs: 600, // a finished agent card's bar filling from its stretch to the end, once
@@ -651,7 +390,7 @@ export const halftone = (
       cells.push(`M${x.toFixed(1)} ${y.toFixed(1)}h${size}v${size}h-${size}z`)
     }
   }
-  return cells.length > 0 ? `<path d="${cells.join('')}" fill="${opts.color ?? '#b8b0ab'}" fill-opacity="${opts.opacity ?? 0.16}"/>` : ''
+  return cells.length > 0 ? `<path d="${cells.join('')}" fill="${opts.color ?? INK.detail}" fill-opacity="${opts.opacity ?? 0.16}"/>` : ''
 }
 
 /** ≈-free money for a stat card: always two decimals, $15.62. */
@@ -740,11 +479,11 @@ export const speedoSvg = (fraction: number, color: string, size: number, from?: 
   const turn = (v: number) => `rotate(${(-135 + v * 270).toFixed(1)}deg)`
   const needle =
     `<g transform="translate(22 22)"><g transform="rotate(${(-135 + f * 270).toFixed(1)})" class="spd-needle">` +
-    `<path d="M0 0 L0 -13" stroke="#f1ece8" stroke-width="2.6" stroke-linecap="round"/></g></g>` +
+    `<path d="M0 0 L0 -13" stroke="#ededf0" stroke-width="2.6" stroke-linecap="round"/></g></g>` +
     glideStyle('spd-needle', 'transform', turn, was, f)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">` +
-    `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#3a3433" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
+    `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2c2c31" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
     arc +
     needle +
     `<circle cx="22" cy="22" r="3.2" fill="${color}"/>` +
@@ -799,7 +538,7 @@ export const pillSvg = (
   const iconX = height * 0.42
   const glyph = icon ? iconGroup(icon, fg, iconX, (height - iconSize) / 2, iconSize, 3) : ''
   const ty = (height / 2 + fs * 0.35).toFixed(1)
-  const label = `<text x="${tx}" y="${ty}" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}" textLength="${tl}" lengthAdjust="spacingAndGlyphs">${t}</text>`
+  const label = `<text x="${tx}" y="${ty}" text-anchor="middle" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="${fg}" textLength="${tl}" lengthAdjust="spacingAndGlyphs">${t}</text>`
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}"/>` +
@@ -831,8 +570,12 @@ export const loadingSvg = (
   const w = Math.max(120, Math.round(width))
   const h = height
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
-  const pitch = METER.w + METER.gap
-  const blocks = Array.from({ length: Math.ceil(w / pitch) }, (_, k) => `M${k * pitch} 0h${METER.w}v${h}h-${METER.w}z`).join('')
+  const pitch = BEAD.w + BEAD.gap
+  // Rounded beads, not square blocks: each end a half ellipse as tall as the bar and at most half
+  // a bead wide, so a tall bar keeps its beads' width and gaps.
+  const r = Math.min(h / 2, BEAD.w / 2)
+  const run = BEAD.w - 2 * r
+  const blocks = Array.from({ length: Math.ceil(w / pitch) }, (_, k) => `M${k * pitch + r} 0${run > 0 ? `h${run}` : ''}a${r} ${h / 2} 0 0 1 0 ${h}${run > 0 ? `h-${run}` : ''}a${r} ${h / 2} 0 0 1 0 -${h}z`).join('')
 
   // The lights: a row of glows moved one period on per loop, cut to the blocks alone.
   const P = MOTION.barPeriod
@@ -850,12 +593,15 @@ export const loadingSvg = (
       : ''
 
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice" shape-rendering="crispEdges">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice">` +
     `<path d="${blocks}" fill="${opts.live ? color : (opts.rest ?? INK.track)}"/>` +
     glide +
     `</svg>`
   )
 }
+
+/** The loading bar's beads: each one's width and the gap between them (its height is the bar's). */
+export const BEAD = { w: 10, gap: 3 }
 
 /** The context meter's blocks: how many across, each one's size, and the gap between them. */
 export const METER = { segs: 30, w: 6, h: 12, gap: 2 }
@@ -910,10 +656,10 @@ const easeIn = (y: number) => {
 }
 
 /** The context slider: as wide as the old meter, a rounded track, a gradient fill, a knob. */
-export const SLIDER = { width: METER.segs * (METER.w + METER.gap) - METER.gap, track: 12, knob: 8, heat: ['#f59e63', '#f7c8a3', '#a8c8f0'] }
+export const SLIDER = { width: METER.segs * (METER.w + METER.gap) - METER.gap, track: 10, knob: 7, heat: [HUE.fur, HUE.petal] }
 
 /**
- * The context slider as SVG: a track, filled from the left to `percent` with a warm-to-cool
+ * The context slider as SVG: a track, filled from the left to `percent` with a fur-to-petal
  * gradient that spans the whole track (so a fuller slider shows more of it), and a white knob at
  * the end. With `from`, the fill and the knob glide there from that reading (`glideHolder`).
  */
@@ -931,10 +677,10 @@ export const sliderSvg = (percent: number | null, from?: Since<number> | number 
     `<defs><linearGradient id="heat" gradientUnits="userSpaceOnUse" x1="0" x2="${S.width}" y1="0" y2="0">` +
     S.heat.map((c, i) => `<stop offset="${(i / (S.heat.length - 1)).toFixed(2)}" stop-color="${c}"/>`).join('') +
     `</linearGradient></defs>` +
-    `<rect x="0" y="${y}" width="${S.width}" height="${S.track}" rx="${S.track / 2}" fill="#45403e"/>` +
+    `<rect x="0" y="${y}" width="${S.width}" height="${S.track}" rx="${S.track / 2}" fill="#2c2c31"/>` +
     `<rect x="0" y="${y}" width="${at(percent)}" height="${S.track}" rx="${S.track / 2}" fill="url(#heat)" class="sl-fill"/>` +
     `<g transform="translate(${at(percent)} 0)" class="sl-knob">` +
-    `<circle cx="0" cy="${height / 2}" r="${r}" fill="#ffffff" stroke="#0f172a" stroke-opacity="0.12"/></g>` +
+    `<circle cx="0" cy="${height / 2}" r="${r - 1}" fill="#ffffff" stroke="${HUE.petal}" stroke-width="2"/></g>` +
     (was === null ? '' : glideStyle('sl-fill', 'width', p => `${at(p)}px`, was, percent ?? 0) + glideStyle('sl-knob', 'transform', p => `translateX(${at(p)}px)`, was, percent ?? 0)) +
     `</svg>`
   return { svg, width: S.width, height }
@@ -944,7 +690,14 @@ export const sliderSvg = (percent: number | null, from?: Since<number> | number 
  * The face the band's figures are set in. Tabular digits are all one width, so a figure that
  * changes (a clock every second, a count) keeps its width and nothing after it moves.
  */
-export const FIGURE_FONT = 'font-family="ui-sans-serif,system-ui,sans-serif" style="font-variant-numeric:tabular-nums"'
+export const FIGURE_FONT = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" style="font-variant-numeric:tabular-nums"'
+/**
+ * The face for the figures and names the eye reads first (values, the context figure, a chip's
+ * count, an agent's name): Claude's own serif where the picture can reach it, else the nearest
+ * serif every system ships (Georgia on Windows and macOS). Labels and details stay sans.
+ */
+export const DISPLAY_FAMILY = 'Anthropic Serif,Iowan Old Style,Charter,Georgia,Cambria,serif'
+export const DISPLAY_FONT = `font-family="${DISPLAY_FAMILY}" style="font-variant-numeric:tabular-nums lining-nums"`
 
 /** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
 export const CONTEXT = { height: 24, fs: 15, labelFs: 11, icon: 15, gap: 10, afterValue: 12, baseline: 17.3, meterGap: 4 }
@@ -993,7 +746,7 @@ export const contextSvg = (
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     iconGroup('brain', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
-    reelText(valueX, y, C.fs, `${font} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
+    reelText(valueX, y, C.fs, `${DISPLAY_FONT} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
     `<text x="${wordsX}" y="${y}" ${font} font-size="${C.labelFs}">${words}</text>` +
     `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
     `</svg>`
@@ -1023,7 +776,7 @@ export const CARD = { height: 52, tile: 36, icon: 22, textX: 54, pad: 16 }
 /** A stat card as SVG: a tinted icon tile on the left, the label over the value beside it. */
 export const cardSvg = (label: string, value: string, opts: { icon?: IconName; iconColor?: string } = {}) => {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const iconColor = opts.iconColor ?? '#8f8985'
+  const iconColor = opts.iconColor ?? '#86868f'
   const textX = opts.icon ? CARD.textX : 14
   const fs = 17
   const textW = Math.max(labelWidth(value, fs), labelWidth(label, 11.5))
@@ -1035,46 +788,68 @@ export const cardSvg = (label: string, value: string, opts: { icon?: IconName; i
     ? `<rect x="${t}" y="${t}" width="${CARD.tile}" height="${CARD.tile}" rx="10" fill="${iconColor}" fill-opacity="0.14" stroke="${iconColor}" stroke-opacity="0.3"/>` +
       iconGroup(opts.icon, iconColor, io, io, CARD.icon, 2)
     : ''
-  const valueFont = `font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f1ece8"`
+  const valueFont = `font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#ededf0"`
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     panelSvg('cardg', width, height, 12) +
     // The halftone gathers in the top-right corner and starts past the label, so no dot sits on text.
     halftone(Math.max(Math.round(width * 0.45), Math.ceil(textX + labelWidth(label, 11.5) + 6)), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
     tile +
-    `<text x="${textX}" y="21" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#a39b96">${esc(label)}</text>` +
+    `<text x="${textX}" y="21" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#a3a3ab">${esc(label)}</text>` +
     `<text x="${textX}" y="40" ${valueFont}>${esc(value)}</text>` +
     `</svg>`
   return { svg, width, height }
 }
 
-/** A switch's size: its track, and the knob inside it. */
-export const TOGGLE = { w: 30, h: 18, inset: 3, off: '#4a4846' }
+/** The mascot's box, in its own units: a cat-eared rabbit's head, a little wider than tall. */
+export const MASCOT = { w: 30, h: 28 }
 
 /**
- * A switch as SVG, at the top `y`: a track in `color` (on) or grey (off) and a white knob at its
- * end. With `enter` it has just switched: the knob slides over from the other end and the track
- * turns from the other colour, once, on a spring.
+ * The band's mascot, the cat-eared rabbit of the Hanahira banner, as a nested picture at (`x`, `y`)
+ * `width` wide. Awake (`on`): one eye winks, the other is open, pink cheeks and a `w` mouth.
+ * Asleep: both eyes closed and a small z. With `enter` (how long ago it woke, in ms) it hops once
+ * on a spring, anchored to that age like a glide, so a redraw mid-hop goes on from where it is.
+ * With `motion` (awake, while Claude works) its ears twitch and its open eye blinks now and then
+ * (loops: drawn in the surface's frame, see MOTION). Every part rests on its still look.
  */
-export const toggleSvg = (on: boolean, color: string, y: number, enter = false) => {
-  const T = TOGGLE
-  const r = T.h / 2 - T.inset
-  const end = (state: boolean) => (state ? T.w - T.h / 2 : T.h / 2)
-  const ink = (state: boolean) => (state ? color : T.off)
-  return (
-    `<rect x="0" y="${y}" width="${T.w}" height="${T.h}" rx="${T.h / 2}" fill="${ink(on)}"${enter ? ' class="tg-track"' : ''}/>` +
-    `<g transform="translate(${end(on)} 0)"${enter ? ' class="tg-knob"' : ''}>` +
-    `<circle cx="0" cy="${y + T.h / 2}" r="${r}" fill="#ffffff"/></g>` +
-    (enter
-      ? motionStyle(
-          `@keyframes tg-knob{from{transform:translateX(${end(!on)}px)}to{transform:translateX(${end(on)}px)}}` +
-            `@keyframes tg-track{from{fill:${ink(!on)}}to{fill:${ink(on)}}}` +
-            `.tg-knob{animation:tg-knob ${Math.round(MOTION.twinkleMs * 0.6)}ms ${EASE.spring} both}` +
-            `.tg-track{animation:tg-track ${Math.round(MOTION.twinkleMs * 0.6)}ms ${EASE.out} both}`,
-        )
+export const mascotSvg = (on: boolean, x: number, y: number, width: number, opts: { enter?: number | null; motion?: boolean } = {}) => {
+  const M = MASCOT
+  const height = +((width * M.h) / M.w).toFixed(2)
+  const moving = on && opts.motion === true
+  const hop = on && typeof opts.enter === 'number' && opts.enter < MOTION.twinkleMs ? Math.round(opts.enter) : null
+  const ear = (side: 'l' | 'r') =>
+    side === 'l'
+      ? `<g${moving ? ' class="ear-l"' : ''}><path d="M4 12L6 2l8 7z" fill="${HUE.snow}" stroke="${MASCOT_LINE}" stroke-width="0.8" stroke-linejoin="round"/><path d="M6.2 9.5L7 4.5l4 3.6z" fill="${HUE.petal}"/></g>`
+      : `<g${moving ? ' class="ear-r"' : ''}><path d="M26 12L24 2l-8 7z" fill="${HUE.snow}" stroke="${MASCOT_LINE}" stroke-width="0.8" stroke-linejoin="round"/><path d="M23.8 9.5L23 4.5l-4 3.6z" fill="${HUE.petal}"/></g>`
+  const head = `<ellipse cx="15" cy="17" rx="13" ry="9.5" fill="${HUE.snow}" stroke="${MASCOT_LINE}" stroke-width="0.8"/>`
+  const lid = (cx: number) => `<path d="M${cx - 2} ${on ? 15.5 : 15.2}q2 ${on ? -2 : 1.6} 4 0" fill="none" stroke="${HUE.night}" stroke-width="1.4" stroke-linecap="round"/>`
+  const face = on
+    ? lid(10.5) +
+      `<ellipse cx="19.5" cy="15.2" rx="1.6" ry="1.8" fill="${HUE.night}"${moving ? ' class="eye"' : ''}/>` +
+      `<ellipse cx="7.5" cy="19.5" rx="2.2" ry="1.3" fill="${HUE.petal}" fill-opacity="0.85"/>` +
+      `<ellipse cx="22.5" cy="19.5" rx="2.2" ry="1.3" fill="${HUE.petal}" fill-opacity="0.85"/>`
+    : lid(10.5) + lid(19.5) + `<text x="25" y="6.5" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="7" font-weight="700" fill="${INK.detail}">z</text>`
+  const mouth = `<path d="M12.6 19.2q1.2 1.4 2.4 0q1.2 1.4 2.4 0" fill="none" stroke="${HUE.night}" stroke-width="1.2" stroke-linecap="round"/>`
+  const style =
+    (hop !== null ? `@keyframes hop{0%{transform:translateY(0)}35%{transform:translateY(-2px)}70%{transform:translateY(0.4px)}100%{transform:translateY(0)}}.hop{animation:hop ${MOTION.twinkleMs}ms ${EASE.spring} -${hop}ms both}` : '') +
+    (moving
+      ? `@keyframes ear{0%,86%,100%{transform:rotate(0)}90%{transform:rotate(-12deg)}94%{transform:rotate(6deg)}}` +
+        `.ear-l{transform-origin:8px 10px;animation:ear ${MOTION.earMs}ms ${EASE.inOut} infinite}` +
+        `.ear-r{transform-origin:22px 10px;animation:ear ${MOTION.earMs}ms ${EASE.inOut} ${Math.round(MOTION.earMs / 2)}ms infinite}` +
+        `@keyframes blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(0.1)}}` +
+        `.eye{transform-origin:19.5px 15.2px;animation:blink ${MOTION.blinkMs}ms linear infinite}`
       : '')
+  return (
+    `<svg x="${x}" y="${y}" width="${width}" height="${height}" viewBox="0 0 ${M.w} ${M.h}" overflow="visible">` +
+    `<g${hop !== null ? ' class="hop"' : ''}>${ear('l')}${ear('r')}${head}${face}${mouth}</g>` +
+    (style ? motionStyle(style) : '') +
+    `</svg>`
   )
 }
+
+/** The on/off slot of a stat (the Hanahira mode), where the mascot sits: its width and height. */
+export const TOGGLE = { w: 30, h: 18 }
+
 
 /** A stat on the compact band: one line at a text row's height, glyph then value then label. */
 export const STAT = { height: 28, glyph: 24, icon: 15, plainIcon: 15, gap: 7, fs: 13, labelFs: 11, lineH: 16, baseline: 18.5, stackTop: 13.5, subFs: 10.5, subLine: 12.5 }
@@ -1116,15 +891,16 @@ export const statSvg = (
      */
     spark?: { pulse?: boolean; enterFrom?: string }
     /**
-     * A switch in the glyph's place, on in `color` or off in grey: a state that is on or off
-     * (the Hanahira mode). `enter`: it has just switched, so the knob slides across (once).
+     * The mascot in the glyph's place, awake (on) or asleep (off): a state that is on or off (the
+     * Hanahira mode). `enter`: how long ago it woke, in ms, so its hop goes on from there (or null);
+     * `motion`: ears and eye move (a loop, drawn in the surface's frame).
      */
-    toggle?: { on: boolean; enter?: boolean }
+    toggle?: { on: boolean; enter?: number | null; motion?: boolean }
   } = {},
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const S = STAT
-  const color = opts.color ?? '#8f8985'
+  const color = opts.color ?? '#86868f'
   const spark = opts.icon && !opts.plain && !opts.ring && (opts.spark?.pulse || opts.spark?.enterFrom) ? opts.spark : undefined
   const under = opts.stack ?? []
   const stacked = opts.stack !== undefined
@@ -1135,8 +911,9 @@ export const statSvg = (
   const x = (opts.toggle ? T.w : S.glyph) + S.gap
   const y = stacked ? S.stackTop : S.baseline
   const io = g0 + (S.glyph - S.icon) / 2
+  // The on/off state (the Hanahira mode) is the mascot, awake or asleep, in the switch's slot.
   const glyph = opts.toggle
-    ? toggleSvg(opts.toggle.on, color, g0 + (S.glyph - T.h) / 2, opts.toggle.enter === true)
+    ? mascotSvg(opts.toggle.on, 0, g0 + (S.glyph - (T.w * MASCOT.h) / MASCOT.w) / 2, T.w, { enter: opts.toggle.enter ?? null, motion: opts.toggle.motion === true })
     : opts.ring
     ? `<g transform="translate(0 ${g0})">${opts.ring}</g>`
     : opts.icon && opts.plain
@@ -1149,17 +926,17 @@ export const statSvg = (
         (spark ? '</g>' : '')
       : ''
   const font = FIGURE_FONT
-  const valueFont = `${font} font-size="${S.fs}" font-weight="700" fill="#f1ece8"`
-  // An invisible copy of the value holds its place, so the label follows it as the renderer sets it.
-  const holder = `<tspan font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
+  const valueFont = `${DISPLAY_FONT} font-size="${S.fs}" font-weight="700" fill="#ededf0"`
+  // An invisible copy of the value, in its own face, holds its place, so the label follows it as the renderer sets it.
+  const holder = `<tspan font-family="${DISPLAY_FAMILY}" font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
   const tail =
-    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#a39b96">${holder}` +
+    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#a3a3ab">${holder}` +
     (label ? `<tspan dx="5"${opts.tone ? ` fill="${opts.tone}" font-weight="600"` : ''}>${esc(label)}</tspan>` : '') +
-    (opts.detail && !stacked ? `<tspan fill="#8f8782"> · ${esc(opts.detail)}</tspan>` : '') +
+    (opts.detail && !stacked ? `<tspan fill="#86868f"> · ${esc(opts.detail)}</tspan>` : '') +
     `</text>` +
     under
       .map((line, i) => {
-        const ink = i === 0 && opts.tone ? `fill="${opts.tone}" font-weight="600"${spark?.enterFrom ? ' class="rise"' : ''}` : 'fill="#8f8782"'
+        const ink = i === 0 && opts.tone ? `fill="${opts.tone}" font-weight="600"${spark?.enterFrom ? ' class="rise"' : ''}` : 'fill="#86868f"'
         return `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" ${ink}>${esc(line)}</text>`
       })
       .join('')
@@ -1247,7 +1024,7 @@ export const chipSvg = (opts: {
   const x = C.lead + glyphW + (glyphW ? 6 : 0)
   const y = C.baseline
   const font = FIGURE_FONT
-  const valueFont = `${font} font-size="${C.fs}" font-weight="700" fill="#f1ece8"`
+  const valueFont = `${DISPLAY_FONT} font-size="${C.fs}" font-weight="700" fill="#ededf0"`
   // Still, the dots brighten left to right; moving, that brightness steps one dot on each third.
   const levels = [0, 1, 2].map(i => (0.3 + i * 0.35).toFixed(2))
   const glyph = opts.dots
@@ -1261,7 +1038,7 @@ export const chipSvg = (opts: {
     : opts.icon
       ? iconGroup(opts.icon, glyphColor, C.lead, (h - C.icon) / 2, C.icon, 2.2)
       : ''
-  const holder = opts.value ? `<tspan font-size="${C.fs}" font-weight="700" fill-opacity="0">${esc(opts.value)}</tspan>` : ''
+  const holder = opts.value ? `<tspan font-family="${DISPLAY_FAMILY}" font-size="${C.fs}" font-weight="700" fill-opacity="0">${esc(opts.value)}</tspan>` : ''
   const labelStyle = opts.strong && !opts.value ? `font-weight="700" fill="${quiet ? INK.label : opts.color}"` : `fill="${INK.label}"`
   const tail =
     `<text x="${x}" y="${y}" ${font} font-size="${opts.strong && !opts.value ? C.fs : C.labelFs}">${holder}` +
@@ -1337,14 +1114,14 @@ export const countSvg = (count: number, opts: { label?: string; minWidth?: numbe
   const width = Math.max(opts.minWidth ?? 0, wordX + wordW + 11)
   const bg = '#33301f'
   const numAt = (n: string) =>
-    `<text x="${numX}" y="16.3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f6e3a1" textLength="${digitsW(n)}" lengthAdjust="spacingAndGlyphs">${n}</text>`
+    `<text x="${numX}" y="16.3" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f6e3a1" textLength="${digitsW(n)}" lengthAdjust="spacingAndGlyphs">${n}</text>`
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     `<title>Tool calls this turn</title>` +
     `<rect width="${width}" height="${height}" rx="${height / 2}" fill="${bg}"/>` +
     iconGroup('bolt', '#ffd166', 9, 5.5, 13, 2.4) +
     numAt(num) +
-    `<text x="${wordX}" y="16" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#b8a96a" textLength="${wordW}" lengthAdjust="spacingAndGlyphs">${word}</text>` +
+    `<text x="${wordX}" y="16" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#b8a96a" textLength="${wordW}" lengthAdjust="spacingAndGlyphs">${word}</text>` +
     `</svg>`
   return { svg, width, height }
 }

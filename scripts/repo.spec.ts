@@ -4,12 +4,19 @@
 import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
-import { VERSION } from '../hooks/version'
+import { SKILLS_VERSION, VERSION } from '../hooks/version'
 
 const file = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url))
 
 test('VERSION matches plugin.json', () => {
   expect(VERSION).toBe(JSON.parse(file('.claude-plugin/plugin.json').toString()).version)
+})
+
+// The band's Hanahira tile names the skills' version; it must be the one the core skill says.
+test('SKILLS_VERSION matches the core skill', () => {
+  const core = file('skills/hanahira-claude-ui/SKILL.md').toString()
+  expect(core).toContain(`\n# Hanahira Claude UI Version ${SKILLS_VERSION}\n`)
+  expect(core).toContain(`Hanahira Claude UI V${SKILLS_VERSION} · `)
 })
 
 // The READMEs show docs/preview.png, a picture drawn from docs/preview.svg by
@@ -28,6 +35,17 @@ test('the texts install-ssh.sh rewrites in the SSH copy are still there', () => 
   expect(core).toMatch(/^\+ ╭─ \(\( \^w\^ \)\) Hanahira Claude UI V\d+ · ● ACTIVE$/m)
   expect(core.match(/┃ Version \d+ · SKILL  /g)?.length).toBe(2)
   expect(file('hooks/version.ts').toString()).toMatch(/^export const SKILLS_FROM\b.*= 'Account'$/m)
+})
+
+// The full banner boxes are copied verbatim into replies: a row one character off breaks the
+// right border, so every box row (2-char prefix, border, 49 inside, border) is 53 wide.
+test('every full-box row in the core skill is 53 characters wide', () => {
+  const rows = file('skills/hanahira-claude-ui/SKILL.md')
+    .toString()
+    .split('\n')
+    .filter(l => /^[ +-] [│├╭╰].*[│┤╮╯]$/.test(l))
+  expect(rows.length).toBeGreaterThan(20)
+  for (const r of rows) expect([r, [...r].length]).toEqual([r, 53])
 })
 
 // Each skill is found by its folder, and the engine names it by the `name:` in its SKILL.md.

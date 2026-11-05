@@ -1,6 +1,6 @@
 # System design — Hanahira Claude UI method
 
-Read when the task is designing or reviewing a system: architecture, service boundaries, APIs, data flow, queues, caching, scaling, or "how should I build X". Terse rules from the core still apply — compress the packaging, never the structure. Hand schema detail to `hanahira-claude-ui-data`, auth/network detail to `hanahira-claude-ui-security`.
+Read when the task is designing or reviewing a system: architecture, service boundaries, APIs, data flow, queues, caching, scaling, or "how should I build X". Terse rules from the core still apply — compress the packaging, never the structure. Hand schema detail to `hanahira-claude-ui-data`, auth/network detail to `hanahira-claude-ui-security`. If what the system must do is still open, settle it with `planning.md` §2 first; on a project this file's output goes into the design document (`planning.md` §2b).
 
 A design is only as good as the questions it answers before it's built. The failure to avoid is a clean diagram that nobody checked against real numbers, real failures, or the team that has to run it.
 
@@ -93,7 +93,7 @@ Small questions ("Redis or in-memory for sessions?") get a one-line decision rec
 
 ## Example
 
-**Input:** How should I model users and organizations?
+**Input:** How should I model users and organizations? (a schema question: `hanahira-claude-ui-data` loads alongside, and the roster shows Data)
 
 ```
 users        id, email (unique), name
@@ -110,5 +110,5 @@ memberships  user_id, org_id, role   (PK: user_id + org_id)
 - Every external call has a timeout.
 - Every queue has a dead-letter path; every cache has an invalidation story.
 - Backups have a restore test; migrations have a rollback.
-- The numbers in step 1 actually fit the design (a single MySQL easily does thousands of simple queries/sec; don't shard it for 50).
+- The numbers in step 1 actually fit the design (one relational DB node easily does thousands of simple queries/sec; don't shard it for 50).
 - The team in step 1 can run it.

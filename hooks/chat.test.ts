@@ -1,246 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { base, KIND_ICON, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, countChanges, describe as describeCall, diffRows, diffSource, relPath, fmtClock, fmtCost, fmtDuration,
-  fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, parseTests, pillSvg, loadingSvg, statusPill, meterSvg, METER, contextSvg, CONTEXT, fileChange, taskKind, taskPill, taskSummary, PILL, MOTION, easeOut, cubicBezier, tickerSvg, glideHolder, glideStyle, reelHolder, reelText, EASE, INK } from './chat'
+import { base, fmtReset, badgeSvg, cardSvg, chipSvg, CHIP_LINE, statSvg, STAT, liveSpeed, speedScale, speedoSvg, countSvg, dotSvg, fmtClock, fmtCost, fmtElapsed, fmtTokens, fmtSpeed, tokensPerSec, pillSvg, loadingSvg, meterSvg, METER, BEAD, mascotSvg, MASCOT, HUE, contextSvg, CONTEXT, PILL, MOTION, easeOut, cubicBezier, tickerSvg, glideHolder, glideStyle, reelHolder, reelText, EASE, INK } from './chat'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
 
-describe('describe', () => {
-  test('Bash runs, then reruns', () => {
-    expect(describeCall('Bash', { command: 'bun test' }).verb).toBe('Run')
-    expect(describeCall('Bash', { command: 'bun test' }, true).verb).toBe('Rerun')
-  })
-
-  test('file tools show the file name', () => {
-    expect(describeCall('Edit', { file_path: '/a/b/register.tsx' })).toEqual({ kind: 'edit', verb: 'Edit', target: 'register.tsx' })
-    expect(describeCall('Read', { file_path: '/x/y.ts' }).target).toBe('y.ts')
-  })
-
-  test('a Skill row names the skill it used', () => {
-    expect(describeCall('Skill', { skill: 'hanahira-claude-ui:hanahira-claude-ui-design', args: 'x' })).toEqual({
-      kind: 'other',
-      verb: 'Skill',
-      target: 'hanahira-claude-ui:hanahira-claude-ui-design',
-    })
-    expect(describeCall('Skill', {}).target).toBe('skill')
-  })
-
-  test('removing files reads as a delete, named by the files', () => {
-    expect(describeCall('Bash', { command: 'rm -rf dist/old.js build' })).toEqual({ kind: 'delete', verb: 'Delete', target: 'old.js build' })
-    expect(describeCall('Bash', { command: 'git rm hooks/x.ts', description: 'Drop x' }).target).toBe('Drop x')
-    expect(describeCall('Bash', { command: 'sudo rm /tmp/a; ls' }).target).toBe('a')
-    expect(describeCall('Bash', { command: 'npm run rm-cache' }).kind).toBe('run')
-    expect(describeCall('Bash', { command: 'echo rm x' }).kind).toBe('run')
-  })
-
-  test('a delete ends at a newline, and a path after -- counts even with a dash', () => {
-    expect(describeCall('Bash', { command: 'rm a.txt\necho done' }).target).toBe('a.txt')
-    expect(describeCall('Bash', { command: 'rm -f -- -weird b' }).target).toBe('-weird b')
-  })
-
-  test('a description that opens with the row\'s verb does not say it twice', () => {
-    expect(describeCall('Bash', { command: 'bun test', description: 'Run the test suite' }).target).toBe('the test suite')
-    expect(describeCall('Bash', { command: 'bun test', description: 'run tests' }, true)).toEqual({ kind: 'run', verb: 'Rerun', target: 'tests' })
-    expect(describeCall('Bash', { command: 'bun test', description: 'Rerun the suite' }, true).target).toBe('the suite')
-    expect(describeCall('Bash', { command: 'rm a', description: 'Remove old builds' })).toEqual({ kind: 'delete', verb: 'Delete', target: 'old builds' })
-    expect(describeCall('Bash', { command: 'rm a', description: 'Delete a' }).target).toBe('a')
-    // Only the verb as a word: a description that is the verb alone, or starts with a longer word, stays.
-    expect(describeCall('Bash', { command: 'x', description: 'Run' }).target).toBe('Run')
-    expect(describeCall('Bash', { command: 'x', description: 'Runtime check' }).target).toBe('Runtime check')
-    expect(describeCall('Bash', { command: 'x', description: 'List files' }).target).toBe('List files')
-  })
-
-  test('mcp tools fall back to their short name', () => {
-    expect(describeCall('mcp__srv__do_thing', {}).target).toBe('do_thing')
-  })
-})
-
-describe('statusPill', () => {
-  const idle = { isRunning: false, isErrored: false, isInterrupted: false }
-
-  test('running, errored, interrupted', () => {
-    expect(statusPill('Bash', { ...idle, isRunning: true })).toMatchObject({ text: 'running', running: true })
-    expect(statusPill('Bash', { ...idle, isErrored: true })).toMatchObject({ text: 'error', icon: 'cross' })
-    expect(statusPill('Bash', { ...idle, isInterrupted: true })).toMatchObject({ text: 'interrupted', icon: 'ban' })
-  })
-
-  test('Bash reads test counts', () => {
-    expect(statusPill('Bash', { ...idle, output: { stdout: ' 3 pass\n 0 fail' } })).toMatchObject({ text: '3 passed', icon: 'check' })
-    expect(statusPill('Bash', { ...idle, output: { stdout: '2 pass\n1 fail' } })).toMatchObject({ text: '1 failed', icon: 'cross' })
-    expect(statusPill('Bash', { ...idle, output: { stdout: 'ok' } })).toMatchObject({ text: 'done', icon: 'check' })
-  })
-
-  test('Edit is saved, Read counts lines', () => {
-    expect(statusPill('Edit', idle)).toMatchObject({ text: 'saved', icon: 'check' })
-    expect(statusPill('Read', { ...idle, output: { file: { numLines: 12 } } })).toMatchObject({ text: '12 lines', icon: 'check' })
-    expect(statusPill('Read', { ...idle, output: { file: { numLines: 1 } } })).toMatchObject({ text: '1 line' })
-  })
-})
-
-describe('parseTests', () => {
-  test('finds passed and failed', () => {
-    expect(parseTests('Tests: 4 passed, 2 failed')).toEqual({ passed: 4, failed: 2 })
-    expect(parseTests('nothing here')).toEqual({ passed: null, failed: null })
-  })
-})
-
-describe('diffRows', () => {
-  const hunks = [{ oldStart: 5, newStart: 5, lines: [' keep', '-old', '+new', '+new2', ' tail'] }]
-
-  test('numbers lines like an editor', () => {
-    const { rows } = diffRows(hunks)
-    expect(rows.map(r => [r.n, r.sign])).toEqual([
-      [5, ' '],
-      [6, '-'],
-      [6, '+'],
-      [7, '+'],
-      [8, ' '],
-    ])
-    expect(countChanges(rows)).toEqual({ added: 2, removed: 1 })
-  })
-
-  test('falls back to the content as additions and caps rows', () => {
-    const { rows, more } = diffRows([], 'a\nb\nc', 2)
-    expect(rows).toEqual([
-      { n: 1, sign: '+', text: 'a' },
-      { n: 2, sign: '+', text: 'b' },
-    ])
-    expect(more).toBe(1)
-  })
-
-  test('counts every change, not only the rows it shows', () => {
-    const { rows, added, removed } = diffRows([], Array.from({ length: 30 }, (_, i) => `l${i}`).join('\n'))
-    expect(rows.length).toBe(14)
-    expect({ added, removed }).toEqual({ added: 30, removed: 0 })
-  })
-
-  test('a gap row sits between hunks, and counts nothing', () => {
-    const { rows, added, removed } = diffRows([
-      { oldStart: 3, newStart: 3, lines: ['-a', '+b'] },
-      { oldStart: 40, newStart: 40, lines: [' c', '+d'] },
-    ])
-    expect(rows.map(r => r.sign)).toEqual(['-', '+', '@', ' ', '+'])
-    expect(rows[2]).toEqual({ n: null, sign: '@', text: '' })
-    expect({ added, removed }).toEqual({ added: 2, removed: 1 })
-  })
-
-  test('more counts hidden lines, not gap rows, and no gap ends the rows shown', () => {
-    const many = { oldStart: 1, newStart: 1, lines: Array.from({ length: 14 }, (_, i) => `+l${i}`) }
-    const { rows, more } = diffRows([many, { oldStart: 90, newStart: 90, lines: ['+z'] }])
-    expect(rows.length).toBe(14)
-    expect(more).toBe(1)
-    const cut = diffRows([{ ...many, lines: many.lines.slice(0, 13) }, { oldStart: 90, newStart: 90, lines: ['+z'] }])
-    expect(cut.rows.map(r => r.sign).at(-1)).toBe('+')
-    expect(cut.more).toBe(1)
-  })
-
-  test('skips the no-newline marker: it is no line of the file', () => {
-    const { rows } = diffRows([{ oldStart: 1, newStart: 1, lines: ['-a', '\\ No newline at end of file', '+a', ' b'] }])
-    expect(rows.map(r => [r.n, r.sign, r.text])).toEqual([
-      [1, '-', 'a'],
-      [1, '+', 'a'],
-      [2, ' ', 'b'],
-    ])
-  })
-})
-
-describe('diffSource', () => {
-  test('writes each hunk with a header counting the lines it keeps', () => {
-    expect(diffSource([{ oldStart: 5, newStart: 5, lines: [' keep', '-old', '+new', '+new2', ' tail'] }])).toBe(
-      '@@ -5,3 +5,4 @@\n keep\n-old\n+new\n+new2\n tail',
-    )
-  })
-
-  test('a hunk cut short counts only what is left, and later hunks drop', () => {
-    const src = diffSource(
-      [
-        { oldStart: 1, newStart: 1, lines: [' a', '-b', '+c', ' d'] },
-        { oldStart: 40, newStart: 40, lines: ['+z'] },
-      ],
-      undefined,
-      2,
-    )
-    expect(src).toBe('@@ -1,2 +1,1 @@\n a\n-b')
-  })
-
-  test('a new file is one hunk of additions; the marker, control characters and empty lines read right', () => {
-    expect(diffSource([], 'x\ny\n')).toBe('@@ -0,0 +1,2 @@\n+x\n+y')
-    expect(diffSource([{ oldStart: 1, newStart: 1, lines: ['-a\r', '\\ No newline at end of file', '+a', ''] }])).toBe('@@ -1,2 +1,2 @@\n-a\n+a\n ')
-    expect(diffSource([])).toBe('')
-  })
-})
-
-describe('relPath', () => {
-  test('a file under the folder reads from it; anywhere else, whole', () => {
-    expect(relPath('/repo/static/shift.html', '/repo')).toBe('static/shift.html')
-    expect(relPath('/repo/static/shift.html', '/repo/')).toBe('static/shift.html')
-    expect(relPath('/repository/x.ts', '/repo')).toBe('/repository/x.ts')
-    expect(relPath('C:\\work\\app\\a.ts', 'C:\\work\\app')).toBe('a.ts')
-    expect(relPath('/x/y.ts', null)).toBe('/x/y.ts')
-  })
-})
-
-describe('fileChange', () => {
-  test('an Edit gives its patch, a new file its content, anything else nothing', () => {
-    expect(fileChange('Edit', { structuredPatch: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }] })).toMatchObject({ added: 1, removed: 1 })
-    expect(fileChange('Write', { type: 'create', content: 'x\ny', structuredPatch: [] })).toMatchObject({ added: 2, removed: 0 })
-    expect(fileChange('Write', { type: 'update', content: 'x', structuredPatch: [] })?.rows).toEqual([])
-    // The last newline ends the last line; it adds no empty line of its own.
-    expect(fileChange('Write', { type: 'create', content: 'a\nb\n', structuredPatch: [] })).toMatchObject({ added: 2 })
-    expect(fileChange('Write', { type: 'create', content: '\n', structuredPatch: [] })).toMatchObject({ added: 1 })
-    expect(fileChange('Edit', 'Error: file not found')?.rows).toEqual([])
-    expect(fileChange('Read', { file: {} })).toBeNull()
-    // The diff text shows the same file lines as the rows, so "more" counts alike.
-    const many = fileChange('Write', { type: 'create', content: Array.from({ length: 20 }, (_, i) => `l${i}`).join('\n'), filePath: '/r/a.ts' })
-    expect(many?.source.split('\n')).toHaveLength(1 + 14)
-    expect(many).toMatchObject({ more: 6, path: '/r/a.ts' })
-  })
-})
-
-describe('task rows', () => {
-  test('a shell task runs; anything else is an agent', () => {
-    expect(taskKind('local_bash')).toBe('run')
-    expect(taskKind('local_agent')).toBe('agent')
-    expect(taskKind(undefined)).toBe('agent')
-  })
-
-  test('the summary drops what the row already says: the verb, the ending, the quotes', () => {
-    expect(taskSummary('Agent "Agent smoke test" completed', 'Agent')).toBe('smoke test')
-    expect(taskSummary('Background command "bun test" failed\nmore', 'Task')).toBe('Background command "bun test"')
-    expect(taskSummary('\n  "lint" was stopped.', 'Task')).toBe('lint')
-    expect(taskSummary('Done reading', 'Agent')).toBe('Done reading')
-  })
-
-  test('a name that opens with the verb drops it too, so the row never says it twice', () => {
-    expect(taskSummary('Agent "Agent smoke test" completed', 'Agent')).toBe('smoke test')
-    expect(taskSummary('Agent "agent smoke test" completed', 'Agent')).toBe('smoke test')
-    expect(taskSummary('"Task lint" was stopped.', 'Task')).toBe('lint')
-    // Only a whole word, and never the whole name.
-    expect(taskSummary('Agent "Agentic search" completed', 'Agent')).toBe('Agentic search')
-    expect(taskSummary('Agent "Agent" completed', 'Agent')).toBe('Agent')
-  })
-
-  test('the ending reads as done, failed or stopped; anything else as itself', () => {
-    expect(taskPill('completed')).toMatchObject({ text: 'done', icon: 'check' })
-    expect(taskPill('failed')).toMatchObject({ text: 'failed', icon: 'cross' })
-    expect(taskPill('killed')).toMatchObject({ text: 'stopped', icon: 'ban' })
-    expect(taskPill('paused').text).toBe('paused')
-    expect(taskPill(undefined).text).toBe('update')
-  })
-})
-
 describe('format', () => {
-  test('fmtDuration', () => {
-    expect(fmtDuration(1100)).toBe('1.1 s')
-    expect(fmtDuration(64000)).toBe('1m 4s')
-    expect(fmtDuration(59949)).toBe('59.9 s')
-    expect(fmtDuration(59950)).toBe('1m 0s')
-    expect(fmtDuration(60000)).toBe('1m 0s')
-    expect(fmtDuration(3_700_000)).toBe('1h 1m')
-    expect(fmtDuration(NaN)).toBe('0s')
-  })
-
   test('fmtElapsed', () => {
     expect(fmtElapsed(7)).toBe('7s')
     expect(fmtElapsed(64)).toBe('1m 4s')
@@ -308,10 +73,8 @@ describe('a figure that is no reading', () => {
       expect(fmtClock(v)).toBe('—')
       expect(fmtTokens(v)).toBe('—')
       expect(fmtSpeed(v)).toBe('—')
-      expect(fmtDuration(v)).toBe('0s')
     }
     expect(fmtSpeed(-Infinity)).toBe('—')
-    expect(fmtDuration(-500)).toBe('0.0 s')
     expect(contextSvg(NaN, '#fff').svg).toContain('>—<')
   })
 
@@ -372,7 +135,7 @@ describe('pillSvg', () => {
 describe('pills and tiles are still', () => {
   test('no pill or tile carries an animation, running or not', () => {
     for (const svg of [
-      pillSvg('running', '#c4baff', '#2d3a3f', 24, true).svg,
+      pillSvg('running', '#f9c6dc', '#2d3a3f', 24, true).svg,
       pillSvg('done', PILL.ok.fg, PILL.ok.bg, 22, false, 'check').svg,
       pillSvg('error', PILL.bad.fg, PILL.bad.bg, 22, false, 'cross').svg,
       badgeSvg('#7cb7ff', 'file', 32, true),
@@ -405,38 +168,39 @@ describe('pills and tiles are still', () => {
 describe('loadingSvg', () => {
   const blocks = (svg: string) => /<path d="([^"]*)" fill="[^"]*"\/>/.exec(svg)![1]!
 
-  test('the context meter\'s look: crisp blocks of its size and gap across the bar', () => {
-    const svg = loadingSvg(500, 12, '#9b8cf7')
-    expect(svg).toContain('shape-rendering="crispEdges"')
-    const pitch = METER.w + METER.gap
-    expect(blocks(svg).startsWith(`M0 0h${METER.w}v12h-${METER.w}zM${pitch} 0h${METER.w}v12`)).toBe(true)
-    // Enough blocks to reach the right end.
+  test('a row of rounded beads of BEAD\'s size and gap across the bar', () => {
+    const svg = loadingSvg(500, 6, '#a9b6ec')
+    expect(svg).not.toContain('crispEdges')
+    const pitch = BEAD.w + BEAD.gap
+    // Each bead: a straight run between two half-circle ends, as tall as the bar.
+    expect(blocks(svg).startsWith(`M3 0h${BEAD.w - 6}a3 3 0 0 1 0 6h-${BEAD.w - 6}a3 3 0 0 1 0 -6zM${pitch + 3} 0`)).toBe(true)
+    // Enough beads to reach the right end.
     expect(blocks(svg).match(/M/g)!.length).toBe(Math.ceil(500 / pitch))
   })
 
   test('idle is the empty meter: the track\'s colour, no animation', () => {
-    const svg = loadingSvg(500, 12, '#9b8cf7')
+    const svg = loadingSvg(500, 12, '#a9b6ec')
     expect(svg).toContain(`fill="${INK.track}"/>`)
-    expect(svg).not.toContain('#9b8cf7')
+    expect(svg).not.toContain('#a9b6ec')
     expect(svg).not.toContain('@keyframes')
   })
 
   test('idle can rest in a colour of its own', () => {
-    const svg = loadingSvg(500, 12, '#f2736b', { rest: '#34c38f' })
-    expect(svg).toContain(`fill="#34c38f"/>`)
-    expect(svg).not.toContain('#f2736b')
-    expect(loadingSvg(500, 12, '#f2736b', { live: true, rest: '#34c38f' })).not.toContain('#34c38f')
+    const svg = loadingSvg(500, 12, '#f2879a', { rest: '#8fdcb9' })
+    expect(svg).toContain(`fill="#8fdcb9"/>`)
+    expect(svg).not.toContain('#f2879a')
+    expect(loadingSvg(500, 12, '#f2879a', { live: true, rest: '#8fdcb9' })).not.toContain('#8fdcb9')
   })
 
   test('live lights every block in the colour, still without motion', () => {
-    const svg = loadingSvg(500, 12, '#9b8cf7', { live: true })
-    expect(svg).toContain(`fill="#9b8cf7"/>`)
+    const svg = loadingSvg(500, 12, '#a9b6ec', { live: true })
+    expect(svg).toContain(`fill="#a9b6ec"/>`)
     expect(svg).not.toContain(INK.track)
     expect(svg).not.toContain('@keyframes')
   })
 
   test('draws no number: no label, no pill', () => {
-    expect(loadingSvg(500, 12, '#9b8cf7', { live: true })).not.toContain('<text')
+    expect(loadingSvg(500, 12, '#a9b6ec', { live: true })).not.toContain('<text')
   })
 
   test('is deterministic', () => {
@@ -456,13 +220,13 @@ describe('loadingSvg', () => {
 
 describe('band pictures', () => {
   test('the status dot wears a halo while live, and nothing moves', () => {
-    expect(dotSvg('#9b8cf7', true).match(/<circle/g)?.length).toBe(2)
-    expect(dotSvg('#9b8cf7', false).match(/<circle/g)?.length).toBe(1)
-    expect(dotSvg('#9b8cf7', true)).not.toContain('@keyframes')
+    expect(dotSvg('#a9b6ec', true).match(/<circle/g)?.length).toBe(2)
+    expect(dotSvg('#a9b6ec', false).match(/<circle/g)?.length).toBe(1)
+    expect(dotSvg('#a9b6ec', true)).not.toContain('@keyframes')
   })
 
   test('a card is a still picture', () => {
-    expect(cardSvg('Cost', '≈$15.62', { icon: 'coin', iconColor: '#f2c94c' }).svg).not.toContain('@keyframes')
+    expect(cardSvg('Cost', '≈$15.62', { icon: 'coin', iconColor: '#f3cf7a' }).svg).not.toContain('@keyframes')
     expect(cardSvg('Time', '1:06', { icon: 'stopwatch' }).svg).toContain('>1:06</text>')
   })
 
@@ -481,10 +245,10 @@ describe('band pictures', () => {
   })
 
   test('a tone colours the state: the label on one line, the first line under the value stacked', () => {
-    expect(statSvg('Hanahira', 'Active', { tone: '#34c38f' }).svg).toContain('<tspan dx="5" fill="#34c38f" font-weight="600">Active</tspan>')
-    const stacked = statSvg('Hanahira', '', { tone: '#f2736b', stack: ['Deactive', 'design'] }).svg
-    expect(stacked).toMatch(/fill="#f2736b" font-weight="600">Deactive<\/text>/)
-    expect(stacked).toMatch(/fill="#8f8782">design<\/text>/)
+    expect(statSvg('Hanahira', 'Active', { tone: '#8fdcb9' }).svg).toContain('<tspan dx="5" fill="#8fdcb9" font-weight="600">Active</tspan>')
+    const stacked = statSvg('Hanahira', '', { tone: '#f2879a', stack: ['Deactive', 'design'] }).svg
+    expect(stacked).toMatch(/fill="#f2879a" font-weight="600">Deactive<\/text>/)
+    expect(stacked).toMatch(/fill="#86868f">design<\/text>/)
     expect(statSvg('6%', '5h limit', { stack: ['94% left'] }).svg).not.toContain('font-weight="600"')
   })
 
@@ -508,8 +272,8 @@ describe('band pictures', () => {
   })
 
   test('the speedometer points its needle at the fraction', () => {
-    expect(speedoSvg(0.5, '#9b8cf7', 22)).toContain('translate(22 22)"><g transform="rotate(0.0)"')
-    expect(speedoSvg(0.5, '#9b8cf7', 22)).not.toContain('@keyframes')
+    expect(speedoSvg(0.5, '#a9b6ec', 22)).toContain('translate(22 22)"><g transform="rotate(0.0)"')
+    expect(speedoSvg(0.5, '#a9b6ec', 22)).not.toContain('@keyframes')
     expect(speedoSvg(3, '#fff', 22)).toContain('rotate(135.0)"')
   })
 
@@ -587,41 +351,41 @@ describe('steady widths', () => {
 
 describe('chipSvg', () => {
   test('a chip is the stats tile look: tinted fill, thin edge, glyph, value then label', () => {
-    const c = chipSvg({ color: '#f2c94c', icon: 'bolt', value: '10', label: 'tools' })
+    const c = chipSvg({ color: '#f3cf7a', icon: 'bolt', value: '10', label: 'tools' })
     expect(c.height).toBe(CHIP_LINE.height)
-    expect(c.svg).toContain('fill="#f2c94c" fill-opacity="0.14" stroke="#f2c94c" stroke-opacity="0.32"')
+    expect(c.svg).toContain('fill="#f3cf7a" fill-opacity="0.14" stroke="#f3cf7a" stroke-opacity="0.32"')
     expect(c.svg).toContain('>10</text>')
     expect(c.svg).toContain('dx="5">tools</tspan>')
   })
 
   test('minWidth holds a chip as wide as another state, and nothing on it moves', () => {
-    const wide = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).natural
-    expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
-    expect(chipSvg({ color: '#9b8cf7', label: 'working', dots: true }).svg).not.toContain('@keyframes')
+    const wide = chipSvg({ color: '#a9b6ec', label: 'working', dots: true, strong: true }).natural
+    expect(chipSvg({ color: '#a3a3ab', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
+    expect(chipSvg({ color: '#a9b6ec', label: 'working', dots: true }).svg).not.toContain('@keyframes')
     expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('@keyframes')
   })
 })
 
 describe('meterSvg', () => {
   test('METER.segs crisp blocks, the first share of them lit, any use at all lighting one', () => {
-    const m = meterSvg(11, '#e8825f')
+    const m = meterSvg(11, '#a9b6ec')
     expect(m.width).toBe(METER.segs * (METER.w + METER.gap) - METER.gap)
     expect(m.svg).toContain('shape-rendering="crispEdges"')
-    const lit = (svg: string) => (/<path d="([^"]*)" fill="#e8825f"/.exec(svg)?.[1]?.match(/M/g) ?? []).length
+    const lit = (svg: string) => (/<path d="([^"]*)" fill="#a9b6ec"/.exec(svg)?.[1]?.match(/M/g) ?? []).length
     // 11% of 30 blocks is 3.
     expect(lit(m.svg)).toBe(3)
-    expect(lit(meterSvg(1, '#e8825f').svg)).toBe(1)
-    expect(lit(meterSvg(0, '#e8825f').svg)).toBe(0)
-    expect(lit(meterSvg(null, '#e8825f').svg)).toBe(0)
-    expect(meterSvg(90, '#e8825f').svg).not.toContain('@keyframes')
+    expect(lit(meterSvg(1, '#a9b6ec').svg)).toBe(1)
+    expect(lit(meterSvg(0, '#a9b6ec').svg)).toBe(0)
+    expect(lit(meterSvg(null, '#a9b6ec').svg)).toBe(0)
+    expect(meterSvg(90, '#a9b6ec').svg).not.toContain('@keyframes')
   })
 })
 
 describe('contextSvg', () => {
   test('one line: figure, meter, then the name and what is left; the figure in ink', () => {
-    const c = contextSvg(11, '#e8825f', { left: '889k left', window: '1M window' })
+    const c = contextSvg(11, '#a9b6ec', { left: '889k left', window: '1M window' })
     expect(c.height).toBe(CONTEXT.height)
-    expect(c.svg).toContain(`font-size="${CONTEXT.fs}" font-weight="700" fill="#f1ece8">11%</text>`)
+    expect(c.svg).toContain(`font-size="${CONTEXT.fs}" font-weight="700" fill="#ededf0">11%</text>`)
     expect(c.svg).toContain('>context</tspan>')
     expect(c.svg).toContain('> · 889k left</tspan>')
     expect(c.svg).toContain('> · 1M window</tspan>')
@@ -629,31 +393,31 @@ describe('contextSvg', () => {
   })
 
   test('stacked: the meter under the figure, in a taller, narrower picture', () => {
-    const line = contextSvg(11, '#e8825f', { left: '889k left', window: '1M window' })
-    const stack = contextSvg(11, '#e8825f', { left: '889k left', window: '1M window', stack: true })
+    const line = contextSvg(11, '#a9b6ec', { left: '889k left', window: '1M window' })
+    const stack = contextSvg(11, '#a9b6ec', { left: '889k left', window: '1M window', stack: true })
     expect(stack.height).toBeGreaterThan(line.height)
     expect(stack.natural).toBeLessThan(line.natural)
   })
 
   test('unknown usage draws a dash and an empty meter; near the limit the figure takes the colour', () => {
-    expect(contextSvg(null, '#e8825f').svg).toContain('>—</text>')
-    expect(contextSvg(90, '#f2736b', { warn: true }).svg).toContain('fill="#f2736b">90%</text>')
+    expect(contextSvg(null, '#a9b6ec').svg).toContain('>—</text>')
+    expect(contextSvg(90, '#f2879a', { warn: true }).svg).toContain('fill="#f2879a">90%</text>')
   })
 })
 
 describe('chipSvg quiet', () => {
   test('outlined in the line colour, no tint, muted glyph and words', () => {
-    const c = chipSvg({ color: '#f2c94c', icon: 'bolt', value: '10', label: 'tools', quiet: true })
-    expect(c.svg).toContain('fill-opacity="0" stroke="#3a3634" stroke-opacity="1"')
-    expect(c.svg).toContain('stroke="#8f8782"')
-    expect(chipSvg({ color: '#a8a29e', label: 'idle', icon: 'pause', strong: true, quiet: true }).svg).toContain('font-weight="700" fill="#a39b96"')
+    const c = chipSvg({ color: '#f3cf7a', icon: 'bolt', value: '10', label: 'tools', quiet: true })
+    expect(c.svg).toContain('fill-opacity="0" stroke="#2a2a2f" stroke-opacity="1"')
+    expect(c.svg).toContain('stroke="#86868f"')
+    expect(chipSvg({ color: '#a3a3ab', label: 'idle', icon: 'pause', strong: true, quiet: true }).svg).toContain('font-weight="700" fill="#a3a3ab"')
   })
 
 })
 
 describe('statSvg plain', () => {
   test('the icon alone, centred in the glyph slot, no tile', () => {
-    const svg = statSvg('$1', 'cost', { icon: 'coin', plain: true, color: '#8f8782' }).svg
+    const svg = statSvg('$1', 'cost', { icon: 'coin', plain: true, color: '#86868f' }).svg
     expect(svg).not.toContain('rx="7"')
     const across = (STAT.glyph - STAT.plainIcon) / 2
     const down = (STAT.height - STAT.glyph) / 2 + across
@@ -676,7 +440,7 @@ describe('statSvg stacked', () => {
     const stacked = statSvg('31%', 'context', { stack: ['693k left', '1M window'] })
     expect(stacked.natural).toBeLessThan(line.natural)
     expect(stacked.height).toBeGreaterThan(STAT.height)
-    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#8f8782">693k left</text>`)
+    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#86868f">693k left</text>`)
     expect(stacked.svg).toContain('>1M window</text>')
     expect(stacked.svg).not.toContain(' · 1M window')
   })
@@ -714,10 +478,10 @@ describe('motion', () => {
 
   test('every motion stops under reduced motion', () => {
     const pictures = [
-      loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true }),
-      chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true, motion: true }).svg,
-      dotSvg('#9b8cf7', true, 14, true),
-      statSvg('Hanahira', '', { icon: 'sparkle', color: '#34c38f', tone: '#34c38f', stack: ['Active'], spark: { pulse: true, enterFrom: '#f2736b' } }).svg,
+      loadingSvg(900, 12, '#a9b6ec', { live: true, motion: true }),
+      chipSvg({ color: '#a9b6ec', label: 'working', dots: true, strong: true, motion: true }).svg,
+      dotSvg('#a9b6ec', true, 14, true),
+      statSvg('Hanahira', '', { icon: 'sparkle', color: '#8fdcb9', tone: '#8fdcb9', stack: ['Active'], spark: { pulse: true, enterFrom: '#f2879a' } }).svg,
     ]
     for (const svg of pictures) {
       expect(svg).toContain('@keyframes')
@@ -726,30 +490,32 @@ describe('motion', () => {
   })
 
   test('the bar lights glide only while live with motion, from where the still bar has them', () => {
-    const moving = loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true })
+    const moving = loadingSvg(900, 12, '#a9b6ec', { live: true, motion: true })
     expect(moving).toContain(`@keyframes lights{to{transform:translateX(${MOTION.barPeriod}px)}}`)
     expect(moving).toContain(`animation:lights ${MOTION.barMs}ms linear infinite`)
     // Over the lit blocks and cut to them alone, so no light shows in the gaps.
-    expect(moving.indexOf('url(#bar-glow)')).toBeGreaterThan(moving.indexOf('fill="#9b8cf7"/>'))
-    expect(moving).toMatch(/<clipPath id="bar-cut"><path d="M0 0h6v12h-6z[^"]+"\/><\/clipPath>/)
-    expect(loadingSvg(900, 12, '#9b8cf7', { live: false, motion: true })).not.toContain('@keyframes')
-    expect(loadingSvg(900, 12, '#9b8cf7', { live: true })).not.toContain('@keyframes')
+    expect(moving.indexOf('url(#bar-glow)')).toBeGreaterThan(moving.indexOf('fill="#a9b6ec"/>'))
+    expect(moving).toMatch(/<clipPath id="bar-cut"><path d="M5 0a5 6 0 0 1 0 12a5 6 0 0 1 0 -12z[^"]+"\/><\/clipPath>/)
+    // At the band's own height (6): a straight run between half-circle ends.
+    expect(loadingSvg(900, 6, '#a9b6ec', { live: true, motion: true })).toMatch(/<clipPath id="bar-cut"><path d="M3 0h4a3 3 0 0 1 0 6h-4a3 3 0 0 1 0 -6z[^"]+"\/><\/clipPath>/)
+    expect(loadingSvg(900, 12, '#a9b6ec', { live: false, motion: true })).not.toContain('@keyframes')
+    expect(loadingSvg(900, 12, '#a9b6ec', { live: true })).not.toContain('@keyframes')
     // At rest, the lights sit on the still bar.
-    expect(still(moving).replace(/<defs>[\s\S]*<\/defs><g clip-path="url\(#bar-cut\)">[\s\S]*<\/g>/, '')).toBe(loadingSvg(900, 12, '#9b8cf7', { live: true }))
+    expect(still(moving).replace(/<defs>[\s\S]*<\/defs><g clip-path="url\(#bar-cut\)">[\s\S]*<\/g>/, '')).toBe(loadingSvg(900, 12, '#a9b6ec', { live: true }))
   })
 
   test('motion holds no time: drawn again, it is the same picture', () => {
     const draw = () =>
-      loadingSvg(900, 12, '#9b8cf7', { live: true, motion: true }) +
-      chipSvg({ color: '#9b8cf7', label: 'working', dots: true, motion: true }).svg +
-      dotSvg('#9b8cf7', true, 14, true) +
-      statSvg('Hanahira', '', { icon: 'sparkle', color: '#34c38f', spark: { pulse: true, enterFrom: '#f2736b' } }).svg
+      loadingSvg(900, 12, '#a9b6ec', { live: true, motion: true }) +
+      chipSvg({ color: '#a9b6ec', label: 'working', dots: true, motion: true }).svg +
+      dotSvg('#a9b6ec', true, 14, true) +
+      statSvg('Hanahira', '', { icon: 'sparkle', color: '#8fdcb9', spark: { pulse: true, enterFrom: '#f2879a' } }).svg
     expect(draw()).toBe(draw())
   })
 
   test('the working chip comes in once and its dots wave from their still look', () => {
-    const moving = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true, motion: true }).svg
-    const plain = chipSvg({ color: '#9b8cf7', label: 'working', dots: true, strong: true }).svg
+    const moving = chipSvg({ color: '#a9b6ec', label: 'working', dots: true, strong: true, motion: true }).svg
+    const plain = chipSvg({ color: '#a9b6ec', label: 'working', dots: true, strong: true }).svg
     expect(still(moving)).toBe(plain)
     expect(moving).toContain(`animation:chip-in ${MOTION.chipInMs}ms`)
     expect(moving).not.toMatch(/chip-in[^}]*infinite/)
@@ -762,20 +528,20 @@ describe('motion', () => {
   })
 
   test('the status dot breathes from its still halo, only with motion', () => {
-    const moving = dotSvg('#9b8cf7', true, 14, true)
-    expect(still(moving)).toBe(dotSvg('#9b8cf7', true, 14))
+    const moving = dotSvg('#a9b6ec', true, 14, true)
+    expect(still(moving)).toBe(dotSvg('#a9b6ec', true, 14))
     expect(moving).toContain(`animation:halo ${MOTION.haloMs}ms`)
-    expect(dotSvg('#9b8cf7', false, 14, true)).not.toContain('@keyframes')
+    expect(dotSvg('#a9b6ec', false, 14, true)).not.toContain('@keyframes')
   })
 
   test('the Hanahira sparkle turns in once from the old colour, then breathes; still, it is the tile', () => {
-    const opts = { icon: 'sparkle' as const, color: '#34c38f', tone: '#34c38f', stack: ['Active', ''] }
+    const opts = { icon: 'sparkle' as const, color: '#8fdcb9', tone: '#8fdcb9', stack: ['Active', ''] }
     const plain = statSvg('Hanahira', '', opts).svg
-    const arriving = statSvg('Hanahira', '', { ...opts, spark: { pulse: true, enterFrom: '#f2736b' } }).svg
+    const arriving = statSvg('Hanahira', '', { ...opts, spark: { pulse: true, enterFrom: '#f2879a' } }).svg
     const on = statSvg('Hanahira', '', { ...opts, spark: { pulse: true } }).svg
     expect(still(arriving)).toBe(plain)
     expect(still(on)).toBe(plain)
-    expect(arriving).toContain('@keyframes tile{from{fill:#f2736b;stroke:#f2736b}}')
+    expect(arriving).toContain('@keyframes tile{from{fill:#f2879a;stroke:#f2879a}}')
     expect(arriving).toContain(`twinkle ${MOTION.twinkleMs}ms`)
     // The breath waits for the turn-in to end.
     expect(arriving).toContain(`spark ${MOTION.sparkMs}ms cubic-bezier(0.45, 0, 0.55, 1) ${MOTION.twinkleMs}ms infinite`)
@@ -877,10 +643,10 @@ describe('motion', () => {
   })
 
   test('the speedometer swings its needle and arc from the last reading, at rest on the new one', () => {
-    const plain = speedoSvg(0.8, '#9b8cf7', 28)
+    const plain = speedoSvg(0.8, '#a9b6ec', 28)
     expect(plain).not.toContain('<style>')
-    expect(speedoSvg(0.8, '#9b8cf7', 28, 0.8)).toBe(plain)
-    const swing = speedoSvg(0.8, '#9b8cf7', 28, 0.1)
+    expect(speedoSvg(0.8, '#a9b6ec', 28, 0.8)).toBe(plain)
+    const swing = speedoSvg(0.8, '#a9b6ec', 28, 0.1)
     expect(swing).toContain(`<g transform="rotate(${(-135 + 0.8 * 270).toFixed(1)})" class="spd-needle">`)
     expect(swing).toContain(`@keyframes spd-needle{from{transform:rotate(${(-135 + 0.1 * 270).toFixed(1)}deg)}to{transform:rotate(${(-135 + 0.8 * 270).toFixed(1)}deg)}}`)
     expect(swing).toContain('@keyframes spd-arc{from{stroke-dasharray:')
@@ -894,13 +660,13 @@ describe('motion', () => {
     expect(rolling).toContain('@keyframes reel')
     expect(rolling).toContain('@media (prefers-reduced-motion: reduce)')
     expect(chipSvg({ color: '#fff', value: '4', label: 'tools', reel: '3' }).svg).toContain('@keyframes reel')
-    const ctx = contextSvg(40, '#e8825f', { from: '20%', fromPercent: 20 }).svg
+    const ctx = contextSvg(40, '#a9b6ec', { from: '20%', fromPercent: 20 }).svg
     expect(ctx).toContain('@keyframes reel')
     expect(ctx).toContain('@keyframes sl-fill')
     expect(ctx).toContain('@keyframes sl-knob')
-    expect(contextSvg(40, '#e8825f').svg).not.toContain('<style>')
+    expect(contextSvg(40, '#a9b6ec').svg).not.toContain('<style>')
     // Held, a change is the same picture each time it is drawn.
-    const draw = () => contextSvg(40, '#e8825f', { from: '20%', fromPercent: 20 }).svg + speedoSvg(0.5, '#fff', 28, 0.2)
+    const draw = () => contextSvg(40, '#a9b6ec', { from: '20%', fromPercent: 20 }).svg + speedoSvg(0.5, '#fff', 28, 0.2)
     expect(draw()).toBe(draw())
   })
 
@@ -913,5 +679,51 @@ describe('motion', () => {
     expect(rolling.width).toBe(plain.width)
     // Only the digits that change turn: '1m 1' stays put as 1m 19s becomes 1m 20s.
     expect(tickerSvg('1m 20s', { from: '1m 19s' }).svg).toContain('>1m </text>')
+  })
+})
+
+describe('mascot', () => {
+  const art = (on: boolean, opts: { enter?: number | null; motion?: boolean } = {}) => mascotSvg(on, 0, 0, 30, opts)
+
+  test('awake: one eye winks, the other is open, pink cheeks; asleep: eyes closed and a z', () => {
+    const awake = art(true)
+    expect(awake).toContain(`<ellipse cx="19.5" cy="15.2" rx="1.6" ry="1.8" fill="${HUE.night}"`)
+    expect(awake.match(new RegExp(`fill="${HUE.petal}" fill-opacity="0.85"`, 'g'))!.length).toBe(2)
+    expect(awake).not.toContain('>z</text>')
+    const asleep = art(false)
+    expect(asleep).toContain('>z</text>')
+    expect(asleep).not.toContain('fill-opacity="0.85"')
+    expect(asleep).not.toContain('cx="19.5" cy="15.2"')
+  })
+
+  test('it keeps its shape at any width: the box scales by its own aspect', () => {
+    expect(mascotSvg(true, 3, 4, 15)).toContain(`<svg x="3" y="4" width="15" height="${(15 * MASCOT.h) / MASCOT.w}" viewBox="0 0 ${MASCOT.w} ${MASCOT.h}"`)
+  })
+
+  test('ears and blink move only awake with motion; the hop plays only on waking', () => {
+    const moving = art(true, { motion: true })
+    expect(moving).toContain('class="ear-l"')
+    expect(moving).toContain('class="eye"')
+    expect(moving).toContain(`animation:ear ${MOTION.earMs}ms`)
+    expect(moving).toContain(`animation:blink ${MOTION.blinkMs}ms`)
+    expect(art(false, { motion: true })).not.toContain('@keyframes')
+    expect(art(true)).not.toContain('@keyframes')
+    // The hop is anchored to when the mode woke, and is over once its time has passed.
+    expect(art(true, { enter: 120 })).toContain(`animation:hop ${MOTION.twinkleMs}ms`)
+    expect(art(true, { enter: 120 })).toContain('-120ms both')
+    expect(art(true, { enter: MOTION.twinkleMs })).not.toContain('hop')
+    expect(art(true, { enter: null })).not.toContain('hop')
+    expect(art(false, { enter: 120 })).not.toContain('hop')
+  })
+
+  test('motion holds no time and rests on the still mascot', () => {
+    expect(art(true, { motion: true })).toBe(art(true, { motion: true }))
+    // Its style and the classes that run it taken out, the moving mascot is the still one.
+    const strip = (svg: string) => svg.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/ class="(hop|ear-l|ear-r|eye)"/g, '')
+    expect(strip(art(true, { motion: true, enter: 50 }))).toBe(art(true))
+  })
+
+  test('the Hanahira stat shows the mascot in the switch slot', () => {
+    expect(statSvg('Hanahira', 'Active', { toggle: { on: true } }).svg).toContain(`viewBox="0 0 ${MASCOT.w} ${MASCOT.h}"`)
   })
 })

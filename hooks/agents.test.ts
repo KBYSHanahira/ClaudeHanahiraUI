@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
 import { fmtClock, MOTION } from './chat'
-import { BAR_ROOM, CARD_CUT, CARD_H, CARD_W, accentFor, agentCardParts, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { AGENT_CHIP, BAR_ROOM, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -27,11 +27,11 @@ const mk = (over: Partial<Agent> = {}): Agent => ({
 
 describe('accent and model name', () => {
   test('the accent follows the effort when it is known, else the model family, else grey', () => {
-    expect(accentFor('low', 'x')).toBe('#34c38f')
-    expect(accentFor('xhigh', 'x')).toBe('#f2736b')
-    expect(accentFor(null, 'claude-haiku-5-5')).toBe('#34c38f')
-    expect(accentFor(null, 'claude-opus-5-5')).toBe('#e0a03a')
-    expect(accentFor(null, 'mystery')).toBe('#a8a29e')
+    expect(accentFor('low', 'x')).toBe('#8fdcb9')
+    expect(accentFor('xhigh', 'x')).toBe('#c3b5f7')
+    expect(accentFor(null, 'claude-haiku-5-5')).toBe('#8fdcb9')
+    expect(accentFor(null, 'claude-opus-5-5')).toBe('#f6b896')
+    expect(accentFor(null, 'mystery')).toBe('#a3a3ab')
   })
 
   test('prettyModel reads the current naming', () => {
@@ -194,7 +194,7 @@ describe('agent card', () => {
   test('a barless card leaves the bar out', () => {
     const svg = agentCardSvg(mk({ startedAt: 0 }), { barless: true })
     expect(svg.height).toBe(CARD_H - BAR_ROOM)
-    expect(svg.svg).not.toContain('fill="#2b2827"')
+    expect(svg.svg).not.toContain('fill="#2c2c31"')
   })
 
   test('escapes a name that would break the markup', () => {
@@ -266,5 +266,59 @@ describe('agent card', () => {
   test('the sprite is the same for the same agent and differs between agents', () => {
     expect(spriteInner('x', '#fff')).toBe(spriteInner('x', '#fff'))
     expect(spriteInner('x', '#fff')).not.toBe(spriteInner('y', '#fff'))
+  })
+})
+
+describe('small agent card', () => {
+  test('one line: its two pictures are the chip height and lie edge to edge', () => {
+    const p = agentChipParts(mk(), { padBottom: 4 })
+    expect(p.body.width + p.mark.width).toBe(AGENT_CHIP.W)
+    expect(p.body.height).toBe(AGENT_CHIP.H + 4)
+    expect(p.mark.height).toBe(AGENT_CHIP.H + 4)
+    expect(AGENT_CHIP.H).toBeLessThan(CARD_H / 2)
+  })
+
+  test('the same agent draws the same card', () => {
+    expect(agentChipParts(mk()).body.svg).toBe(agentChipParts(mk()).body.svg)
+  })
+
+  test('a running card turns its ring only with motion; a finished one shows a check', () => {
+    expect(agentChipParts(mk(), { motion: true }).mark.svg).toContain('class="spin"')
+    expect(agentChipParts(mk()).mark.svg).not.toContain('class="spin"')
+    const done = agentChipParts(mk({ status: 'done', endedAt: 5000 }), { motion: true }).mark.svg
+    expect(done).toContain('class="tick"')
+    expect(done).not.toContain('spin')
+  })
+
+  test('a long name is fitted to its room and escaped', () => {
+    expect(agentChipParts(mk({ name: 'Research competitor launches & write up' })).body.svg).toContain('textLength')
+    expect(agentChipParts(mk({ name: 'a<b' })).body.svg).toContain('a&lt;b')
+    expect(agentChipParts(mk({ name: 'Short' })).body.svg).not.toContain('textLength')
+  })
+})
+
+describe('agent or background app', () => {
+  test('a card says what it is: an agent, or a background command (older records are agents)', () => {
+    expect(kindLabel(mk())).toBe('Agent')
+    expect(kindLabel(mk({ kind: 'agent' }))).toBe('Agent')
+    expect(kindLabel(mk({ kind: 'shell' }))).toBe('Bg app')
+    expect(agentChipParts(mk()).body.svg).toContain('>Agent<')
+    const shell = agentChipParts(mk({ kind: 'shell', model: '' })).body.svg
+    expect(shell).toContain('>Bg app<')
+    expect(shell).toContain(SHELL_COLOR)
+  })
+
+  test('a task notification gives its id and how it ended; other text gives nothing', () => {
+    const text = '<task-notification>\n<task-id>bq7x2</task-id>\n<status>completed</status>\n<summary>done</summary>\n</task-notification>'
+    expect(taskNotice(text)).toEqual({ id: 'bq7x2', status: 'completed' })
+    expect(taskNotice('please show <task-id>x</task-id>')).toBeNull()
+    expect(taskNotice('<task-notification><status>completed</status></task-notification>')).toBeNull()
+  })
+
+  test("the notification's word settles a card, or leaves it running", () => {
+    expect(settledStatus('completed')).toBe('done')
+    expect(settledStatus('failed')).toBe('error')
+    expect(settledStatus('killed')).toBe('stopped')
+    expect(settledStatus('running')).toBeNull()
   })
 })

@@ -90,17 +90,17 @@ describe('usage helpers', () => {
   })
 
   test('tone turns amber then red', () => {
-    expect(tone(10)).toBe('#7bd88f')
-    expect(tone(60)).toBe('#f2c94c')
-    expect(tone(85)).toBe('#f2736b')
+    expect(tone(10)).toBe('#8fdcb9')
+    expect(tone(60)).toBe('#f3cf7a')
+    expect(tone(85)).toBe('#f2879a')
   })
 })
 
 describe('rings', () => {
   test('ringSvg draws a track and a proportional arc', () => {
-    const svg = ringSvg(25, '#e8825f', 40)
+    const svg = ringSvg(25, '#a9b6ec', 40)
     expect(svg).toContain('width="40"')
-    expect(svg).toContain('stroke="#e8825f"')
+    expect(svg).toContain('stroke="#a9b6ec"')
     const c = 2 * Math.PI * 19.5
     expect(svg).toContain(`stroke-dasharray="${(c / 4).toFixed(2)} ${c.toFixed(2)}"`)
   })
@@ -113,10 +113,10 @@ describe('rings', () => {
 
   test('ringSvg glides its arc from the last reading in CSS, resting on the new one', () => {
     const c = 2 * Math.PI * 19.5
-    const plain = ringSvg(80, '#e8825f', 40)
+    const plain = ringSvg(80, '#a9b6ec', 40)
     expect(plain).not.toContain('<style>')
-    expect(ringSvg(80, '#e8825f', 40, { from: 80 })).toBe(plain)
-    const gliding = ringSvg(80, '#e8825f', 40, { from: 20 })
+    expect(ringSvg(80, '#a9b6ec', 40, { from: 80 })).toBe(plain)
+    const gliding = ringSvg(80, '#a9b6ec', 40, { from: 20 })
     expect(gliding).toContain(`stroke-dasharray="${(c * 0.8).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)" class="arc"/>`)
     expect(gliding).toContain(`@keyframes arc{from{stroke-dasharray:${(c * 0.2).toFixed(2)} ${c.toFixed(2)}}`)
   })
@@ -153,7 +153,7 @@ describe('rings', () => {
 
 describe('ring', () => {
   test('is a still picture, near the limit too', () => {
-    expect(ringSvg(90, '#f2736b', 38)).not.toContain('@keyframes')
+    expect(ringSvg(90, '#f2879a', 38)).not.toContain('@keyframes')
   })
 })
 

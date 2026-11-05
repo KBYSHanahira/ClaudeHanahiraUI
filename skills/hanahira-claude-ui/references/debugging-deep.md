@@ -13,23 +13,12 @@ Where it crashes is only where the problem becomes visible. A fix at that spot l
 
 If reading the code doesn't get you there, add logging just **before** the risky operation rather than after it fails: the argument, the working directory, the relevant environment, and a stack trace (`new Error().stack` in JS, `traceback.print_stack()` in Python, `debug.PrintStack()` in Go). Inside tests, print to stderr, since loggers are often muted. Capture one run, search the output, and look for what repeats — same caller, same argument.
 
-**Finding which test leaves something behind** (a stray file, a leftover row, a port still open): run the test files one by one and check for the leftover after each; the first file after which it appears is the culprit. The leftover must not exist before starting, and the loop must never delete anything. Hunt only for something untracked and unimportant — never `.git`, `.env` or a data folder — and if one is already there, look at it and remove it by hand first.
+**Finding which test leaves something behind** (a stray file, a leftover row, a port still open): run the test files one by one and check for the leftover after each; the first file after which it appears is the culprit. The leftover must not exist before starting, and the loop must never delete anything. Hunt only for something untracked and unimportant — never `.git`, `.env` or a data folder — and if one is already there, look at it and remove it by hand first. Run it only after the tests gate (`testing.md` *Before running*), as a loop in the user's shell over the project's one-file test command, stopping at the first file after which the leftover exists; for a row or a port, the check is the read-only query or the OS's listening-port command (`references/work-in-order.md`).
 
-```bash
-leftover=leak.tmp   # the stray file or folder being hunted
-if [ -e "$leftover" ]; then
-  echo "$leftover is already present: inspect it, remove it by hand, then run again"
-else
-  find ./src -name '*.test.ts' | sort | while IFS= read -r f; do
-    bun test "$f" >/dev/null 2>&1   # swap in your runner's one-file command: pytest "$f", npx vitest run "$f", go test ./pkg -run ...
-    if [ -e "$leftover" ]; then echo "left behind by: $f"; break; fi
-  done
-fi
-```
 
 ## 2. Once the source is fixed, add checks along the path
 
-A single check can be sidestepped later by another code path, a refactor or a test double. After fixing the cause, put a check at each layer the bad value passed through:
+A single check can be sidestepped later by another code path, a refactor or a test double. After the fix is verified, propose these checks as a separate change, one line per layer; add them unasked only when the bad value can destroy data or act outside the workspace:
 
 | Layer | What its check does |
 |---|---|

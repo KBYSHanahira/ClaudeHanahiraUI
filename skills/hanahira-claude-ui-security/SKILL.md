@@ -16,7 +16,7 @@ Terse mode for defensive security and connection reliability. A dropped precondi
 
 **Hands off:** grants and users inside a database engine → shared with `hanahira-claude-ui-data`, both sets of gates apply. A failure with no security cause → `hanahira-claude-ui-debug-test`. The firewall step of a new scaffold → `hanahira-claude-ui-project-create` leads, with this file's lockout rules applying.
 
-**Helpers**, once the user has asked for them, may run read-only audits for the lead (config review, listing listeners and rules); they never change firewall, auth, certificates or secrets.
+**Helpers** may run read-only audits for the lead (config review, listing listeners and rules); they never change firewall, auth, certificates or secrets.
 
 ## Core first
 
@@ -55,7 +55,7 @@ Windows blocks it  → not Set-ExecutionPolicy Unrestricted or disabling Defende
 macOS blocks it    → not spctl --master-disable / csrutil disable / stripping quarantine from an unknown binary — notarized build or approve that one app
 ```
 
-If the user explicitly wants a temporary bypass (local dev, a one-off test), give it scoped, time-boxed, with the undo next to it — never on prod silently.
+If the user explicitly wants a temporary bypass (local dev, a one-off test), give it scoped, time-boxed, with the undo next to it, local or test only; on prod, no bypass — fix the cause.
 
 ## Breakage gate
 
@@ -63,18 +63,18 @@ Before **running** a change to SSH, a firewall or cloud security group, sudoers/
 
 ## Lockout procedure
 
-Keep the current session open. Verify the allow rule for your **real** access port and source (SSH: `sudo sshd -T | grep -i '^port'`, not an assumed 22; Windows: RDP 3389 / WinRM 5985-5986). Arm a timed rollback, apply, test from a **new** session, then cancel the rollback and confirm nothing is pending. Never enable a firewall or change its default policy before the allow exists.
+Keep the current session open. Verify the allow rule for your **real** access port and source (SSH: `sudo sshd -T | grep -i '^port'`, not an assumed 22, cross-checked against the port this session came in on — `echo $SSH_CONNECTION` (4th field) and `sudo ss -ltnp | grep -E 'sshd|systemd'`; Windows: RDP 3389 / WinRM 5985-5986). Arm a timed rollback, apply, test from a **new** session, then cancel the rollback and confirm nothing is pending. Never enable a firewall or change its default policy before the allow exists.
 
 | Platform | Verify allow | Timed rollback |
 |---|---|---|
 | ufw | inactive: `sudo ufw show added` (`ufw status` lists nothing while inactive); active: `sudo ufw status verbose` | back up `/etc/ufw`; job restores prior state — was inactive → `ufw disable`; else `cp -a` backup back + `ufw reload` |
 | nftables | `sudo nft list ruleset` (accept in an `inet` table = v4+v6); `nft -c -f new.nft` before load | `sudo nft list ruleset \| sudo tee /root/nft.bak >/dev/null`; job (as root) `nft flush ruleset && nft -f /root/nft.bak` |
-| iptables | `sudo iptables -S INPUT` and `ip6tables -S INPUT` | `sudo iptables-apply -t 60 rules.v4` — reverts unless confirmed (`ip6tables-apply` for v6) |
+| iptables | `sudo iptables -S INPUT` and `ip6tables -S INPUT` | `sudo iptables-save \| sudo tee /root/ipt.bak >/dev/null` and `sudo ip6tables-save \| sudo tee /root/ip6t.bak >/dev/null`; job (as root) `iptables-restore < /root/ipt.bak; ip6tables-restore < /root/ip6t.bak` (`iptables-apply` only when the user runs it in their own terminal: it asks on the TTY) |
 | Windows Firewall | `Get-NetFirewallPortFilter \| ? LocalPort -eq <port> \| Get-NetFirewallRule \| ? {$_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound'}` | `netsh advfirewall export C:\fw.wfw`; `schtasks /create /tn fwrb /sc once /st <HH:mm> /ru SYSTEM /tr "netsh advfirewall import C:\fw.wfw"`; cancel `schtasks /delete /tn fwrb /f` |
-| macOS pf | `sudo pfctl -nf <file>` (syntax), `sudo pfctl -sr` (loaded rules) | `sudo -v` first, then `sudo nohup sh -c 'sleep 300; pfctl -f /etc/pf.conf' &`; confirm with `pgrep -f 'sleep 300'` (system file untouched; change in an anchor/copy); cancel by killing it |
+| macOS pf | `sudo pfctl -nf <file>` (syntax), `sudo pfctl -sr` (loaded rules) | `sudo -v` first, then `sudo nohup sh -c 'sleep 300; pfctl -f /etc/pf.conf' &`; confirm with `pgrep -f 'sleep 300; pfctl'` (system file untouched; change in an anchor/copy); cancel with `sudo pkill -f 'sleep 300; pfctl'` (the parent shell, not just the sleep) |
 | Cloud SG / NSG / VPC firewall | list inbound rules (`aws ec2 describe-security-groups`, `az network nsg rule list`, `gcloud compute firewall-rules list`) for your IP and port | none built in — add the new rule before removing the old; serial/rescue console is the way back |
 
-Linux job runner: `echo '<rollback>' | sudo at now + 5 minutes` (needs atd: `systemctl is-active atd`; cancel `atrm <n>`, `atq` empty) or `sudo systemd-run --on-active=5m sh -c '<rollback>'` (cancel `systemctl stop <unit>.timer`). SSH config: back up, `sudo sshd -t`, reload not restart — except Port/ListenAddress on Ubuntu ≥22.10: `daemon-reload` + `restart ssh.socket` (open sessions survive); the job restores the backup and repeats the same reload or restart. Sudoers/PAM: `sudo visudo -c`, keep a root shell open.
+Linux job runner: `echo '<rollback>' | sudo at now + 5 minutes` (needs atd: `systemctl is-active atd`; cancel `atrm <n>`, `atq` empty) or `sudo systemd-run --unit=fwrb --on-active=5m sh -c '<rollback>'` (cancel `sudo systemctl stop fwrb.timer`). SSH config: back up, `sudo sshd -t`, reload not restart — except Port/ListenAddress on Ubuntu ≥22.10: `daemon-reload` + `restart ssh.socket` (open sessions survive); the job restores the backup and repeats the same reload or restart. Sudoers/PAM: `sudo visudo -c`, keep a root shell open.
 
 ## Never assert secure
 
@@ -108,8 +108,8 @@ JWT        verify signature with a pinned alg allow-list (never none, never alg 
 Sessions   Set-Cookie: __Host-sid=…; Path=/; Secure; HttpOnly; SameSite=Lax (Strict for admin-only; None only for
            real cross-site embedding, requires Secure); rotate ID on login and privilege change; absolute + idle expiry
 Secrets    env or secret store, never in repo or image layers, rotate on exposure
-Headers    Strict-Transport-Security: max-age=300 → 31536000 after every subdomain serves HTTPS; includeSubDomains
-           only then; preload only on explicit request (months to undo)
+Headers    Strict-Transport-Security: max-age=300 → 31536000 once HTTPS on this host is stable; includeSubDomains
+           only after every subdomain serves HTTPS; preload only on explicit request (months to undo)
            enforce `Content-Security-Policy: frame-ancestors 'none'|'self'` (or X-Frame-Options: DENY|SAMEORIGIN) from day one; roll out the rest of CSP as Report-Only first
            X-Content-Type-Options: nosniff; Referrer-Policy: strict-origin-when-cross-origin; no X-XSS-Protection (or 0)
 Passwords  min 15 single-factor (8 with MFA); accept ≥64, all printable/Unicode; block breached values;

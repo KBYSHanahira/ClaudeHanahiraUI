@@ -18,6 +18,9 @@ services:
     # Needs a native, rootful Linux engine. Docker Desktop (any OS, Linux
     # included), Colima, OrbStack and Rancher Desktop/Lima run the engine in a
     # VM, rootless Docker in its own namespace, so "host" there is not this machine.
+    # There: bridge mode with ports:, and on Linux engines
+    # extra_hosts: ["host.docker.internal:host-gateway"]; MySQL must accept the
+    # bridge subnet. Rootless Docker can't reach host loopback.
     network_mode: host
 
     env_file:

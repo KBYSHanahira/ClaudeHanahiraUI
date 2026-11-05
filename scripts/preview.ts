@@ -8,15 +8,15 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { agentCardSvg, CARD_H, CARD_W, prettyModel } from '../hooks/agents'
-import { chipSvg, contextSvg, CONTEXT, dotSvg, fmtClock, fmtElapsed, GLASS, inCard, loadingSvg, speedoSvg, STAT, statSvg } from '../hooks/chat'
+import { AGENT_CHIP, agentChipParts, prettyModel } from '../hooks/agents'
+import { chipSvg, contextSvg, CONTEXT, dotSvg, HUE, INK, fmtClock, fmtElapsed, GLASS, inCard, loadingSvg, speedoSvg, STAT, statSvg } from '../hooks/chat'
 import { iconGroup, iconSvg } from '../hooks/icons'
-import { VERSION } from '../hooks/version'
+import { SKILLS_VERSION, VERSION } from '../hooks/version'
 import type { Agent } from '../types'
 
-const ACCENT = '#9b8cf7'
-const WARM = '#e8825f'
-const font = 'font-family="ui-sans-serif,system-ui,Helvetica,Arial,sans-serif"'
+const ACCENT = '#a9b6ec'
+const WARM = HUE.fur
+const font = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,Helvetica,Arial,sans-serif"'
 const nest = (art: string | { svg: string }, x: number, y: number) =>
   `<g transform="translate(${x} ${y})">${typeof art === 'string' ? art : art.svg}</g>`
 
@@ -26,48 +26,49 @@ const ring = (percent: number, color: string, size: number, icon: Parameters<typ
   const stroke = 3.5
   const r = (44 - stroke) / 2
   const c = 2 * Math.PI * r
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}"><circle cx="22" cy="22" r="17" fill="${color}" fill-opacity="0.13"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="#3b3737" stroke-width="${stroke}"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${((percent / 100) * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>${iconGroup(icon, color, 9.5, 9.5, 25, 2.3)}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}"><circle cx="22" cy="22" r="17" fill="${color}" fill-opacity="0.13"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="#2c2c31" stroke-width="${stroke}"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${((percent / 100) * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>${iconGroup(icon, color, 9.5, 9.5, 25, 2.3)}</svg>`
 }
 
 const now = 1_000_000
 const agents: Agent[] = [
   { id: 'a1', name: 'code-reviewer', type: 'general-purpose', model: 'claude-sonnet-5-5', effort: 'high', background: true, status: 'running', startedAt: now - 84_000, endedAt: null, tools: 12, input: 1200, output: 5400, cacheRead: 310000, cacheWrite: 22000 },
   { id: 'a2', name: 'test-runner', type: 'general-purpose', model: 'claude-haiku-5-5', effort: 'low', background: true, status: 'done', startedAt: now - 52_000, endedAt: now - 1_000, tools: 5, input: 800, output: 2100, cacheRead: 90000, cacheWrite: 9000 },
+  { id: 'b1', name: 'bun run build', type: 'shell', kind: 'shell', model: '', effort: null, background: true, status: 'running', startedAt: now - 20_000, endedAt: null, tools: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 ]
 
 const W = 1000
-const RED = '#f2736b'
+const PETAL = HUE.petal
 // Agent strip, then the band: the top line on its card, the context card, two lines of stat cards.
-const top = 24 + CARD_H + 14
+const top = 24 + AGENT_CHIP.H + 14
 const lineH = 34
 const cellH = STAT.height + GLASS.extra
 const frameH = 10 + lineH + 4 + CONTEXT.height + GLASS.extra + 2 * cellH + 10
 const H = top + frameH + 36
 const parts: string[] = []
-parts.push(`<rect width="${W}" height="${H}" rx="18" fill="#171515"/>`)
+parts.push(`<rect width="${W}" height="${H}" rx="18" fill="#1f1f22"/>`)
 // agent strip, above the band as in a session
 agents.forEach((a, i) => {
-  const art = agentCardSvg(a, {})
-  parts.push(nest(art, 28 + i * (CARD_W + 14), 24))
+  const art = agentChipParts(a, {})
+  parts.push(nest(art.body, 28 + i * (AGENT_CHIP.W + 8), 24), nest(art.mark, 28 + i * (AGENT_CHIP.W + 8) + art.body.width, 24))
 })
 // the top line on a card of its own: title and branch, the bar (red while working), the time, the chips
 const y0 = top + 10
-parts.push(`<rect x="16.5" y="${y0 + 0.5}" width="${W - 33}" height="${lineH - 1}" rx="10" fill="#808080" fill-opacity=".06" stroke="#808080" stroke-opacity=".18"/>`)
+parts.push(`<rect x="16.5" y="${y0 + 0.5}" width="${W - 33}" height="${lineH - 1}" rx="10" fill="#000000" fill-opacity=".3" stroke="#ffffff" stroke-opacity=".08"/>`)
 const ty = y0 + (lineH - 24) / 2
-parts.push(nest(dotSvg(ACCENT, false), 30, ty + 5))
-parts.push(nest(iconSvg('folder', '#a8a29e', 14), 52, ty + 5))
-parts.push(`<text x="72" y="${ty + 17}" ${font} font-size="15" font-weight="600" fill="#ece7e3">spa</text><text x="110" y="${ty + 17}" ${font} font-size="14" fill="#a8a29e">⎇ main</text>`)
+parts.push(nest(dotSvg(PETAL, true), 30, ty + 5))
+parts.push(nest(iconSvg('folder', '#a3a3ab', 14), 52, ty + 5))
+parts.push(`<text x="72" y="${ty + 17}" ${font} font-size="15" font-weight="600" fill="${INK.value}">spa</text><text x="110" y="${ty + 17}" ${font} font-size="14" fill="#a3a3ab">⎇ main</text>`)
 const chips = [
-  chipSvg({ color: RED, label: 'working', dots: true, strong: true }),
-  chipSvg({ color: '#f2c94c', icon: 'bolt', value: '8', label: 'tools', minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural, quiet: true }),
-  chipSvg({ color: '#8f8985', icon: 'tag', label: `v${VERSION}`, quiet: true }),
+  chipSvg({ color: PETAL, label: 'working', dots: true, strong: true }),
+  chipSvg({ color: '#f3cf7a', icon: 'bolt', value: '8', label: 'tools', minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural, quiet: true }),
+  chipSvg({ color: '#86868f', icon: 'tag', label: `v${VERSION}`, quiet: true }),
 ]
 const chipsW = chips.reduce((w, c) => w + c.width, 0) + 8 * (chips.length - 1)
 let chipX = W - 28 - chipsW
 const timeX = chipX - 92
-parts.push(nest(loadingSvg(timeX - 184 - 16, 8, RED, { live: true }), 184, ty + 8))
-parts.push(nest(iconSvg('clock', '#a8a29e', 14), timeX, ty + 5))
-parts.push(`<text x="${timeX + 20}" y="${ty + 17}" ${font} font-size="14" fill="#a8a29e">${fmtElapsed(134)}</text>`)
+parts.push(nest(loadingSvg(timeX - 184 - 16, 6, PETAL, { live: true }), 184, ty + 9))
+parts.push(nest(iconSvg('clock', '#a3a3ab', 14), timeX, ty + 5))
+parts.push(`<text x="${timeX + 20}" y="${ty + 17}" ${font} font-size="14" fill="#a3a3ab">${fmtElapsed(134)}</text>`)
 for (const c of chips) {
   parts.push(nest(c, chipX, ty + (24 - c.height) / 2))
   chipX += c.width + 8
@@ -83,9 +84,9 @@ const gauges: ((width?: number) => ReturnType<typeof statSvg>)[] = [
   width => statSvg('4%', '5h limit', { detail: '3h 59m', width, ring: ring(4, WARM, STAT.glyph, 'hourglass') }),
   width => statSvg('22%', '7d limit', { detail: '2d 8h', width, ring: ring(22, WARM, STAT.glyph, 'calendar') }),
   width => statSvg('58', 'tok/s', { detail: 'peak 81', width, ring: speedoSvg(58 / 81, ACCENT, STAT.glyph) }),
-  width => statSvg('Hanahira', 'Active', { detail: 'design', width, color: '#34c38f', tone: '#34c38f', toggle: { on: true } }),
+  width => statSvg('Hanahira', `Active · V${SKILLS_VERSION}`, { detail: 'design', width, color: PETAL, tone: PETAL, toggle: { on: true } }),
 ]
-const figures: [string, string, never, string][] = [['≈$46.22', 'cost', 'coin' as never, '#f2c94c'], ['172M', 'tokens', 'hash' as never, '#9b8cf7'], [fmtClock(2_730_000), 'time', 'timer' as never, '#5eb5f7'], [prettyModel('claude-opus-5-5'), 'model', 'sparkles' as never, '#e8825f']]
+const figures: [string, string, never, string][] = [['≈$46.22', 'cost', 'coin' as never, '#f3cf7a'], ['172M', 'tokens', 'hash' as never, '#a9b6ec'], [fmtClock(2_730_000), 'time', 'timer' as never, '#8fdcb9'], [prettyModel('claude-opus-5-5'), 'model', 'sparkles' as never, PETAL]]
 const figureArt = figures.map(([v, l, ic, c]) => (width?: number) => statSvg(v, l, { icon: ic, color: c, width }))
 const colW = gauges.map((g, i) => Math.max(g().natural, figureArt[i]!().natural))
 ;[gauges, figureArt].forEach((line, r) => {
@@ -96,7 +97,7 @@ const colW = gauges.map((g, i) => Math.max(g().natural, figureArt[i]!().natural)
     x += card.width + 8
   })
 })
-parts.push(`<text x="${W - 40}" y="${H - 14}" text-anchor="end" ${font} font-size="11" fill="#5c5654">Hanahira Claude UI · sample numbers</text>`)
+parts.push(`<text x="${W - 40}" y="${H - 14}" text-anchor="end" ${font} font-size="11" fill="#5c5c63">Hanahira Claude UI · sample numbers</text>`)
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${parts.join('')}</svg>`
 const doc = (name: string) => fileURLToPath(new URL(`../docs/${name}`, import.meta.url))

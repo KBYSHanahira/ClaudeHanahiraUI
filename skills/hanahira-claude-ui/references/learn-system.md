@@ -36,7 +36,7 @@ The nearest working neighbor is the spec. Before writing, open one comparable pi
 - the libraries the project already uses for this job — never a new dependency when one in the lockfile does it
 - the project's format and lint rules, so the diff stays only the change
 
-Where the project's way conflicts with general best practice, follow the project and mention the conflict in one line — unless it's a security or data-loss risk, then say so before writing.
+Where the project's way conflicts with general best practice, follow the project and mention the conflict in one line — unless it's a security or data-loss risk: then say so before writing and use the safe way, unless the user, told the risk, chooses the project's way.
 
 ## 4. Change precisely
 

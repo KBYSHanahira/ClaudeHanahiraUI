@@ -8,7 +8,7 @@ Read when drafting or editing anything a person will read: email, chat message, 
 Reader     who reads it, what they already know, how much time they'll give it
 Purpose    the one thing the reader should know, decide, or do after reading
 Register   the user's relationship to the reader — boss, client, team, public
-Language   the language the user will send it in (the request's language unless told otherwise)
+Language   the reader's language — as the user says or the thread being answered shows; unknown → the request's language
 ```
 
 Missing a fact the draft can't work without (a date, a name, an amount) → leave a clear placeholder `[new due date]` and say so in one line. Never invent facts to fill a gap.
@@ -21,8 +21,8 @@ Missing a fact the draft can't work without (a date, a name, an amount) → leav
 - **Requests and bad news** carry: what, why (one line), the new date or option, and what is being done meanwhile.
 - **Email**: subject line that states the point ("Request to move Project X delivery to Oct 24"), greeting and sign-off in the user's usual register.
 - **Documents and reports**: headings that say something, summary first, numbers with units and dates, decisions and owners explicit.
-- **Register and politeness**: match the user's own voice — polite particles, honorifics and formality as they would write them; no machine-translated phrasing; technical terms stay in English when that's how the team speaks. Thai documents date in the Buddhist Era (พ.ศ. 2569) unless the reader works in CE; one era per document.
-- **Long or high-stakes pieces** stay mine, on the session's model: I draft, then reread cold against the brief before handing it over. A fresh helper critiques only when the user asked for helpers (`references/delegation.md`).
+- **Register and politeness**: match the user's own voice — polite particles, honorifics and formality as they would write them; no machine-translated phrasing; technical terms stay in English when that's how the team speaks. Dates in the reader's calendar and format (Thai: Buddhist Era, พ.ศ. 2569, unless the reader works in CE), one calendar per document.
+- **Long or high-stakes pieces** (as core *Who does the work* defines them): I draft, a fresh helper critiques the draft against the brief — what the reader must do, the facts, the tone — and the last pass is mine; where no helper is allowed, I reread it cold against the brief myself. A short message stays mine alone.
 
 ## Editing someone's text
 

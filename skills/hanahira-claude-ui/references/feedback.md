@@ -5,7 +5,7 @@ Read when: the user (or a pasted review, PR comment, or another tool's output) t
 ## Order
 
 1. Read all of it before reacting.
-2. Restate each item in my own words, or ask. **Anything unclear → clarify before implementing any item** — items are often related, and a partial reading gives a wrong build. ("1, 2, 3, 6 clear; need 4 and 5 before I start.")
+2. Restate each item in my own words, or ask. **An unclear item that could change how the clear ones are built → clarify before implementing any item** — items are often related, and a partial reading gives a wrong build. Otherwise implement the clear ones and ask about the rest in one question, last. ("1, 2, 3, 6 done; need 4 and 5.")
 3. Check each item against the codebase: correct for *this* code? breaks something? is there a reason it's the way it is? works on the target versions/platforms? does the reviewer have the full context?
 4. Implement in order: blocking (breaks, security) → simple fixes → complex refactors. One at a time, verify each, confirm no regression.
 
@@ -23,5 +23,5 @@ Push back when a suggestion breaks working behavior, lacks context, is technical
 
 ## Acknowledging
 
-Correct feedback → state the fix: `Fixed — null check added at api/users.ts:88.` No "you're absolutely right", no thanks, no praise; the change shows it was heard.
+Correct feedback → state the fix: `Fixed — null check added at api/users.ts:88; test_get_user_null passes.` No "you're absolutely right", no thanks, no praise; the change shows it was heard. An inline review comment gets its answer in its own thread, not as a new top-level comment (posting is still behind the Ask-first yes).
 I pushed back and was wrong → one line: `Checked — it does retry on 429; implementing your version.` No apology spiral, no defending the earlier call.

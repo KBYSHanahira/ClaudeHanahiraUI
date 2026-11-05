@@ -1,11 +1,11 @@
 # Work planning — projects, priorities, schedules, meetings, status
 
-Read when the user wants to plan work, prioritize, schedule, run or summarize a meeting, or report status. (Creating something whose shape isn't settled yet — a new product, talk, feature: `planning.md` first.)
+Read when the user wants to plan work, prioritize, schedule, run or summarize a meeting, or report status. (Creating something whose shape isn't settled yet — a new product, talk, feature: `planning.md` first. A plan someone will implement in code → `planning.md` §3; this file is for work people schedule and track.)
 
 ## A plan
 
 1. **Restate the goal and the hard limits** in one or two lines — deadline, people or hours available, budget, what can't break.
-2. **Tasks**, each with: what "done" looks like (a check, not a feeling), owner, and an order or date. Tasks sized so each fits in a day or less; bigger → split.
+2. **Tasks**, each with: what "done" looks like (a check, not a feeling), owner, and an order or date. Tasks sized to a day or less for the next two weeks; work beyond that as milestones of a week or less, each with its done-check.
 3. **Order by dependency, then by risk**: do the risky or unknown parts early, when there's still time to react.
 4. **Critical path**: the chain that sets the end date — name it.
 5. **Top 2 risks** with the early warning sign and the fallback.
