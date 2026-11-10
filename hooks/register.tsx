@@ -32,7 +32,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { CHARGE_COLOR, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CHARGE_COLOR, SPEAKER, TOOL_KIND, TOOL_TAG, chargeLevel, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, speakerSvg, stripeSvg, toolKind, toolTagSvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -235,6 +235,31 @@ const glides = glideHolder()
 const reels = reelHolder()
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
+const chatRest = atom({ plugin: 'hanahira-claude-ui', key: 'chatRest' } as const, 0)
+
+/**
+ * When each transcript row was first drawn, so its header comes in once and a redraw goes on
+ * from where it was. The rows already there when the module loads (a reload, a resumed session)
+ * are all drawn in its first moments: those come in at rest, not all at once.
+ */
+export const arrivals = (graceMs = 1500, max = 400) => {
+  const seen = new Map<string, number>()
+  let since: number | null = null
+  return {
+    /** The row's age in ms, or null for one that was there from the start. */
+    age: (id: string, nowMs: number) => {
+      since ??= nowMs
+      let at = seen.get(id)
+      if (at === undefined) {
+        at = nowMs - since < graceMs ? -1 : nowMs
+        seen.set(id, at)
+        if (seen.size > max) seen.delete(seen.keys().next().value as string)
+      }
+      return at < 0 ? null : nowMs - at
+    },
+  }
+}
+const arrived = arrivals()
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
 const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
 const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
@@ -272,7 +297,21 @@ const THEME = {
   keepFinishedMs: 3000, // a finished agent's card stays this long (to show the check), then goes
   stripGap: 8, // room under the agent strip, in px: keeps it off the band's frame
   // Icons in front of each label: swap for any glyph or emoji.
+  // The transcript in the band's look: a header over the person's messages and over each
+  // reply, and a tag before each tool row. Any of the three set false leaves those rows as
+  // the app draws them. `motion` false draws them still.
+  chat: { user: true, reply: true, tools: true, motion: true },
 }
+
+/** Who a user-role row is from, as its header names it: the person, a background task, another agent or session. */
+export const speakerOf = (kind: string, hasTask: boolean, hasFrom: boolean) =>
+  hasTask || kind === 'task-notification'
+    ? { label: 'task', caption: 'notice', color: HUE.hazard }
+    : hasFrom
+      ? { label: 'link', caption: 'message', color: HUE.fur }
+      : kind === 'composer' || kind === 'bridge' || kind === 'sdk' || kind === 'unclassified'
+        ? { label: 'you', caption: 'input', color: INK.value }
+        : { label: 'auto', caption: kind.replace(/[^a-z]+/gi, ' ').trim() || 'input', color: INK.label }
 
 type Word = { text: string; quoted: boolean; runs: boolean }
 
@@ -581,6 +620,28 @@ const agentBeat = ($: EngineInterface) => {
     void update($, tick, n => (n ?? 0) + 1)
   })
 }
+
+/** Every tool tag is as wide as the widest, so the rows after them line up. */
+const TAG_WIDTH = Math.max(...Object.values(TOOL_KIND).map(k => toolTagSvg(k.label, k.color).natural))
+
+/**
+ * How long ago the row `id` came, in ms, while its coming-in (`ms` long) still plays; else null.
+ * While it plays the row reads `chatRest`, which is bumped as the motion ends: the row is then
+ * drawn once more, at rest, so a later repaint of its picture has no motion left to start over.
+ */
+const entering = async ($: EngineInterface, id: string, ms: number) => {
+  if (!THEME.chat.motion) return null
+  const nowMs = await $.clock.now()
+  const age = arrived.age(id, nowMs)
+  if (age === null || age >= ms) return null
+  await read($, chatRest)
+  if (nowMs + ms - age > chatRestDue) {
+    chatRestDue = nowMs + ms - age
+    $.clock.after(ms - age + 30, () => void update($, chatRest, n => (n ?? 0) + 1))
+  }
+  return age
+}
+let chatRestDue = 0
 
 export const register: Register = on => {
   let startedAt = 0
@@ -1193,9 +1254,9 @@ export const register: Register = on => {
     // over everything else (narrower still); `bare`, one line without the detail.
     type Mode = 'line' | 'stack' | 'tall' | 'bare'
     // `live`: the cell moves, so it is drawn in the surface's frame.
-    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg>; parts?: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellParts> }
+    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg> }
     // Context is the hero line above the grid (below); the other gauges share the grid.
-    // What a gauge's cell is drawn from, for its one picture or its strips.
+    // What a gauge's cell is drawn from.
     const cellArgs = (t: Tile, width: number | undefined, mode: Mode, height: number | undefined): Parameters<typeof hudCellSvg> => {
       const [, ...rest] = t.short.split(' · ')
       const sub = [...(t.toggle ? [t.short] : rest), ...(t.detail ? [t.detail] : [])].join(' · ')
@@ -1210,7 +1271,7 @@ export const register: Register = on => {
           ...(t.bars ? { bars: t.bars } : {}),
           ...(mode !== 'bare' && sub ? { sub } : {}),
           ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
-          ...(t.charge ? { charge: { level: t.charge, motion: true } } : {}),
+          ...(t.charge ? { charge: { level: t.charge, motion: true, at: nowMs } } : {}),
         },
       ]
     }
@@ -1227,9 +1288,6 @@ export const register: Register = on => {
       // A HUD cell (hudCellSvg): its name on the slab, the figure, its meters, and under them
       // what is left and the detail on one dim line, which `bare` leaves out.
       draw: (width, mode = 'line', height) => hudCellSvg(...cellArgs(t, width, mode, height)),
-      // A charged cell is drawn in strips (hudCellParts): its electricity in pictures of its
-      // own that hold while the level does, so it runs on however often the figure changes.
-      ...(t.charge ? { parts: (width?: number, mode: Mode = 'line', height?: number) => hudCellParts(...cellArgs(t, width, mode, height)) } : {}),
     }))
     const figureCells: Cell[] = cards.map(c => {
       const label = c.label.toLowerCase()
@@ -1456,17 +1514,8 @@ export const register: Register = on => {
                       </Text>
                     )
                   const art = c.draw(chosen.colW[j], chosen.mode, lineH[r])
-                  const strips = c.parts?.(chosen.colW[j], chosen.mode, lineH[r]).parts
-                  const cell = strips ? (
-                    // A charged cell: its strips one under another, the moving ones in the surface's frame.
-                    <Box key={c.key} flexDirection="column">
-                      {strips.map((p, k) => (
-                        <Svg key={`${c.key}-${k}`} source={p.svg} alt={k === 1 ? c.alt : ''} width={p.width} height={p.height} {...(p.live ? loop : {})} />
-                      ))}
-                    </Box>
-                  ) : (
-                    <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
-                  )
+                  // One picture per cell; a charged one stays plain and its loops carry the clock (hudCellSvg).
+                  const cell = <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
                   return j === 0 ? [cell] : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="" width={GRID_GAP} height={1} />, cell]
                 })}
               </Box>
@@ -1519,6 +1568,63 @@ export const register: Register = on => {
         </Box>
         )}
       </Box>
+      </Box>
+    )
+  })
+
+  // The transcript in the band's look. Each hook keeps the engine's own row (`next(e)`) and
+  // only adds to it, and only where the surface draws pictures: elsewhere the row is as it was.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const row = await next(e)
+    const table = $.ui.resolve(e)
+    // A row folded to one dim line (a sender's name) stays that one line.
+    if (!THEME.chat.user || !('Svg' in table) || !e.props.isExpanded) return row
+    const { Box, Svg } = table
+    const who = speakerOf(e.props.origin.kind, e.props.task !== undefined, e.props.from !== undefined)
+    const enter = await entering($, `u:${e.requestId}`, SPEAKER.inMs)
+    const art = speakerSvg(who.label, who.color, { caption: who.caption, enter })
+    return (
+      <Box flexDirection="column" rowGap={1}>
+        <Svg source={art.svg} alt={`${who.label} ${who.caption}`} width={art.width} height={art.height} />
+        {row}
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    const row = await next(e)
+    const table = $.ui.resolve(e)
+    // One header a reply, on the block that opens it; a summary of text is not the reply.
+    if (!THEME.chat.reply || !('Svg' in table) || !e.props.isFirstOfReply || e.props.isSummary) return row
+    const { Box, Svg } = table
+    const enter = await entering($, `a:${e.requestId}`, SPEAKER.inMs)
+    const art = speakerSvg(THEME.fallbackTitle, THEME.accent, { caption: 'response', enter })
+    return (
+      <Box flexDirection="column" rowGap={1}>
+        <Svg source={art.svg} alt={`${THEME.fallbackTitle} response`} width={art.width} height={art.height} />
+        {row}
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    const row = await next(e)
+    const table = $.ui.resolve(e)
+    if (!THEME.chat.tools || !('Svg' in table)) return row
+    const { Box, Svg } = table
+    const kind = TOOL_KIND[toolKind(e.props.tool)]
+    // A call that failed shows it on its tag; one cut short goes quiet.
+    const color = e.props.isErrored ? HUE.rose : e.props.isInterrupted ? INK.detail : kind.color
+    const enter = await entering($, `t:${e.requestId}`, TOOL_TAG.inMs)
+    const art = toolTagSvg(kind.label, color, { minWidth: TAG_WIDTH, enter, running: e.props.isRunning })
+    return (
+      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
+        <Box flexShrink={0}>
+          <Svg source={art.svg} alt={kind.label} width={art.width} height={art.height} {...(e.props.isRunning ? { isInteractive: true } : {})} />
+        </Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+          {row}
+        </Box>
       </Box>
     )
   })

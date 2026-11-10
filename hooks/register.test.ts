@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { arrivals, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, speakerOf, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -320,5 +320,33 @@ describe('sameLimits', () => {
     expect(sameLimits(a, [{ ...a[0]!, percentUsed: 20 }, a[1]!])).toBe(false)
     expect(sameLimits(a, [{ ...a[0]!, resetsAt: 'y' }, a[1]!])).toBe(false)
     expect(sameLimits(a, a.slice(0, 1))).toBe(false)
+  })
+})
+
+describe('speakerOf', () => {
+  test('names the person, a task, another party, and anything automatic', () => {
+    expect(speakerOf('composer', false, false).label).toBe('you')
+    expect(speakerOf('unclassified', false, false).label).toBe('you')
+    expect(speakerOf('task-notification', true, false).label).toBe('task')
+    expect(speakerOf('unclassified', false, true).label).toBe('link')
+    expect(speakerOf('scheduled-task', false, false)).toMatchObject({ label: 'auto', caption: 'scheduled task' })
+  })
+})
+
+describe('arrivals', () => {
+  test('rows there from the start have no age; a later one ages from its first drawing', () => {
+    const a = arrivals(1500)
+    expect(a.age('old', 1000)).toBe(null)
+    expect(a.age('old2', 2000)).toBe(null)
+    expect(a.age('new', 3000)).toBe(0)
+    expect(a.age('new', 3400)).toBe(400)
+    expect(a.age('old', 9000)).toBe(null)
+  })
+  test('forgets the oldest past its room', () => {
+    const a = arrivals(0, 2)
+    a.age('a', 10)
+    a.age('b', 20)
+    a.age('c', 30)
+    expect(a.age('a', 40)).toBe(0)
   })
 })

@@ -53,6 +53,8 @@ declare module 'claude-code' {
       runMs: number
       speed: { tps: number | null; peak: number }
       tick: number
+      // Bumped as a transcript header's coming-in ends, so it is drawn again at rest.
+      chatRest: number
       settle: number
       agents: Agent[]
       code: { net: number; candles: { o: number; h: number; l: number; c: number; v: number }[]; cur: { o: number; h: number; l: number; c: number; v: number } | null }

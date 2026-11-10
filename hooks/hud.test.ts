@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, hudCellParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, SPEAKER, speakerSvg, stripeSvg, TOOL_KIND, TOOL_TAG, toolKind, toolTagSvg } from './hud'
 
 describe('hudCellSvg', () => {
   test('sets the name on a slab and the figure in capitals', () => {
@@ -148,35 +148,86 @@ describe('charge', () => {
   })
 })
 
-describe('hudCellParts', () => {
-  const opts = (level: number) => ({ index: '03', width: 160, sub: 'peak 119', bars: [{ percent: 40, color: HUE.sky }], ...(level ? { charge: { level, motion: true } } : {}) })
-  test('an uncharged cell is one plain picture, the size of the cell', () => {
-    const one = hudCellSvg('tok/s', '76', opts(0))
-    const p = hudCellParts('tok/s', '76', opts(0))
-    expect(p.parts.length).toBe(1)
-    expect(p.parts[0]).toMatchObject({ width: one.width, height: one.height, live: false })
-    expect(p.parts[0]!.svg).toBe(one.svg)
+describe('charge in one picture', () => {
+  test('the arcs and bolts carry their place in the loop from `at`, so a redraw goes on from there', () => {
+    const at = (ms: number) => hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true, at: ms } }).svg
+    // Level 2: the first arc loops in 1050 ms, the flicker in 560 ms.
+    expect(at(500)).toContain('.a0{animation:a0 1050ms linear infinite;animation-delay:-500ms}')
+    expect(at(1550)).toContain('.a0{animation:a0 1050ms linear infinite;animation-delay:-500ms}')
+    expect(at(600)).toContain('.zf{animation:zf 560ms linear infinite;animation-delay:-40ms}')
+    expect(at(0)).not.toBe(at(500))
   })
-  test('a charged cell is strips that add up to the cell, the moving ones live', () => {
-    for (const level of [1, 2, 3]) {
-      const p = hudCellParts('tok/s', '76', opts(level))
-      expect(p.parts.reduce((h, s) => h + s.height, 0)).toBe(p.height)
-      expect(p.parts.every(s => s.width === p.width)).toBe(true)
-      expect(p.parts.map(s => s.live)).toEqual(level === 3 ? [true, false, true, false, true] : [true, false, true, false])
-      expect(p.parts[0]!.height).toBe(CHARGE_CUT.head)
-      // Only the live strips carry a loop; the figure and the meters hold none.
-      for (const s of p.parts) expect(s.svg.includes('infinite')).toBe(s.live)
-    }
+  test('the charged cell is one svg, its arcs between the figure and the meters', () => {
+    const svg = hudCellSvg('tok/s', '76', { width: 160, bars: [{ percent: 40, color: HUE.sky }], charge: { level: 3, motion: true, at: 0 } }).svg
+    expect(svg.match(/<svg /g)!.length).toBe(1)
+    expect(svg).toContain(`<g transform="translate(0 ${CHARGE_CUT.drop})">`)
   })
-  test('the moving strips hold their picture while the figure and the meter change', () => {
-    const a = hudCellParts('tok/s', '76', opts(2)).parts
-    const b = hudCellParts('tok/s', '81', { ...opts(2), sub: 'peak 131', bars: [{ percent: 55, color: HUE.sky }], reel: '76' }).parts
-    expect(b[0]!.svg).toBe(a[0]!.svg)
-    expect(b[2]!.svg).toBe(a[2]!.svg)
-    expect(b[1]!.svg).not.toBe(a[1]!.svg)
-    expect(b[3]!.svg).not.toBe(a[3]!.svg)
+})
+
+describe('speakerSvg', () => {
+  test('sets the speaker on a solid slab and the caption after it, in capitals', () => {
+    const s = speakerSvg('you', INK.value, { caption: 'input' })
+    expect(s.svg).toContain('>YOU</text>')
+    expect(s.svg).toContain('>// INPUT</text>')
+    expect(s.svg).toContain(`fill="${INK.value}"`)
+    expect(s.svg).not.toContain(' rx=')
   })
-  test('a new level is a new picture', () => {
-    expect(hudCellParts('tok/s', '76', opts(1)).parts[2]!.svg).not.toBe(hudCellParts('tok/s', '76', opts(2)).parts[2]!.svg)
+  test('only ever grows, and never past what it was given room for', () => {
+    const s = speakerSvg('Hanahira', HUE.sky, { caption: 'response' })
+    expect(speakerSvg('Hanahira', HUE.sky, { caption: 'response', width: 10 }).width).toBe(s.natural)
+    expect(speakerSvg('Hanahira', HUE.sky, { caption: 'response', width: 900 }).width).toBe(900)
+    expect(s.width).toBe(SPEAKER.width)
+    expect(speakerSvg('you', INK.value).width).toBe(SPEAKER.width)
+  })
+  test('escapes what it is given', () => {
+    expect(speakerSvg('a<b', HUE.sky).svg).toContain('A&lt;B')
+  })
+})
+
+describe('tool tags', () => {
+  test('name the kind of work by the tool', () => {
+    expect(toolKind('Bash')).toBe('exec')
+    expect(toolKind('Read')).toBe('read')
+    expect(toolKind('Write')).toBe('edit')
+    expect(toolKind('Grep')).toBe('scan')
+    expect(toolKind('WebSearch')).toBe('net')
+    expect(toolKind('Agent')).toBe('unit')
+    expect(toolKind('mcp__github__Read')).toBe('link')
+    expect(toolKind('SomethingNew')).toBe('tool')
+  })
+  test('draw the kind in capitals with its colour, held to a width', () => {
+    const t = toolTagSvg(TOOL_KIND.exec.label, TOOL_KIND.exec.color)
+    expect(t.svg).toContain('>EXEC</text>')
+    expect(t.svg).toContain(`fill="${HUE.hazard}"`)
+    expect(toolTagSvg('net', HUE.lilac, { minWidth: t.width + 20 }).width).toBe(t.width + 20)
+  })
+})
+
+describe('transcript motion', () => {
+  test('a header comes in once, from its age, and rests still', () => {
+    const still = speakerSvg('you', INK.value, { caption: 'input' })
+    expect(still.svg).not.toContain('animation')
+    const fresh = speakerSvg('you', INK.value, { caption: 'input', enter: 0 })
+    expect(fresh.svg).toContain('class="ss"')
+    expect(fresh.svg).toContain('260ms cubic-bezier(0.22, 1, 0.36, 1) 0ms both')
+    expect(speakerSvg('you', INK.value, { caption: 'input', enter: 200 }).svg).toContain(' -200ms both')
+    expect(speakerSvg('you', INK.value, { caption: 'input', enter: SPEAKER.inMs }).svg).toBe(still.svg)
+    expect(speakerSvg('you', INK.value, { caption: 'input', enter: null }).svg).toBe(still.svg)
+    expect(fresh).toMatchObject({ width: still.width, height: still.height })
+  })
+  test('every part of a header is at rest by the end of its coming-in', () => {
+    const css = speakerSvg('you', INK.value, { caption: 'input', enter: 0 }).svg
+    const ends = [...css.matchAll(/ (\d+)ms [a-z-]+(?:\([^)]*\))? (-?\d+)ms both/g)].map(m => Number(m[1]) + Number(m[2]))
+    expect(ends.length).toBeGreaterThan(6)
+    expect(Math.max(...ends)).toBeLessThanOrEqual(SPEAKER.inMs)
+  })
+  test('a tag comes in once and blinks only while its call runs', () => {
+    const still = toolTagSvg('exec', HUE.hazard)
+    expect(still.svg).not.toContain('animation')
+    expect(toolTagSvg('exec', HUE.hazard, { enter: 100 }).svg).toContain('-100ms both')
+    expect(toolTagSvg('exec', HUE.hazard, { enter: TOOL_TAG.inMs }).svg).toBe(still.svg)
+    const run = toolTagSvg('exec', HUE.hazard, { running: true }).svg
+    expect(run).toContain('infinite')
+    expect(run).toContain('prefers-reduced-motion')
   })
 })

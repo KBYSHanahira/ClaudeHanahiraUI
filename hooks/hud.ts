@@ -109,39 +109,40 @@ const bolt = (x: number, y: number, size: number, color: string, cls = '') =>
   `<path d="M7 0L1 7h4l-2 5 6-7.5H5z" transform="translate(${x} ${y}) scale(${(size / 12).toFixed(3)})" fill="${color}"${cls ? ` class="${cls}"` : ''}/>`
 
 /**
- * Where a charged cell is cut into strips (hudCellParts): under the slab, under the figure, above
- * the meter, and the last px for the bottom edge's arc. `drop` is how far a charged cell's meters
- * sit lower than a plain one's, which is the room the arcs run in, clear of the figure.
+ * A charged cell's bands: the arcs run between `arcs` (under the figure) and `bars` (above the
+ * meter). `drop` is how far a charged cell's meters sit lower than a plain one's, which is the
+ * room the arcs run in, clear of the figure.
  */
 export const CHARGE_CUT = { head: 14, arcs: 40, bars: 49, foot: 3, drop: 4 }
 
 /**
  * The electric charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`,
- * in layers, one for each strip of the cell it belongs to:
+ * in layers:
  * - `still`: at 2, a lit frame and sparks at the corners. Nothing in it moves.
  * - `head`: a bolt in the corner (two at 3) that flickers, and at 3 an arc along the top edge.
  * - `arcs`: an arc running just above the meter; at 2 a second, finer one against it; at 3 a third.
  * - `foot`: at 3, an arc along the bottom edge.
  * With `motion` every arc slides along its line for good (a loop, each at its own pace, faster
- * the higher the level) and the bolts flicker. Each layer carries its own CSS, and none depends
- * on the cell's figure, so a strip that holds only its layer keeps one picture while the level
- * holds and its motion runs on, whatever else on the cell is redrawn.
+ * the higher the level) and the bolts flicker. The cell is one plain picture, redrawn as its
+ * figure changes, and a redrawn picture starts its CSS over; so each loop starts `at` ms into
+ * itself (a negative animation-delay), and a redraw goes on from where the last one was.
  */
-const chargeLayers = (level: number, width: number, height: number, motion: boolean) => {
+const chargeLayers = (level: number, width: number, height: number, motion: boolean, at = 0) => {
   if (level < 1) return { still: '', head: '', arcs: '', foot: '' }
   const color = CHARGE_COLOR[level]!
   const C = CELL
   const pace = [0, 1500, 1050, 760][level]!
   let n = 0
+  const into = (ms: number) => `;animation-delay:-${Math.round(((at % ms) + ms) % ms)}ms`
   // One arc, sliding one width a loop; `back` slides it the other way.
   const arc = (y: number, amp: number, seed: number, w: number, ms: number, back = false) => {
     const cls = `a${n++}`
     return (
       `<path d="${arcPath(width, y, amp, seed)}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="bevel"${motion ? ` class="${cls}"` : ''}/>` +
-      (motion ? motionStyle(`@keyframes ${cls}{to{transform:translateX(${back ? -width : width}px)}}.${cls}{${back ? `transform:translateX(${width}px);` : ''}animation:${cls} ${ms}ms linear infinite}`) : '')
+      (motion ? motionStyle(`@keyframes ${cls}{to{transform:translateX(${back ? -width : width}px)}}.${cls}{${back ? `transform:translateX(${width}px);` : ''}animation:${cls} ${ms}ms linear infinite${into(ms)}}`) : '')
     )
   }
-  const flicker = motion ? motionStyle(`@keyframes zf{0%,100%{opacity:1}42%{opacity:.35}47%{opacity:1}71%{opacity:.55}}.zf{animation:zf ${900 - level * 170}ms linear infinite}`) : ''
+  const flicker = motion ? motionStyle(`@keyframes zf{0%,100%{opacity:1}42%{opacity:.35}47%{opacity:1}71%{opacity:.55}}.zf{animation:zf ${900 - level * 170}ms linear infinite${into(900 - level * 170)}}`) : ''
   const spark = (x: number, y: number, dx: number, dy: number) => `<path d="M${x} ${y}l${dx * 5} ${dy * 3}l${-dx * 2} ${dy * 2}l${dx * 5} ${dy * 4}" fill="none" stroke="${color}" stroke-width="1.1"/>`
   const arcY = (CHARGE_CUT.arcs + CHARGE_CUT.bars) / 2
   return {
@@ -181,11 +182,11 @@ export type CellOpts = {
   tone?: string
   reel?: Since<string> | string | null
   toggle?: { on: boolean; enter?: number | null; motion?: boolean }
-  /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
-  charge?: { level: number; motion?: boolean }
+  /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops), `at` ms (the clock) into them. */
+  charge?: { level: number; motion?: boolean; at?: number }
 }
 
-/** A cell's measures and its drawing in layers, for hudCellSvg and hudCellParts. */
+/** A cell's measures and its drawing in layers, for hudCellSvg. */
 const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const C = CELL
   const bars = opts.bars ?? []
@@ -218,9 +219,9 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
     .join('')
   const subY = (opts.toggle ? C.valueY - 4 : C.barsY + bars.length * pitch) + (bars.length ? 10 : 13)
   const level = Math.round(opts.charge?.level ?? 0)
-  const charge = chargeLayers(level, width, height, opts.charge?.motion === true)
+  const charge = chargeLayers(level, width, height, opts.charge?.motion === true, opts.charge?.at ?? 0)
   // The cell in layers: what never changes while its name, size and charge hold; the figure;
-  // the meters and the line under them. A charged cell is cut into strips of these (hudCellParts).
+  // the meters and the line under them.
   const base =
     frame(width, height) +
     (opts.index ? `<text x="${width - 5}" y="${height + 3}" text-anchor="end" ${FACE} font-size="42" font-weight="700" fill="${INK.value}" fill-opacity="0.06">${esc(opts.index)}</text>` : '') +
@@ -239,7 +240,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   return { width, height, natural, level, base, figure, meters, charge }
 }
 
-/** A window of the cell's one drawing, `h` px tall from `y`: strips laid one under another make the cell. */
+/** The cell's svg document, `h` px tall from `y`. */
 const strip = (width: number, y: number, h: number, inner: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${y} ${width} ${h}" width="${width}" height="${h}">${inner}${themeStyle()}</svg>`
 
@@ -256,32 +257,6 @@ export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) =>
   const c = cellLayers(label, value, opts)
   const svg = strip(c.width, 0, c.height, c.base + c.figure + c.meters + c.charge.head + c.charge.arcs + c.charge.foot)
   return { svg, width: c.width, height: c.height, natural: c.natural }
-}
-
-/**
- * The same cell as pictures laid one under another, so its electricity runs on while its
- * figure changes. A surface swaps a picture whose source changed, which starts its motion over
- * (and, in the surface's frame, blinks); so what moves gets strips of its own, whose pictures
- * hold for as long as the charge level does (`live`: drawn in the surface's frame, where a loop
- * keeps running), and the figure and the meters, which change several times a second, are
- * plain pictures between them, swapped cleanly. An uncharged cell is one plain picture.
- */
-export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) => {
-  const c = cellLayers(label, value, opts)
-  const K = CHARGE_CUT
-  const cut = (y: number, h: number, inner: string, live: boolean) => ({ svg: strip(c.width, y, h, c.base + inner), width: c.width, height: h, live })
-  const foot = c.level >= 3 ? K.foot : 0
-  const parts =
-    c.level < 1
-      ? [cut(0, c.height, c.figure + c.meters, false)]
-      : [
-          cut(0, K.head, c.charge.head, true),
-          cut(K.head, K.arcs - K.head, c.figure, false),
-          cut(K.arcs, K.bars - K.arcs, c.charge.arcs, true),
-          cut(K.bars, c.height - K.bars - foot, c.meters, false),
-          ...(foot ? [cut(c.height - foot, foot, c.charge.foot, true)] : []),
-        ]
-  return { parts, width: c.width, height: c.height, natural: c.natural }
 }
 
 /** The context line's measures: its height, the figure, the leaning blocks and the gaps. */
@@ -405,4 +380,122 @@ export const stripeSvg = (width: number, height: number, color: string, opts: { 
     (moving ? motionStyle(`@keyframes run{to{transform:translateX(${pitch}px)}}.run{animation:run ${STRIPE.ms}ms linear infinite}`) : '') +
     `</svg>`
   )
+}
+
+/** A transcript header's measures: its height, the slab's text, the rail it sits on. */
+export const SPEAKER = { height: 20, fs: 11, lean: 6, pad: 8, capFs: 10, width: 420, minRail: 60, inMs: 900 }
+
+/**
+ * A transcript header, the line over a message: who speaks on a solid slab in `color` (its text
+ * knocked out dark, its end cut on a slant), `caption` after it in dim capitals, and a rail that
+ * runs on under both to three leaning blocks and a `+`. Every header is `SPEAKER.width` wide, so
+ * their rails end in one line down the transcript; `width` sets another, never under its own.
+ * With `enter` (how long ago the message came, in ms, under `SPEAKER.inMs`) it comes in once: the
+ * slab wipes in from the left, its words follow, the rail runs out and the blocks light one by
+ * one. The motion starts `enter` ms into itself, so a redraw goes on from where it was, and it
+ * ends on the still look.
+ */
+export const speakerSvg = (label: string, color: string, opts: { caption?: string; width?: number; enter?: number | null } = {}) => {
+  const S = SPEAKER
+  const h = S.height
+  const name = label.toUpperCase()
+  const nameW = capWidth(name, S.fs, 1.4)
+  const slabW = S.pad + nameW + S.pad + S.lean
+  const words = opts.caption ? `// ${opts.caption}` : ''
+  const wordsW = words ? capWidth(words.toUpperCase(), S.capFs, 1.2) : 0
+  const railX = slabW + (words ? 8 + wordsW : 0) + 8
+  const natural = Math.ceil(railX + S.minRail)
+  const width = Math.max(natural, Math.round(opts.width ?? S.width))
+  const end = width - 9
+  // Three leaning blocks closing the rail, dim to bright, then the corner mark.
+  const age = typeof opts.enter === 'number' && Number.isFinite(opts.enter) && opts.enter >= 0 && opts.enter < S.inMs ? Math.round(opts.enter) : null
+  const cls = (name: string) => (age === null ? '' : ` class="${name}"`)
+  const blocks = [0, 1, 2].map(k => `<path d="M${end - 34 + k * 7} ${h - 7}h4l-2.5 5h-4z" fill="${color}" fill-opacity="${(0.3 + k * 0.3).toFixed(1)}"${cls(`sb sb${k}`)}/>`).join('')
+  // Each part's start, in ms from the message's coming, less its age: the slab, its words, the
+  // rail, the blocks in turn (each flickering on), the corner mark.
+  const run = (name: string, keys: string, ms: number, at: number, ease = EASE.out) => `.${name}{animation:${keys} ${ms}ms ${ease} ${at - (age ?? 0)}ms both}`
+  const motion =
+    age === null
+      ? ''
+      : motionStyle(
+          `@keyframes sp-wipe{from{transform:scaleX(0)}}@keyframes sp-in{from{opacity:0;transform:translateX(-6px)}}@keyframes sp-on{0%{opacity:0}40%{opacity:1}60%{opacity:.2}}` +
+            `.ss,.sr{transform-origin:0 0}` +
+            run('ss', 'sp-wipe', 260, 0) +
+            run('sn', 'sp-in', 220, 140) +
+            run('sc', 'sp-in', 240, 220) +
+            run('sr', 'sp-wipe', 520, 120) +
+            [0, 1, 2].map(k => run(`sb${k}`, 'sp-on', 220, 520 + k * 70, 'linear')).join('') +
+            run('sx', 'sp-on', 220, 680, 'linear'),
+        )
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
+    `<path d="M0 ${h - 0.5}H${end - 40}" stroke="${INK.detail}" stroke-opacity="0.45" fill="none"${cls('sr')}/>` +
+    `<path d="M0 0H${slabW}L${slabW - S.lean} ${h}H0z" fill="${color}"${cls('ss')}/>` +
+    cap(S.pad, h / 2 + 4, name, S.fs, HUE.card, { ls: 1.4, bold: true, extra: cls('sn') }) +
+    (words ? cap(slabW + 8, h / 2 + 3.6, words, S.capFs, INK.detail, { ls: 1.2, extra: cls('sc') }) : '') +
+    blocks +
+    `<path d="M${end - 5} ${h - 4.5}h5M${end - 2.5} ${h - 7}v5" stroke="${INK.detail}" stroke-opacity="0.7" fill="none"${cls('sx')}/>` +
+    motion +
+    themeStyle() +
+    `</svg>`
+  return { svg, width, height: h, natural }
+}
+
+/** A tool row's tag: its height, its text and how far its ends lean. */
+export const TOOL_TAG = { height: 16, fs: 9, lean: 4, pad: 6, inMs: 260 }
+
+/**
+ * A tool row's tag: an outlined parallelogram holding a solid square in `color` and the kind
+ * of work in capitals (EXEC, READ, EDIT). `minWidth` holds every tag as wide as the widest, so
+ * the rows after them line up. With `enter` (the row's age in ms, under `TOOL_TAG.inMs`) it comes in
+ * once, from that far in; with `running` its square blinks for as long as the call runs (a loop).
+ */
+export const toolTagSvg = (label: string, color: string, opts: { minWidth?: number; enter?: number | null; running?: boolean } = {}) => {
+  const G = TOOL_TAG
+  const h = G.height
+  const text = label.toUpperCase()
+  const x = G.lean + G.pad + 8
+  const natural = Math.ceil(x + capWidth(text, G.fs, 1.2) + G.pad + G.lean)
+  const width = Math.max(natural, Math.round(opts.minWidth ?? 0))
+  const age = typeof opts.enter === 'number' && Number.isFinite(opts.enter) && opts.enter >= 0 && opts.enter < G.inMs ? Math.round(opts.enter) : null
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
+    (age === null ? '' : '<g class="tg">') +
+    `<path d="M${G.lean + 0.5} 0.5H${width - 0.5}L${width - G.lean - 0.5} ${h - 0.5}H0.5z" fill="none" stroke="${INK.detail}" stroke-opacity="0.6"/>` +
+    `<rect x="${G.lean + G.pad - 1}" y="${h / 2 - 2}" width="4" height="4" fill="${color}"${opts.running ? ' class="tk"' : ''}/>` +
+    cap(x, h / 2 + 3.2, text, G.fs, INK.label, { ls: 1.2, bold: true }) +
+    (age === null ? '' : '</g>') +
+    (age === null && !opts.running
+      ? ''
+      : motionStyle(
+          (age === null ? '' : `@keyframes tg{from{opacity:0;transform:translateX(-8px)}}.tg{animation:tg ${G.inMs}ms ${EASE.out} ${-age}ms both}`) +
+            (opts.running ? `@keyframes tk{50%{opacity:.2}}.tk{animation:tk ${MOTION.dotsMs}ms ${EASE.inOut} infinite}` : ''),
+        )) +
+    themeStyle() +
+    `</svg>`
+  return { svg, width, height: h, natural }
+}
+
+/** The kinds of work a tool row is tagged with, and each one's colour. */
+export const TOOL_KIND = {
+  exec: { label: 'exec', color: HUE.hazard },
+  read: { label: 'read', color: HUE.sky },
+  edit: { label: 'edit', color: HUE.mint },
+  scan: { label: 'scan', color: HUE.sky },
+  net: { label: 'net', color: HUE.lilac },
+  unit: { label: 'unit', color: HUE.peach },
+  link: { label: 'link', color: HUE.fur },
+  tool: { label: 'tool', color: INK.label },
+}
+
+/** Which kind of work a tool does, by its name: a shell is exec, an MCP tool link, an unknown one tool. */
+export const toolKind = (tool: string): keyof typeof TOOL_KIND => {
+  if (/^mcp__/.test(tool)) return 'link'
+  if (/^(Bash|BashOutput|KillShell|Monitor)$/.test(tool)) return 'exec'
+  if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
+  if (/^(Edit|MultiEdit|Write|NotebookEdit)$/.test(tool)) return 'edit'
+  if (/^(Grep|Glob|LS|ToolSearch)$/.test(tool)) return 'scan'
+  if (/^Web(Fetch|Search)$/.test(tool)) return 'net'
+  if (/^(Agent|Task|SendMessage)$/.test(tool)) return 'unit'
+  return 'tool'
 }
