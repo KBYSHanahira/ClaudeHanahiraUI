@@ -446,7 +446,7 @@ export const TOOL_TAG = { height: 16, fs: 9, lean: 4, pad: 6, inMs: 260 }
 
 /**
  * A tool row's tag: an outlined parallelogram holding a solid square in `color` and the kind
- * of work in capitals (EXEC, READ, EDIT). `minWidth` holds every tag as wide as the widest, so
+ * of work in capitals (RUN, READ, EDIT). `minWidth` holds every tag as wide as the widest, so
  * the rows after them line up. With `enter` (the row's age in ms, under `TOOL_TAG.inMs`) it comes in
  * once, from that far in; with `running` its square blinks for as long as the call runs (a loop).
  */
@@ -476,15 +476,18 @@ export const toolTagSvg = (label: string, color: string, opts: { minWidth?: numb
   return { svg, width, height: h, natural }
 }
 
-/** The kinds of work a tool row is tagged with, and each one's colour. */
+/**
+ * The kinds of work a tool row is tagged with, and each one's colour. The words are the plain
+ * ones the app itself uses (run, read, edit, search), so a tag never needs explaining.
+ */
 export const TOOL_KIND = {
-  exec: { label: 'exec', color: HUE.hazard },
+  exec: { label: 'run', color: HUE.hazard },
   read: { label: 'read', color: HUE.sky },
   edit: { label: 'edit', color: HUE.mint },
-  scan: { label: 'scan', color: HUE.sky },
-  net: { label: 'net', color: HUE.lilac },
-  unit: { label: 'unit', color: HUE.peach },
-  link: { label: 'link', color: HUE.fur },
+  scan: { label: 'search', color: HUE.sky },
+  net: { label: 'web', color: HUE.lilac },
+  unit: { label: 'agent', color: HUE.peach },
+  link: { label: 'mcp', color: HUE.fur },
   tool: { label: 'tool', color: INK.label },
 }
 

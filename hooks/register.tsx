@@ -300,18 +300,22 @@ const THEME = {
   // The transcript in the band's look: a header over the person's messages and over each
   // reply, and a tag before each tool row. Any of the three set false leaves those rows as
   // the app draws them. `motion` false draws them still.
-  chat: { user: true, reply: true, tools: true, motion: true },
+  chat: { user: true, reply: true, tools: true, motion: true, replyName: 'Claude' },
 }
 
+/**
+ * One plain word, and no caption after it: a header only says who is speaking, in words the app
+ * already uses, so nothing in the transcript needs learning.
+ */
 /** Who a user-role row is from, as its header names it: the person, a background task, another agent or session. */
 export const speakerOf = (kind: string, hasTask: boolean, hasFrom: boolean) =>
   hasTask || kind === 'task-notification'
-    ? { label: 'task', caption: 'notice', color: HUE.hazard }
+    ? { label: 'task', color: HUE.hazard }
     : hasFrom
-      ? { label: 'link', caption: 'message', color: HUE.fur }
+      ? { label: 'message', color: HUE.fur }
       : kind === 'composer' || kind === 'bridge' || kind === 'sdk' || kind === 'unclassified'
-        ? { label: 'you', caption: 'input', color: INK.value }
-        : { label: 'auto', caption: kind.replace(/[^a-z]+/gi, ' ').trim() || 'input', color: INK.label }
+        ? { label: 'you', color: INK.value }
+        : { label: 'auto', color: INK.label }
 
 type Word = { text: string; quoted: boolean; runs: boolean }
 
@@ -1582,10 +1586,10 @@ export const register: Register = on => {
     const { Box, Svg } = table
     const who = speakerOf(e.props.origin.kind, e.props.task !== undefined, e.props.from !== undefined)
     const enter = await entering($, `u:${e.requestId}`, SPEAKER.inMs)
-    const art = speakerSvg(who.label, who.color, { caption: who.caption, enter })
+    const art = speakerSvg(who.label, who.color, { enter })
     return (
       <Box flexDirection="column" rowGap={1}>
-        <Svg source={art.svg} alt={`${who.label} ${who.caption}`} width={art.width} height={art.height} />
+        <Svg source={art.svg} alt={who.label} width={art.width} height={art.height} />
         {row}
       </Box>
     )
@@ -1598,10 +1602,10 @@ export const register: Register = on => {
     if (!THEME.chat.reply || !('Svg' in table) || !e.props.isFirstOfReply || e.props.isSummary) return row
     const { Box, Svg } = table
     const enter = await entering($, `a:${e.requestId}`, SPEAKER.inMs)
-    const art = speakerSvg(THEME.fallbackTitle, THEME.accent, { caption: 'response', enter })
+    const art = speakerSvg(THEME.chat.replyName, THEME.accent, { enter })
     return (
       <Box flexDirection="column" rowGap={1}>
-        <Svg source={art.svg} alt={`${THEME.fallbackTitle} response`} width={art.width} height={art.height} />
+        <Svg source={art.svg} alt={THEME.chat.replyName} width={art.width} height={art.height} />
         {row}
       </Box>
     )

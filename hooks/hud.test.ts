@@ -197,7 +197,9 @@ describe('tool tags', () => {
   })
   test('draw the kind in capitals with its colour, held to a width', () => {
     const t = toolTagSvg(TOOL_KIND.exec.label, TOOL_KIND.exec.color)
-    expect(t.svg).toContain('>EXEC</text>')
+    expect(t.svg).toContain('>RUN</text>')
+    // Plain words only: the ones the app itself uses for these tools.
+    expect(Object.values(TOOL_KIND).map(k => k.label)).toEqual(['run', 'read', 'edit', 'search', 'web', 'agent', 'mcp', 'tool'])
     expect(t.svg).toContain(`fill="${HUE.hazard}"`)
     expect(toolTagSvg('net', HUE.lilac, { minWidth: t.width + 20 }).width).toBe(t.width + 20)
   })

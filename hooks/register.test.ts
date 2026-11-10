@@ -328,8 +328,10 @@ describe('speakerOf', () => {
     expect(speakerOf('composer', false, false).label).toBe('you')
     expect(speakerOf('unclassified', false, false).label).toBe('you')
     expect(speakerOf('task-notification', true, false).label).toBe('task')
-    expect(speakerOf('unclassified', false, true).label).toBe('link')
-    expect(speakerOf('scheduled-task', false, false)).toMatchObject({ label: 'auto', caption: 'scheduled task' })
+    expect(speakerOf('unclassified', false, true).label).toBe('message')
+    expect(speakerOf('scheduled-task', false, false).label).toBe('auto')
+    // One word, nothing after it.
+    expect(Object.keys(speakerOf('composer', false, false))).toEqual(['label', 'color'])
   })
 })
 
