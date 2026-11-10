@@ -32,7 +32,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { CHARGE_COLOR, chargeLevel, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CHARGE_COLOR, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -1193,8 +1193,27 @@ export const register: Register = on => {
     // over everything else (narrower still); `bare`, one line without the detail.
     type Mode = 'line' | 'stack' | 'tall' | 'bare'
     // `live`: the cell moves, so it is drawn in the surface's frame.
-    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg> }
+    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg>; parts?: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellParts> }
     // Context is the hero line above the grid (below); the other gauges share the grid.
+    // What a gauge's cell is drawn from, for its one picture or its strips.
+    const cellArgs = (t: Tile, width: number | undefined, mode: Mode, height: number | undefined): Parameters<typeof hudCellSvg> => {
+      const [, ...rest] = t.short.split(' · ')
+      const sub = [...(t.toggle ? [t.short] : rest), ...(t.detail ? [t.detail] : [])].join(' · ')
+      return [
+        t.name ?? t.short.split(' · ')[0]!,
+        t.big,
+        {
+          index: String(index(`tile-${t.key}`)).padStart(2, '0'),
+          width,
+          height,
+          reel: t.reel,
+          ...(t.bars ? { bars: t.bars } : {}),
+          ...(mode !== 'bare' && sub ? { sub } : {}),
+          ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
+          ...(t.charge ? { charge: { level: t.charge, motion: true } } : {}),
+        },
+      ]
+    }
     // Each cell's faint number: its place on the grid, gauges first.
     const order = [...tiles.filter(t => t.key !== 'context').map(t => `tile-${t.key}`), ...cards.map(c => `card-${c.label}`)]
     const index = (key: string) => order.indexOf(key) + 1
@@ -1204,26 +1223,13 @@ export const register: Register = on => {
       value: t.big,
       label: [t.short, t.detail].filter(Boolean).join(' · '),
       bareLabel: t.short,
-      // The charged speed cell stays a plain picture: its figure changes several times a second,
-      // and a picture in the surface's frame blinks each time its source changes. A plain one is
-      // swapped cleanly, and its arcs crackle on by CSS and by their new shape on every redraw.
       live: t.spark !== undefined || t.toggle?.motion === true,
       // A HUD cell (hudCellSvg): its name on the slab, the figure, its meters, and under them
       // what is left and the detail on one dim line, which `bare` leaves out.
-      draw: (width, mode = 'line', height) => {
-        const [, ...rest] = t.short.split(' · ')
-        const sub = [...(t.toggle ? [t.short] : rest), ...(t.detail ? [t.detail] : [])].join(' · ')
-        return hudCellSvg(t.name ?? t.short.split(' · ')[0]!, t.big, {
-          index: String(index(`tile-${t.key}`)).padStart(2, '0'),
-          width,
-          height,
-          reel: t.reel,
-          ...(t.bars ? { bars: t.bars } : {}),
-          ...(mode !== 'bare' && sub ? { sub } : {}),
-          ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
-          ...(t.charge ? { charge: { level: t.charge, motion: true, frame: Math.floor(nowMs / 120) % 997 } } : {}),
-        })
-      },
+      draw: (width, mode = 'line', height) => hudCellSvg(...cellArgs(t, width, mode, height)),
+      // A charged cell is drawn in strips (hudCellParts): its electricity in pictures of its
+      // own that hold while the level does, so it runs on however often the figure changes.
+      ...(t.charge ? { parts: (width?: number, mode: Mode = 'line', height?: number) => hudCellParts(...cellArgs(t, width, mode, height)) } : {}),
     }))
     const figureCells: Cell[] = cards.map(c => {
       const label = c.label.toLowerCase()
@@ -1450,7 +1456,17 @@ export const register: Register = on => {
                       </Text>
                     )
                   const art = c.draw(chosen.colW[j], chosen.mode, lineH[r])
-                  const cell = <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
+                  const strips = c.parts?.(chosen.colW[j], chosen.mode, lineH[r]).parts
+                  const cell = strips ? (
+                    // A charged cell: its strips one under another, the moving ones in the surface's frame.
+                    <Box key={c.key} flexDirection="column">
+                      {strips.map((p, k) => (
+                        <Svg key={`${c.key}-${k}`} source={p.svg} alt={k === 1 ? c.alt : ''} width={p.width} height={p.height} {...(p.live ? loop : {})} />
+                      ))}
+                    </Box>
+                  ) : (
+                    <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
+                  )
                   return j === 0 ? [cell] : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="" width={GRID_GAP} height={1} />, cell]
                 })}
               </Box>

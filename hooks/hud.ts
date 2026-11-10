@@ -89,12 +89,19 @@ const jitter = (seed: number, k: number) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
 }
 
-/** An electric arc from (`x0`, `y`) to (`x1`, `y`): a jagged line, `amp` px to either side. */
-const arcPath = (x0: number, x1: number, y: number, amp: number, seed: number) => {
-  const n = Math.max(4, Math.round((x1 - x0) / 9))
-  let d = `M${x0} ${y}`
-  for (let k = 1; k < n; k++) d += `L${(x0 + ((x1 - x0) * (k + (jitter(seed, k * 2) - 0.5) * 0.6)) / n).toFixed(1)} ${(y + (jitter(seed, k * 2 + 1) - 0.5) * 2 * amp).toFixed(1)}`
-  return `${d}L${x1} ${y}`
+/**
+ * An electric arc across `width` px at height `y`: a jagged line, `amp` px to either side,
+ * drawn two widths long with the same shape in each, so sliding it one width shows no seam.
+ */
+const arcPath = (width: number, y: number, amp: number, seed: number) => {
+  const n = Math.max(6, Math.round(width / 8))
+  const pt = (k: number) => {
+    const j = ((k % n) + n) % n
+    return `${((width * (k + (jitter(seed, j * 2) - 0.5) * 0.6)) / n).toFixed(1)} ${(y + (jitter(seed, j * 2 + 1) - 0.5) * 2 * amp).toFixed(1)}`
+  }
+  let d = `M${pt(-n)}`
+  for (let k = -n + 1; k <= n; k++) d += `L${pt(k)}`
+  return d
 }
 
 /** A small lightning bolt, `size` px tall, its top-left corner at (`x`, `y`). */
@@ -102,43 +109,59 @@ const bolt = (x: number, y: number, size: number, color: string, cls = '') =>
   `<path d="M7 0L1 7h4l-2 5 6-7.5H5z" transform="translate(${x} ${y}) scale(${(size / 12).toFixed(3)})" fill="${color}"${cls ? ` class="${cls}"` : ''}/>`
 
 /**
- * The electric charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`:
- * 1, a bolt in the corner and an arc along the meter; 2, a second, finer arc, wider swings, a
- * lit frame and sparks at the corners; 3, arcs along the top and bottom edges and a second bolt.
- * Each arc is two jagged lines that take turns (with `motion`, a loop; still, the first shows),
- * so it crackles without a picture being sent for every frame. `frame` reshapes every arc: a
- * cell that is redrawn as its figure changes passes a new one each time, so the arcs jump with
- * the redraws too. The lit frame holds steady: only the arcs, sparks and bolts move.
+ * Where a charged cell is cut into strips (hudCellParts): under the slab, under the figure, above
+ * the meter, and the last px for the bottom edge's arc. `drop` is how far a charged cell's meters
+ * sit lower than a plain one's, which is the room the arcs run in, clear of the figure.
  */
-const chargeArt = (level: number, width: number, height: number, barY: number, motion: boolean, frame = 0) => {
-  if (level < 1) return ''
+export const CHARGE_CUT = { head: 14, arcs: 40, bars: 49, foot: 3, drop: 4 }
+
+/**
+ * The electric charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`,
+ * in layers, one for each strip of the cell it belongs to:
+ * - `still`: at 2, a lit frame and sparks at the corners. Nothing in it moves.
+ * - `head`: a bolt in the corner (two at 3) that flickers, and at 3 an arc along the top edge.
+ * - `arcs`: an arc running just above the meter; at 2 a second, finer one against it; at 3 a third.
+ * - `foot`: at 3, an arc along the bottom edge.
+ * With `motion` every arc slides along its line for good (a loop, each at its own pace, faster
+ * the higher the level) and the bolts flicker. Each layer carries its own CSS, and none depends
+ * on the cell's figure, so a strip that holds only its layer keeps one picture while the level
+ * holds and its motion runs on, whatever else on the cell is redrawn.
+ */
+const chargeLayers = (level: number, width: number, height: number, motion: boolean) => {
+  if (level < 1) return { still: '', head: '', arcs: '', foot: '' }
   const color = CHARGE_COLOR[level]!
   const C = CELL
-  const arc = (x0: number, x1: number, y: number, amp: number, seed: number, w = 1.2) =>
-    `<path d="${arcPath(x0, x1, y, amp, seed + frame * 13)}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="bevel"${motion ? ' class="za"' : ''}/>` +
-    (motion ? `<path d="${arcPath(x0, x1, y, amp, seed + frame * 13 + 7)}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="bevel" class="zb"/>` : '')
-  const spark = (x: number, y: number, dx: number, dy: number) => `<path d="M${x} ${y}l${dx * 5} ${dy * 3}l${-dx * 2} ${dy * 2}l${dx * 5} ${dy * 4}" fill="none" stroke="${color}" stroke-width="1.1"${motion ? ' class="zb"' : ''}/>`
-  const parts = [bolt(width - 24, 3, level >= 2 ? 13 : 11, color, motion ? 'zf' : ''), arc(C.pad, width - C.pad, barY + 1, level >= 2 ? 3.5 : 2.2, level)]
-  if (level >= 2)
-    parts.push(
-      arc(C.pad, width - C.pad, barY + 1, 4.5, level + 20, 0.8),
-      `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="none" stroke="${color}" stroke-opacity="0.65"/>`,
-      spark(width - 3, height - 14, -1, 1),
-      spark(width - 4, C.tabH + 8, -1, 1),
-      spark(width - 46, height - 12, 1, 1),
+  const pace = [0, 1500, 1050, 760][level]!
+  let n = 0
+  // One arc, sliding one width a loop; `back` slides it the other way.
+  const arc = (y: number, amp: number, seed: number, w: number, ms: number, back = false) => {
+    const cls = `a${n++}`
+    return (
+      `<path d="${arcPath(width, y, amp, seed)}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="bevel"${motion ? ` class="${cls}"` : ''}/>` +
+      (motion ? motionStyle(`@keyframes ${cls}{to{transform:translateX(${back ? -width : width}px)}}.${cls}{${back ? `transform:translateX(${width}px);` : ''}animation:${cls} ${ms}ms linear infinite}`) : '')
     )
-  if (level >= 3) parts.push(arc(0, width, 1.5, 2.5, 51, 1.4), arc(0, width, height - 1.5, 2.5, 52, 1.4), bolt(width - 38, 4, 10, color, motion ? 'zf' : ''))
-  return (
-    `<g>${parts.join('')}</g>` +
-    (motion
-      ? motionStyle(
-          // Two shapes of each arc take turns, in steps, faster the higher the level; the bolt and frame flicker.
-          `@keyframes za{0%,49%{opacity:1}50%,100%{opacity:0}}@keyframes zb{0%,49%{opacity:0}50%,100%{opacity:1}}` +
-            `@keyframes zf{0%,100%{opacity:1}42%{opacity:.35}47%{opacity:1}71%{opacity:.55}}` +
-            `.za{animation:za ${360 - level * 70}ms steps(1) infinite}.zb{animation:zb ${360 - level * 70}ms steps(1) infinite}.zf{animation:zf ${900 - level * 170}ms linear infinite}`,
-        )
-      : '')
-  )
+  }
+  const flicker = motion ? motionStyle(`@keyframes zf{0%,100%{opacity:1}42%{opacity:.35}47%{opacity:1}71%{opacity:.55}}.zf{animation:zf ${900 - level * 170}ms linear infinite}`) : ''
+  const spark = (x: number, y: number, dx: number, dy: number) => `<path d="M${x} ${y}l${dx * 5} ${dy * 3}l${-dx * 2} ${dy * 2}l${dx * 5} ${dy * 4}" fill="none" stroke="${color}" stroke-width="1.1"/>`
+  const arcY = (CHARGE_CUT.arcs + CHARGE_CUT.bars) / 2
+  return {
+    still:
+      level >= 2
+        ? `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="none" stroke="${color}" stroke-opacity="0.65"/>` +
+          spark(width - 3, height - 16, -1, 1) +
+          spark(width - 4, C.tabH + 6, -1, 1) +
+          spark(width - 46, height - 15, 1, 1)
+        : '',
+    head:
+      bolt(width - 23, 2, 10, color, motion ? 'zf' : '') +
+      (level >= 3 ? bolt(width - 35, 2, 10, color, motion ? 'zf' : '') + arc(1.6, 1.3, 51, 1.4, pace) : '') +
+      flicker,
+    arcs:
+      arc(arcY, level >= 2 ? 3.2 : 2.6, level, 1.3, pace) +
+      (level >= 2 ? arc(arcY, 3.6, level + 20, 0.8, Math.round(pace * 0.62), true) : '') +
+      (level >= 3 ? arc(arcY, 3, level + 40, 1, Math.round(pace * 0.45)) : ''),
+    foot: level >= 3 ? arc(height - 1.6, 1.3, 52, 1.4, pace, true) : '',
+  }
 }
 
 export type HudBar = { label?: string; percent: number | null; color: string; from?: Since<number> | number | null }
@@ -147,31 +170,23 @@ export type HudBar = { label?: string; percent: number | null; color: string; fr
 export const cellHeight = (bars: number, sub: boolean, rule = false, named = false) =>
   CELL.barsY + bars * (named ? CELL.namedPitch : CELL.barPitch) + (sub ? CELL.subLine : 0) + (rule ? CELL.ruleH : 0) + CELL.bottom - (bars || sub || rule ? 0 : 3)
 
-/**
- * One stat of the band as a HUD cell: its name on a slab at the top-left corner, the figure
- * large under it, then its meters (each a line of blocks; with a `label`, that name before it
- * and its share after), then `sub`, a dim line. `rule` draws a short accent line under a
- * figure that has no meter. `index` is the faint number in the corner. With `toggle` the
- * mascot sits before the figure (the Hanahira mode) and `tone` colours the slab and `sub`.
- * `width` and `height` only ever grow the cell, to its column and its line.
- */
-export const hudCellSvg = (
-  label: string,
-  value: string,
-  opts: {
-    index?: string
-    width?: number
-    height?: number
-    sub?: string
-    bars?: HudBar[]
-    rule?: string
-    tone?: string
-    reel?: Since<string> | string | null
-    toggle?: { on: boolean; enter?: number | null; motion?: boolean }
-    /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` makes it crackle (a loop), and `frame` reshapes its arcs. */
-    charge?: { level: number; motion?: boolean; frame?: number }
-  } = {},
-) => {
+/** What a cell is given beyond its name and figure (hudCellSvg). */
+export type CellOpts = {
+  index?: string
+  width?: number
+  height?: number
+  sub?: string
+  bars?: HudBar[]
+  rule?: string
+  tone?: string
+  reel?: Since<string> | string | null
+  toggle?: { on: boolean; enter?: number | null; motion?: boolean }
+  /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
+  charge?: { level: number; motion?: boolean }
+}
+
+/** A cell's measures and its drawing in layers, for hudCellSvg and hudCellParts. */
+const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const C = CELL
   const bars = opts.bars ?? []
   const shown = value.toUpperCase()
@@ -202,20 +217,71 @@ export const hudCellSvg = (
     })
     .join('')
   const subY = (opts.toggle ? C.valueY - 4 : C.barsY + bars.length * pitch) + (bars.length ? 10 : 13)
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+  const level = Math.round(opts.charge?.level ?? 0)
+  const charge = chargeLayers(level, width, height, opts.charge?.motion === true)
+  // The cell in layers: what never changes while its name, size and charge hold; the figure;
+  // the meters and the line under them. A charged cell is cut into strips of these (hudCellParts).
+  const base =
     frame(width, height) +
     (opts.index ? `<text x="${width - 5}" y="${height + 3}" text-anchor="end" ${FACE} font-size="42" font-weight="700" fill="${INK.value}" fill-opacity="0.06">${esc(opts.index)}</text>` : '') +
     slab.svg +
+    charge.still
+  const figure =
     (opts.toggle ? mascotSvg(opts.toggle.on, C.pad, C.valueY - 2 - (mascotW * MASCOT.h) / MASCOT.w / 2 - 4, mascotW, { enter: opts.toggle.enter ?? null, motion: opts.toggle.motion === true }) : '') +
-    reelText(x, opts.toggle ? C.valueY - 4 : C.valueY, fs, `${FACE} font-size="${fs}" font-weight="700" letter-spacing="0.4" fill="${(opts.charge?.level ?? 0) >= 3 ? HUE.hazard : INK.value}"`, shown, opts.reel) +
+    reelText(x, opts.toggle ? C.valueY - 4 : C.valueY, fs, `${FACE} font-size="${fs}" font-weight="700" letter-spacing="0.4" fill="${level >= 3 ? HUE.hazard : INK.value}"`, shown, opts.reel)
+  const lower = level > 0 ? CHARGE_CUT.drop : 0
+  const meters =
+    (lower ? `<g transform="translate(0 ${lower})">` : '') +
     barArt +
     (opts.rule ? `<path d="M${C.pad} ${C.barsY + 1}h22" stroke="${opts.rule}" stroke-width="2"/>` : '') +
     (opts.sub ? cap(x, subY, opts.sub, C.subFs, opts.tone ?? INK.detail, { ls: 0.8 }) : '') +
-    (opts.charge ? chargeArt(Math.round(opts.charge.level), width, height, C.barsY, opts.charge.motion === true, Math.round(opts.charge.frame ?? 0)) : '') +
-    themeStyle() +
-    `</svg>`
-  return { svg, width, height, natural }
+    (lower ? '</g>' : '')
+  return { width, height, natural, level, base, figure, meters, charge }
+}
+
+/** A window of the cell's one drawing, `h` px tall from `y`: strips laid one under another make the cell. */
+const strip = (width: number, y: number, h: number, inner: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${y} ${width} ${h}" width="${width}" height="${h}">${inner}${themeStyle()}</svg>`
+
+/**
+ * One stat of the band as a HUD cell: its name on a slab at the top-left corner, the figure
+ * large under it, then its meters (each a line of blocks; with a `label`, that name before it
+ * and its share after), then `sub`, a dim line. `rule` draws a short accent line under a
+ * figure that has no meter. `index` is the faint number in the corner. With `toggle` the
+ * mascot sits before the figure (the Hanahira mode) and `tone` colours the slab and `sub`.
+ * `charge` lays electricity over it. `width` and `height` only ever grow the cell, to its
+ * column and its line.
+ */
+export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) => {
+  const c = cellLayers(label, value, opts)
+  const svg = strip(c.width, 0, c.height, c.base + c.figure + c.meters + c.charge.head + c.charge.arcs + c.charge.foot)
+  return { svg, width: c.width, height: c.height, natural: c.natural }
+}
+
+/**
+ * The same cell as pictures laid one under another, so its electricity runs on while its
+ * figure changes. A surface swaps a picture whose source changed, which starts its motion over
+ * (and, in the surface's frame, blinks); so what moves gets strips of its own, whose pictures
+ * hold for as long as the charge level does (`live`: drawn in the surface's frame, where a loop
+ * keeps running), and the figure and the meters, which change several times a second, are
+ * plain pictures between them, swapped cleanly. An uncharged cell is one plain picture.
+ */
+export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) => {
+  const c = cellLayers(label, value, opts)
+  const K = CHARGE_CUT
+  const cut = (y: number, h: number, inner: string, live: boolean) => ({ svg: strip(c.width, y, h, c.base + inner), width: c.width, height: h, live })
+  const foot = c.level >= 3 ? K.foot : 0
+  const parts =
+    c.level < 1
+      ? [cut(0, c.height, c.figure + c.meters, false)]
+      : [
+          cut(0, K.head, c.charge.head, true),
+          cut(K.head, K.arcs - K.head, c.figure, false),
+          cut(K.arcs, K.bars - K.arcs, c.charge.arcs, true),
+          cut(K.bars, c.height - K.bars - foot, c.meters, false),
+          ...(foot ? [cut(c.height - foot, foot, c.charge.foot, true)] : []),
+        ]
+  return { parts, width: c.width, height: c.height, natural: c.natural }
 }
 
 /** The context line's measures: its height, the figure, the leaning blocks and the gaps. */

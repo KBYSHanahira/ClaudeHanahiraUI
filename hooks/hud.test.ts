@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, chargeLevel, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, hudCellParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
 
 describe('hudCellSvg', () => {
   test('sets the name on a slab and the figure in capitals', () => {
@@ -139,14 +139,44 @@ describe('charge', () => {
     const still = hudCellSvg('tok/s', '120', { charge: { level: 2 } }).svg
     const moving = hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg
     expect(still).not.toContain('@keyframes')
-    expect(moving).toContain('@keyframes za')
+    expect(moving).toContain('@keyframes a0')
     expect(moving).toBe(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg)
     expect(moving).not.toContain('NaN')
   })
-  test('a new frame reshapes the arcs, and the lit frame never flickers', () => {
-    const at = (frame: number) => hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true, frame } }).svg
-    expect(at(1)).not.toBe(at(2))
-    expect(at(1).length).toBeGreaterThan(0)
-    expect(at(1)).toMatch(/<rect [^>]*stroke-opacity="0.65"\/>/)
+  test('the lit frame never flickers', () => {
+    expect(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg).toMatch(/<rect [^>]*stroke-opacity="0.65"\/>/)
+  })
+})
+
+describe('hudCellParts', () => {
+  const opts = (level: number) => ({ index: '03', width: 160, sub: 'peak 119', bars: [{ percent: 40, color: HUE.sky }], ...(level ? { charge: { level, motion: true } } : {}) })
+  test('an uncharged cell is one plain picture, the size of the cell', () => {
+    const one = hudCellSvg('tok/s', '76', opts(0))
+    const p = hudCellParts('tok/s', '76', opts(0))
+    expect(p.parts.length).toBe(1)
+    expect(p.parts[0]).toMatchObject({ width: one.width, height: one.height, live: false })
+    expect(p.parts[0]!.svg).toBe(one.svg)
+  })
+  test('a charged cell is strips that add up to the cell, the moving ones live', () => {
+    for (const level of [1, 2, 3]) {
+      const p = hudCellParts('tok/s', '76', opts(level))
+      expect(p.parts.reduce((h, s) => h + s.height, 0)).toBe(p.height)
+      expect(p.parts.every(s => s.width === p.width)).toBe(true)
+      expect(p.parts.map(s => s.live)).toEqual(level === 3 ? [true, false, true, false, true] : [true, false, true, false])
+      expect(p.parts[0]!.height).toBe(CHARGE_CUT.head)
+      // Only the live strips carry a loop; the figure and the meters hold none.
+      for (const s of p.parts) expect(s.svg.includes('infinite')).toBe(s.live)
+    }
+  })
+  test('the moving strips hold their picture while the figure and the meter change', () => {
+    const a = hudCellParts('tok/s', '76', opts(2)).parts
+    const b = hudCellParts('tok/s', '81', { ...opts(2), sub: 'peak 131', bars: [{ percent: 55, color: HUE.sky }], reel: '76' }).parts
+    expect(b[0]!.svg).toBe(a[0]!.svg)
+    expect(b[2]!.svg).toBe(a[2]!.svg)
+    expect(b[1]!.svg).not.toBe(a[1]!.svg)
+    expect(b[3]!.svg).not.toBe(a[3]!.svg)
+  })
+  test('a new level is a new picture', () => {
+    expect(hudCellParts('tok/s', '76', opts(1)).parts[2]!.svg).not.toBe(hudCellParts('tok/s', '76', opts(2)).parts[2]!.svg)
   })
 })
