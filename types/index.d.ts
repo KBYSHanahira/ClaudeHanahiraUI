@@ -46,6 +46,8 @@ declare module 'claude-code' {
     'hanahira-claude-ui': {
       stats: Stats
       usage: Usage
+      // `at`: when the account may next be asked (ms), `limits`: its per-model weeks.
+      scoped: { at: number; limits: Usage['limits'] }
       tokens: Tokens
       model: string | null
       runMs: number

@@ -24,7 +24,7 @@ test('SKILLS_VERSION matches the core skill', () => {
 // from (docs/preview.png.sha256): a band redrawn without a new PNG fails here, not on GitHub.
 test('the preview shows this version, and the PNG was drawn from that SVG', () => {
   const svg = file('docs/preview.svg')
-  expect(svg.toString()).toContain(`v${VERSION}`)
+  expect(svg.toString()).toContain(`V${VERSION}`) // the HUD sets its captions in capitals
   expect(file('docs/preview.png.sha256').toString().trim()).toBe(createHash('sha256').update(svg).digest('hex'))
 })
 
@@ -44,7 +44,7 @@ test('every full-box row in the core skill is 53 characters wide', () => {
     .toString()
     .split('\n')
     .filter(l => /^[ +-] [│├╭╰].*[│┤╮╯]$/.test(l))
-  expect(rows.length).toBeGreaterThan(20)
+  expect(rows.length).toBeGreaterThanOrEqual(20) // the ACTIVE box and the DEACTIVE box
   for (const r of rows) expect([r, [...r].length]).toEqual([r, 53])
 })
 

@@ -11,9 +11,7 @@ import {
   base,
   cardSvg,
   clip,
-  contextSvg,
   countSvg,
-  dotSvg,
   fmtClock,
   fmtCost,
   fmtElapsed,
@@ -23,24 +21,19 @@ import {
   glideHolder,
   glideStyle,
   reelHolder,
-  loadingSvg,
   MOTION,
   pillSvg,
-  chipSvg,
   ROW,
-  STAT,
   liveSpeed,
   speedScale,
-  speedoSvg,
-  statSvg,
   tickerSvg,
-  GLASS,
   type Since,
-  inCard,
   themed,
   tokensPerSec,
 } from './chat'
 export { clip }
+import { CHARGE_COLOR, chargeLevel, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
 import type { IconName } from './icons'
@@ -73,12 +66,76 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
 // `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[]; charge?: number }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms.
 const LIVE_SPEED_MS = 250
 const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
+// The weeks counted for one model alone (Fable), which the engine does not hand to a plugin:
+// read from the account's usage answer, and when (`at`, ms; 0 before the first try).
+const scoped = atom({ plugin: 'hanahira-claude-ui', key: 'scoped' } as const, { at: 0, limits: [] as Usage['limits'] })
+// How often that answer is asked for at most, in ms: once a minute, so the per-model week keeps
+// up with the work; after a refused or failed request, SCOPED_BACKOFF_MS (the engine's own pace
+// for its panel) before the next.
+const SCOPED_MS = 60_000
+const SCOPED_BACKOFF_MS = 300_000
+// How often a running turn re-reads the engine's own figures (limits, context, spend), in ms.
+// The engine raises `session.measure` after a turn and when a window moves a whole point; on a
+// long turn that leaves the band behind, and the plain `$.session.usage()` call costs nothing.
+const USAGE_MS = 10_000
+const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
+/**
+ * Asks the account for its usage, at most once every SCOPED_MS, and keeps the per-model weeks.
+ * The session's credential never reaches this code: `$.session.authorize()` gives a handle and
+ * the host sets the header itself, for Anthropic's own host alone. With no subscription login
+ * (an API key, a gateway) or a refused request, the last reading stays and nothing is guessed.
+ */
+const refreshScoped = async ($: EngineInterface) => {
+  const [now, last] = await Promise.all([$.clock.now(), read($, scoped)])
+  // `at` is when the next request may go: SCOPED_MS after a good answer, longer after a bad one.
+  if (now < (last?.at ?? 0)) return
+  const keep = Array.isArray(last?.limits) ? last.limits : []
+  // Marked as tried first, so a failure waits its turn too instead of asking on every beat.
+  await update($, scoped, () => ({ at: now + SCOPED_BACKOFF_MS, limits: keep }))
+  try {
+    const auth = await $.session.authorize()
+    if (auth?.kind !== 'bearer') return
+    const res = await $.http.fetch(USAGE_URL, { auth: auth.handle, headers: { 'anthropic-beta': 'oauth-2025-04-20', accept: 'application/json' } })
+    if (!res.ok) return void $.ui.log(`account usage: HTTP ${res.status}`, { to: 'debug' })
+    const limits = scopedLimits(res.text)
+    // The same reading keeps the stored list, so the band is not redrawn for nothing.
+    await update($, scoped, () => ({ at: now + SCOPED_MS, limits: sameLimits(limits, keep) ? keep : limits }))
+  } catch (err) {
+    $.ui.log(`account usage: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
+  }
+}
+
+/** Two lists of limits read the same: no redraw is owed. */
+export const sameLimits = (a: Usage['limits'], b: Usage['limits']) =>
+  a.length === b.length && a.every((l, i) => l.kind === b[i]!.kind && l.percentUsed === b[i]!.percentUsed && l.resetsAt === b[i]!.resetsAt)
+
+/**
+ * The engine's figures as they stand now, into the band's own: asked for while a turn runs
+ * (USAGE_MS), since the engine raises `session.measure` only after a turn or a whole point.
+ * An unchanged reading stores nothing, so nothing is redrawn; then the per-model weeks, at
+ * their own pace.
+ */
+const refreshUsage = async ($: EngineInterface) => {
+  const fresh = await $.session.usage().catch(() => null)
+  if (!fresh) return
+  const next: Usage = {
+    usd: fresh.cost?.usd ?? null,
+    percent: fresh.context.percent ?? null,
+    tokens: fresh.context.tokens ?? null,
+    window: fresh.context.window,
+    limits: fresh.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
+  }
+  const old = await read($, usage)
+  const same = old && old.usd === next.usd && old.percent === next.percent && old.tokens === next.tokens && old.window === next.window && sameLimits(next.limits, Array.isArray(old.limits) ? old.limits : [])
+  if (!same) await update($, usage, () => next)
+  if (next.limits.some(l => l.kind === 'seven_day')) await refreshScoped($)
+}
 // The model the main thread last answered with, as the API reported it.
 const model = atom({ plugin: 'hanahira-claude-ui', key: 'model' } as const, null as string | null)
 
@@ -186,18 +243,20 @@ const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
 // Ring size in px: also sets how close the two rows of tiles sit.
 const RING = 38
 
+// The px between two cards of the grid, drawn as an empty picture so it is exact (a Box gap is
+// in cells). With each card's own margin (GLASS.margin) the cards sit 8px apart.
+const GRID_GAP = 4
+const GAP_ART = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GRID_GAP} 1" width="${GRID_GAP}" height="1"></svg>`
+
 // Stat cards: least width in cells, so they do not shrink to their text.
 const CARD_MIN = 18
 
 const THEME = {
-  accent: HUE.fur, // the speedometer and other calm gauges
-  working: HUE.petal, // the status dot, the loading bar and the status chip while Claude works
+  accent: HUE.sky, // the speed meter and other calm gauges
+  working: HUE.sky, // the status chip (and, without pictures, the dot) while Claude works
+  bar: HUE.hazard, // the loading bar's warning stripes while Claude works
   done: '#8fdcb9', // both once the turn is done
-  // The top line's card, in grey at low alpha so it reads on the light theme and the dark.
-  // The top line's card is a Box, which cannot follow the theme from inside a picture: black at
-  // 30% darkens whatever the app's ground is, as the glass cards' black at 42% does.
-  lineCard: { bg: '#0000004d', border: '#ffffff14' },
-  warm: HUE.fur, // frame, the context meter, the limit rings at rest
+  warm: HUE.sky, // frame, the context meter, the limit meters at rest
   muted: INK.detail, // the figures' icons: quiet, so the meter leads
   fallbackTitle: 'Hanahira',
   // The band's rounded frame; off since each cell is its own glass card.
@@ -206,9 +265,10 @@ const THEME = {
   // three-line tiles over tall cards: about half the height. false brings back the full band.
   compact: true,
   barPx: 900, // widest the loading bar grows, in px
-  barHeight: 6, // its height in px: slim beads
+  barHeight: 10, // its height in px: leaning stripes
+  barMin: 200, // the least the bar is drawn on the top line, in px: under that it takes its own line
   barGap: 4, // room under the bar, in px: keeps it off the rings below
-  listAgents: 4, // agent cards on the strip: running first, then the latest finished
+  listAgents: 6, // cards on the strip (agents and background commands): running first, then the latest finished
   keepFinishedMs: 3000, // a finished agent's card stays this long (to show the check), then goes
   stripGap: 8, // room under the agent strip, in px: keeps it off the band's frame
   // Icons in front of each label: swap for any glyph or emoji.
@@ -322,7 +382,6 @@ export const meter = (percent: number, width: number) => {
 /** Green while there is room, amber as it fills, red near the limit. */
 export const tone = (percent: number) => (percent >= 85 ? '#f2879a' : percent >= 60 ? '#f3cf7a' : '#8fdcb9')
 
-/** Ring colour:the theme's warm tone, red once the window is nearly spent. */
 // A limit's colour says how near it is: calm fur, butter from 60%, rose from 85%.
 export const ringColor = (percent: number) => (percent >= 85 ? HUE.rose : percent >= 60 ? HUE.butter : THEME.warm)
 
@@ -373,6 +432,36 @@ const share = (percentUsed: number) => Math.min(100, Math.max(0, 100 - Math.roun
 export const limitLeft = (percentUsed: number) => (Number.isFinite(percentUsed) ? `${share(percentUsed)}% left` : '—')
 
 /** The limit's name on the compact band, where every character costs room on one line. */
+/** A weekly limit kept for one model alone (`seven_day_fable`): that model's name, else null. */
+export const weeklyModel = (kind: string) => (kind.startsWith('seven_day_') && kind.length > 10 ? kind.slice(10).replace(/_/g, ' ') : null)
+
+/**
+ * The weeks counted for one model alone, from the account's usage answer (the body of
+ * `/api/oauth/usage`, the engine's own source for its usage panel): each `weekly_scoped` row
+ * of `limits` as a limit of the band's, its kind `seven_day_<model>`. Anything else in the
+ * body, or a body that is not that answer, gives none: never a guessed figure.
+ */
+export const scopedLimits = (body: string): Usage['limits'] => {
+  let rows: unknown
+  try {
+    rows = (JSON.parse(body) as { limits?: unknown } | null)?.limits
+  } catch {
+    return []
+  }
+  if (!Array.isArray(rows)) return []
+  const out: Usage['limits'] = []
+  for (const row of rows as { kind?: unknown; percent?: unknown; resets_at?: unknown; scope?: { model?: { display_name?: unknown } } }[]) {
+    const name = row?.scope?.model?.display_name
+    if (row?.kind !== 'weekly_scoped' || typeof name !== 'string' || typeof row.percent !== 'number' || !Number.isFinite(row.percent)) continue
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+    if (!slug || out.some(l => l.kind === `seven_day_${slug}`)) continue
+    // The reset is an ISO time, or seconds since the epoch.
+    const at = typeof row.resets_at === 'number' && Number.isFinite(row.resets_at) ? new Date(row.resets_at * 1000).toISOString() : typeof row.resets_at === 'string' ? row.resets_at : undefined
+    out.push({ kind: `seven_day_${slug}`, percentUsed: Math.max(0, Math.round(row.percent * 10) / 10), ...(at ? { resetsAt: at } : {}) })
+  }
+  return out
+}
+
 export const shortLimitLabel = (kind: string) =>
   kind === 'five_hour' ? '5h limit' : kind === 'seven_day' ? '7d limit' : limitLabel(kind)
 
@@ -411,8 +500,6 @@ const pillEl = (els: { Text: any; Svg: any; Box?: any }, p: PillSpec) => {
   )
 }
 
-/** The busy pill of a running row. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 /** A small icon where the surface draws SVG, else a plain glyph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, size: number, fallback: string) => {
@@ -453,25 +540,34 @@ const locate = async ($: EngineInterface) => {
 // say) would read "running" for good and keep the beat going: the engine's list settles it.
 const reconcileAgents = async ($: EngineInterface) => {
   const list = asList(await read($, agents))
-  if (!list.some(a => a.status === 'running')) return
-  const live = await $.agent.list().catch(() => null)
-  if (!live) return
-  const byId = new Map(live.map(a => [a.id, a.status]))
-  const now = await $.clock.now()
-  const settled = (s: string | undefined): Agent['status'] | null =>
-    s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
-  await update($, agents, l =>
-    asList(l).map(a => {
-      // A background command is no agent: the engine's agent list never names it, so only its
-      // notification settles it (prompt.submit).
-      const status = a.status === 'running' && a.kind !== 'shell' ? settled(byId.get(a.id)) : null
-      return status ? { ...a, status, endedAt: now } : a
-    }),
-  )
-  if (!asList(await read($, agents)).some(a => a.status === 'running')) {
-    agentTicker?.cancel()
-    agentTicker = null
+  const live = list.some(a => a.status === 'running') ? await $.agent.list().catch(() => null) : null
+  if (live) {
+    const byId = new Map(live.map(a => [a.id, a.status]))
+    const now = await $.clock.now()
+    const settled = (s: string | undefined): Agent['status'] | null =>
+      s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
+    let changed = false
+    await update($, agents, l =>
+      asList(l).map(a => {
+        // A background command is no agent: the engine's agent list never names it, so only its
+        // notification settles it (prompt.submit).
+        const status = a.status === 'running' && a.kind !== 'shell' ? settled(byId.get(a.id)) : null
+        if (status) changed = true
+        return status ? { ...a, status, endedAt: now } : a
+      }),
+    )
+    // A card settled here leaves like any other: one redraw once its stay is over.
+    if (changed) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
   }
+  await restAgentBeat($)
+}
+
+// Nothing running any more: the beat stops. Every path that settles a card ends here, so the
+// beat never outlives the last running card (a background command settled by its notification).
+const restAgentBeat = async ($: EngineInterface) => {
+  if (asList(await read($, agents)).some(a => a.status === 'running')) return
+  agentTicker?.cancel()
+  agentTicker = null
 }
 
 // The beat while an agent runs: a redraw a second, and every few seconds a look at the
@@ -492,6 +588,8 @@ export const register: Register = on => {
   // What the running turn's clocks and tool count show: set on each beat alone, so each moves
   // once a second, in step, whenever else the band redraws.
   let beatSecs = 0
+  // When the running turn last re-read the engine's figures (refreshUsage), in ms.
+  let usageAt = 0
   let beatTools = 0
   // One redraw as the last motion under way ends, so the band rests on its plain pictures even
   // with nothing else to redraw it (a turn just ended): a surface that stopped painting a
@@ -516,6 +614,7 @@ export const register: Register = on => {
         window: fresh.context.window,
         limits: fresh.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
       }))
+      if (fresh.rateLimits.some(l => l.kind === 'seven_day')) await refreshScoped($)
     }
     return next(e)
   })
@@ -529,6 +628,8 @@ export const register: Register = on => {
       window: e.context.window,
       limits: e.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
     }))
+    // Only an account with a weekly limit has a week counted per model.
+    if (e.rateLimits.some(l => l.kind === 'seven_day')) await refreshScoped($)
     return next(e)
   })
 
@@ -548,13 +649,15 @@ export const register: Register = on => {
         const now = await $.clock.now()
         await update($, agents, l => asList(l).map(a => (a.id === notice.id && a.status === 'running' ? { ...a, status, endedAt: now } : a)))
         $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+        await restAgentBeat($)
       }
     }
     // A prompt the person did not type (isMeta, newer engines) switches nothing.
     const typed = !(e as { isMeta?: true }).isMeta && !notice
     const cmd = typed ? skillCommand(e.text, (e as { command?: unknown }).command) : null
     const s = cmd ? (cmd.on ? 'on' : 'off') : typed ? modeSwitch(e.text) : null
-    switchedOff = s === 'off'
+    // Only the person's own prompt sets it: a notification arriving mid-turn must not clear an `off`.
+    if (typed) switchedOff = s === 'off'
     if (s === 'off') await update($, skill, () => ({ on: false, loaded: [] }))
     else if (cmd) await loadPart($, cmd.part)
     else if (s === 'on') await update($, skill, v => ({ ...asSkill(v), on: true }))
@@ -571,20 +674,35 @@ export const register: Register = on => {
   // turn begun without a typed prompt (a continuation) never raises, and which a prompt typed
   // while a turn runs raises mid-turn.
   on('turn.start', async ($, e, next) => {
-    if ((e as unknown as { agentId?: string }).agentId !== undefined) return next(e)
+    const startedAgent = (e as unknown as { agentId?: string }).agentId
+    if (startedAgent !== undefined) {
+      // An ended agent sent a message works again under its id: its card runs again.
+      const known = asList(await read($, agents)).find(a => a.id === startedAgent)
+      if (known && known.status !== 'running') {
+        await update($, agents, l => asList(l).map(a => (a.id === startedAgent ? { ...a, status: 'running' as const, endedAt: null } : a)))
+        agentBeat($)
+      }
+      return next(e)
+    }
     startedAt = await $.clock.now()
     // A beat every second while the turn runs, so the clock and figures move live.
     ticker?.cancel()
-    let beats = 0
+    const turnStart = startedAt
     beatSecs = 0
     beatTools = 0
     ticker = $.clock.every(1000, () => {
-      beats += 1
-      if (beats > 7200) ticker?.cancel() // two hours: never leave one running
       void (async () => {
-        beatSecs = beats
+        // Seconds by the clock, not by counting beats: a timer held back (a window out of
+        // focus) then still reads true, and a long turn's clock never stops short.
+        beatSecs = Math.max(0, Math.floor(((await $.clock.now()) - turnStart) / 1000))
         beatTools = (await read($, stats))?.tools ?? 0
         await update($, tick, n => (n ?? 0) + 1)
+        // The limits, context and spend, re-read as the turn goes: not on every beat.
+        const now = await $.clock.now()
+        if (now - usageAt >= USAGE_MS) {
+          usageAt = now
+          await refreshUsage($).catch(() => {})
+        }
       })()
     })
     await update($, stats, () => EMPTY)
@@ -751,7 +869,9 @@ export const register: Register = on => {
       const tps = liveSpeed(samples, at, { charsPerToken })
       if (tps === null) continue
       drawnAt = at
-      void update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, tps) }))
+      // The peak is set by a response's own average alone (below): a buffered burst read live
+      // would set a peak no real speed reaches, and the needle would sit near zero after it.
+      void update($, speed, s => ({ tps, peak: s.peak ?? 0 }))
     }
     const r = await stream.result
     const u = r.usage
@@ -806,21 +926,18 @@ export const register: Register = on => {
       await update($, agents, list =>
         asList(list).map(a =>
           a.id === agentId
-            ? { ...a, status: reason === 'error' ? ('error' as const) : reason === 'aborted' ? ('stopped' as const) : ('done' as const), endedAt: now }
+            ? { ...a, status: reason === 'error' || reason === 'refusal' ? ('error' as const) : reason === 'aborted' ? ('stopped' as const) : ('done' as const), endedAt: now }
             : a,
         ),
       )
       $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
-      if (!asList(await read($, agents)).some(a => a.status === 'running')) {
-        agentTicker?.cancel()
-        agentTicker = null
-      }
+      await restAgentBeat($)
       return next(e)
     }
     ticker?.cancel()
     ticker = null
     const reason = (e as unknown as { reason?: string }).reason
-    await update($, outcome, () => (reason === 'error' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done'))
+    await update($, outcome, () => (reason === 'error' || reason === 'refusal' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done'))
     // The turn's length as the engine reports it; failing that, from the start this module heard
     // (none after a reload mid-turn: startedAt is 0 and the span would be epoch seconds).
     const nowMs = await $.clock.now()
@@ -840,7 +957,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
-    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl, skNow, endedAs] = await Promise.all([
+    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl, skNow, endedAs, scNow] = await Promise.all([
       read($, stats),
       read($, seconds),
       read($, info),
@@ -854,6 +971,7 @@ export const register: Register = on => {
       read($, model),
       read($, skill),
       read($, outcome),
+      read($, scoped),
     ])
     // What the band draws: each figure as stored, and where a change came from while it plays
     // (see MOTION in chat.ts): `reel` for a figure written out, `from` for a ring or meter.
@@ -863,7 +981,11 @@ export const register: Register = on => {
     const st = stNow
     const use = {
       ...useNow,
-      limits: (Array.isArray(useNow.limits) ? useNow.limits : []).map(l => ({ ...l, shown: l.percentUsed })),
+      // The engine's limits, then the account's per-model weeks it does not carry.
+      limits: [
+        ...(Array.isArray(useNow.limits) ? useNow.limits : []),
+        ...(Array.isArray(scNow?.limits) ? scNow.limits : []).filter(m => weeklyModel(m.kind) && !(Array.isArray(useNow.limits) ? useNow.limits : []).some(l => l.kind === m.kind)),
+      ].map(l => ({ ...l, shown: l.percentUsed })),
     }
     const sp = spNow
     const sk = asSkill(skNow)
@@ -885,6 +1007,7 @@ export const register: Register = on => {
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
     const title = clip(base(where?.name || '') || THEME.fallbackTitle, 32)
     const branch = where?.branch ? clip(where.branch, 28) : null
+    const titleArt = slabSvg(title)
 
     const table = $.ui.resolve(e)
     const Svg = 'Svg' in table ? table.Svg : null
@@ -898,7 +1021,7 @@ export const register: Register = on => {
       { label: 'Tokens', value: fmtTokens(allTokens), icon: 'hash' as IconName, color: '#a9b6ec', roll: 'tokens' },
       // Live: it counts every second while a turn runs, on the band's beat, each second rolling
       // in like the other figures (only the digits that change turn).
-      { label: 'Time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'timer' as IconName, color: '#8fdcb9', roll: 'time' },
+      { label: 'Run time', value: fmtClock(Math.floor(runShown / 1000) * 1000), icon: 'timer' as IconName, color: '#8fdcb9', roll: 'time' },
       { label: 'Model', value: mdl ? prettyModel(mdl) : '—', icon: 'sparkles' as IconName, color: HUE.petal, roll: 'model' },
       // The compact band shows the version as dim text in the top row instead.
       ...(THEME.compact ? [] : [{ label: 'UI', value: `v${VERSION} ${SKILLS_FROM}`, icon: 'cube' as IconName, color: '#f6b896' }]),
@@ -913,32 +1036,30 @@ export const register: Register = on => {
     // look. Status is held as wide as 'working' and the count as wide as three digits, so
     // nothing on the line moves when a turn starts or the count grows.
     const toolWord = shownTools === 1 ? 'tool' : 'tools'
-    // Working in red; once the turn ends, how it went: success in green, error, stopped, or idle
+    // Working in petal pink; once the turn ends, how it went: success in green, error, stopped, or idle
     // before the first turn. Held as wide as the widest, so nothing after it moves.
     type Status = 'working' | Outcome | 'idle'
-    const STATUS: Record<Status, Parameters<typeof chipSvg>[0]> = {
-      working: { color: THEME.working, label: 'working', dots: true, motion: true },
-      done: { color: THEME.done, label: 'success', icon: 'check' },
-      error: { color: HUE.rose, label: 'error', icon: 'cross' },
-      stopped: { color: '#a3a3ab', label: 'stopped', icon: 'ban', quiet: true },
-      idle: { color: '#a3a3ab', label: 'idle', icon: 'pause', quiet: true },
+    const STATUS: Record<Status, Parameters<typeof hudChipSvg>[0]> = {
+      working: { color: THEME.working, label: 'working', fill: true, motion: true },
+      done: { color: THEME.done, label: 'success', fill: true },
+      error: { color: HUE.rose, label: 'error', fill: true },
+      stopped: { color: INK.label, label: 'stopped' },
+      idle: { color: INK.label, label: 'idle' },
     }
     const status: Status = e.props.isWorking ? 'working' : (endedAs ?? 'idle')
-    const statusW = Math.max(...Object.values(STATUS).map(o => chipSvg({ ...o, strong: true, motion: false }).natural))
+    const statusW = Math.max(...Object.values(STATUS).map(o => hudChipSvg({ ...o, motion: false }).natural))
     // The bar rests green unless the turn went wrong.
-    const barRest = status === 'error' || status === 'stopped' ? INK.track : THEME.done
+    const barRest = status === 'done' ? THEME.done : INK.track
     const chips = [
-      { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: chipSvg({ ...STATUS[status], strong: true, minWidth: statusW }) },
-      { key: 'tools', alt: `${shownTools} tool calls`, art: chipSvg({
-        color: '#f3cf7a',
-        icon: 'bolt',
+      { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: hudChipSvg({ ...STATUS[status], minWidth: statusW }) },
+      { key: 'tools', alt: `${shownTools} tool calls`, art: hudChipSvg({
+        color: INK.label,
+        label: toolWord,
         value: String(shownTools),
         reel: reel('tools', String(shownTools)),
-        label: toolWord,
-        minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural,
-        quiet: true,
+        minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural,
       }) },
-      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: chipSvg({ color: '#86868f', icon: 'tag', label: `v${VERSION} ${SKILLS_FROM}`, quiet: true }) },
+      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION} // ${SKILLS_FROM}`, plain: true }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -949,7 +1070,7 @@ export const register: Register = on => {
     // The top line is two groups: who (dot, folder, branch) and how it goes (time, status,
     // count, version). When both do not fit on one line, the second group takes a line of its
     // own, whole, instead of running past the frame; the bar goes where there is room for it.
-    const leftPx = 14 + 14 + textPx(title, true) + (branch ? 14 + gapPx + textPx(branch) : 0) + 3 * gapPx
+    const leftPx = slabSvg(title).width + (branch ? gapPx + textPx(`// ${branch}`) : 0) + 3 * gapPx
     const rightPx =
       (14 + gapPx + textPx('59m 59s')) +
       (THEME.compact
@@ -959,10 +1080,6 @@ export const register: Register = on => {
     // The frame's and the line card's padding and border, and slack for font differences.
     const framePx = 4 * gapPx + 24 + 4 * 8
     const topRoomPx = e.props.bodyColumns * 8 - framePx
-    const stacked = leftPx + rightPx > topRoomPx
-    // On a line of its own and still too wide: the version chip, the least needed, gives way.
-    const versionChip = chips.find(c => c.key === 'version')
-    const showVersion = !(THEME.compact && stacked && versionChip && rightPx > topRoomPx)
 
     // The agent strip: running agents first, then the ones that finished lately.
     const crew = visibleAgents(asList(roster), nowMs, { max: THEME.listAgents, keepMs: THEME.keepFinishedMs })
@@ -974,21 +1091,34 @@ export const register: Register = on => {
       return { a, moving, art: agentChipParts(a, { padBottom: THEME.stripGap, motion: moving }) }
     })
 
+    // A week counted for one model alone (`seven_day_fable`) is no cell of its own: it is a
+    // second meter in the 7-day cell, under the week's. With no 7-day window it stays a cell.
+    const weekly = use.limits.some(l => l.kind === 'seven_day')
+    const limitTiles = use.limits
+      .filter(l => !(weekly && weeklyModel(l.kind)))
+      .map(l => ({ ...l, models: l.kind === 'seven_day' ? use.limits.filter(m => weeklyModel(m.kind)) : [] }))
     // Stat tiles: a ring when the figure is a percentage, else the icon.
     const speedPct = sp.tps === null ? 0 : Math.min(100, (sp.tps / speedScale(sp.peak ?? 0)) * 100)
+    const charge = e.props.isWorking ? chargeLevel(sp.tps) : 0
     const tiles: Tile[] = [
       {
         key: 'context',
         icon: 'brain' as IconName,
         percent: use.percent,
-        big: use.percent === null ? '—' : `${use.percent}%`,
+        big: use.percent === null || !Number.isFinite(use.percent) ? '—' : `${Math.round(use.percent)}%`,
         caption: use.tokens !== null && use.window !== null ? `context · ${fmtTokens(use.tokens)}/${fmtTokens(use.window)}` : 'context used',
         // What is left stays on every layout; the window's size is the detail given up first.
         short: ['context', contextLeft(use.tokens, use.window, use.percent)].filter(Boolean).join(' · '),
         detail: use.window !== null ? `${fmtTokens(use.window)} window` : undefined,
       },
-      ...(Array.isArray(use.limits) ? use.limits : []).map(l => ({
+      ...limitTiles.map(l => ({
         key: l.kind,
+        name: shortLimitLabel(l.kind),
+        // Its meter, and one more for each model the week is also counted for on its own.
+        bars: [
+          { ...(l.models.length ? { label: 'all' } : {}), percent: l.percentUsed, color: ringColor(l.percentUsed), from: from(`limit-${l.kind}`, l.percentUsed) },
+          ...l.models.map(m => ({ label: weeklyModel(m.kind)!, percent: m.percentUsed, color: m.percentUsed >= 60 ? ringColor(m.percentUsed) : HUE.petal, from: from(`limit-${m.kind}`, m.percentUsed) })),
+        ],
         icon: (l.kind === 'five_hour' ? 'hourglass' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
         percent: l.percentUsed,
         big: `${Math.round(l.shown)}%`,
@@ -997,7 +1127,8 @@ export const register: Register = on => {
         caption: `of ${limitLabel(l.kind)}`,
         sub: fmtReset(l.resetsAt, nowMs) ?? undefined,
         short: `${shortLimitLabel(l.kind)} · ${limitLeft(l.shown)}`,
-        detail: fmtReset(l.resetsAt, nowMs)?.replace(/^resets in /, '') ?? undefined,
+        // "resets 12m", not a bare "12m": beside "49% left" a lone span reads as time left.
+        detail: fmtReset(l.resetsAt, nowMs)?.replace(/^resets in /, 'resets ') ?? undefined,
       })),
       // Model speed: the ring fills against the best seen this session, and never turns red.
       {
@@ -1014,11 +1145,16 @@ export const register: Register = on => {
         detail: sp.peak > 0 ? `peak ${fmtSpeed(sp.peak)}` : undefined,
         color: THEME.accent,
         calm: true,
+        name: 'tok/s',
+        // Electric while the turn streams fast: blue from 50 tokens a second, purple from 100, gold from 200.
+        charge,
+        bars: [{ percent: speedPct, color: charge ? CHARGE_COLOR[charge]! : THEME.accent, from: from('tps', speedPct) }],
       },
       // Hanahira Claude UI mode: active or not and the skills' version, under the name, and the
       // companions loaded beside the core.
       {
         key: 'skill',
+        name: 'mode',
         icon: 'sparkle' as IconName,
         percent: null,
         big: 'Hanahira',
@@ -1036,7 +1172,7 @@ export const register: Register = on => {
     // A tile's ring (or, where pictures are not drawn, a glyph of it), at either size.
     const ringEl = (t: Tile, size: number) =>
       t.percent === null ? (
-        <Text>{t.icon}</Text>
+        iconEl({ Text, Svg }, t.icon, t.color ?? THEME.accent, size, '◆')
       ) : Svg ? (
         <Svg
           source={ringSvg(t.percent, t.color ?? ringColor(t.percent), size, { icon: t.icon })}
@@ -1057,44 +1193,36 @@ export const register: Register = on => {
     // over everything else (narrower still); `bare`, one line without the detail.
     type Mode = 'line' | 'stack' | 'tall' | 'bare'
     // `live`: the cell moves, so it is drawn in the surface's frame.
-    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode) => ReturnType<typeof statSvg> }
+    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg> }
     // Context is the hero line above the grid (below); the other gauges share the grid.
+    // Each cell's faint number: its place on the grid, gauges first.
+    const order = [...tiles.filter(t => t.key !== 'context').map(t => `tile-${t.key}`), ...cards.map(c => `card-${c.label}`)]
+    const index = (key: string) => order.indexOf(key) + 1
     const gaugeCells: Cell[] = tiles.filter(t => t.key !== 'context').map(t => ({
       key: `tile-${t.key}`,
       alt: `${t.big} ${t.caption}`,
       value: t.big,
       label: [t.short, t.detail].filter(Boolean).join(' · '),
       bareLabel: t.short,
+      // The charged speed cell stays a plain picture: its figure changes several times a second,
+      // and a picture in the surface's frame blinks each time its source changes. A plain one is
+      // swapped cleanly, and its arcs crackle on by CSS and by their new shape on every redraw.
       live: t.spark !== undefined || t.toggle?.motion === true,
-      // Each cell on its own glass card (inCard): what it holds is the column less the card.
-      draw: (cardW, mode = 'line') => {
-        const width = cardW === undefined ? undefined : cardW - GLASS.extra
-        // Stacked: the name beside the value, what is left and the detail on lines under it;
-        // tall: the name under the value too. Every gauge gets as many lines under it (blank
-        // where it has less), so a line of gauges keeps one height and one baseline.
-        const [name = t.short, ...rest] = t.short.split(' · ')
-        const more = [...rest, ...(t.detail ? [t.detail] : [])]
-        // A state reads under the value in both, its colour on the line it takes.
-        const under = t.tone
-          ? mode === 'stack' ? [[name, ...more].join(' · ')] : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
-          : mode === 'stack' ? [more.join(' · ')] : mode === 'tall' ? [name, ...more, '', '', ''].slice(0, 3) : undefined
-        return inCard(statSvg(t.big, mode === 'stack' ? (t.tone ? '' : name) : mode === 'tall' ? '' : t.short, {
-          tone: t.tone,
-          reel: t.reel,
-          detail: mode === 'line' ? t.detail : undefined,
-          ...(under ? { stack: under } : {}),
+      // A HUD cell (hudCellSvg): its name on the slab, the figure, its meters, and under them
+      // what is left and the detail on one dim line, which `bare` leaves out.
+      draw: (width, mode = 'line', height) => {
+        const [, ...rest] = t.short.split(' · ')
+        const sub = [...(t.toggle ? [t.short] : rest), ...(t.detail ? [t.detail] : [])].join(' · ')
+        return hudCellSvg(t.name ?? t.short.split(' · ')[0]!, t.big, {
+          index: String(index(`tile-${t.key}`)).padStart(2, '0'),
           width,
-          // Speed is no share of a limit: a speedometer whose needle follows the stream.
-          ...(t.key === 'speed'
-            ? { ring: speedoSvg((t.percent ?? 0) / 100, t.color ?? THEME.accent, STAT.glyph, t.from ? { from: t.from.from / 100, age: t.from.age } : null) }
-            : t.percent === null
-            ? t.toggle
-              ? { toggle: t.toggle, color: t.color ?? THEME.accent }
-              : { icon: t.icon, color: t.color ?? THEME.accent, spark: t.spark }
-            : {
-                ring: ringSvg(t.percent, t.color ?? ringColor(t.percent), STAT.glyph, { icon: t.icon, bigIcon: true, from: t.from }),
-              }),
-        }))
+          height,
+          reel: t.reel,
+          ...(t.bars ? { bars: t.bars } : {}),
+          ...(mode !== 'bare' && sub ? { sub } : {}),
+          ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
+          ...(t.charge ? { charge: { level: t.charge, motion: true, frame: Math.floor(nowMs / 120) % 997 } } : {}),
+        })
       },
     }))
     const figureCells: Cell[] = cards.map(c => {
@@ -1105,13 +1233,9 @@ export const register: Register = on => {
         value: c.value,
         label,
         bareLabel: label,
-        // Stacked, the label goes under the value, so the column is no wider than the value.
-        draw: (cardW, mode = 'line') => {
-          const width = cardW === undefined ? undefined : cardW - GLASS.extra
-          const under = mode === 'stack' || mode === 'tall'
-          // Each figure's icon on a tile tinted its own colour, like the gauges' rings above.
-          return inCard(statSvg(c.value, under ? '' : label, { icon: c.icon, color: c.color, width, reel: c.roll ? reel(c.roll, c.value) : null, ...(under ? { stack: [label] } : {}) }))
-        },
+        // A figure has no meter: a short accent rule under it instead.
+        draw: (width, _mode, height) =>
+          hudCellSvg(label, c.value, { index: String(index(`card-${c.label}`)).padStart(2, '0'), width, height, rule: THEME.accent, reel: c.roll ? reel(c.roll, c.value) : null }),
       }
     })
     // The stats sit on a grid: gauges in the first lines, figures under them, k columns to a
@@ -1133,16 +1257,12 @@ export const register: Register = on => {
       fromPercent: from('context', use.percent),
     }
     const ctxColor = ringColor(use.percent ?? 0)
-    // On its own glass card, like the cells under it.
-    const ctxLine = inCard(contextSvg(use.percent, ctxColor, ctxOpts))
-    const ctxArt = ctxLine.natural > roomPx ? inCard(contextSvg(use.percent, ctxColor, { ...ctxOpts, stack: true })) : ctxLine
-    // The cards keep their own margin (GLASS.margin), so one column between them is enough.
-    const cellGapPx = 8
+    // Between two cards, a spacer picture of this many px (GRID_GAP): a Box gap is counted in
+    // cells, whose px width the band cannot know, and the rows must come out one exact width.
+    const cellGapPx = GRID_GAP
     const across = Math.max(gaugeCells.length, figureCells.length, 1)
     const layouts: { k: number; mode: Mode }[] = [
       { k: across, mode: 'line' },
-      { k: across, mode: 'stack' },
-      { k: across, mode: 'tall' },
       { k: across, mode: 'bare' },
       ...(across > 2 ? ([{ k: 2, mode: 'line' }, { k: 2, mode: 'bare' }] as const) : []),
       { k: 1, mode: 'bare' },
@@ -1154,15 +1274,43 @@ export const register: Register = on => {
       return {
         lines,
         colW: Array.from({ length: k }, (_, j) =>
-          Math.max(colMax.get(`${k}:${mode}:${j}`) ?? 0, ...lines.map(l => l[j]?.draw(undefined, mode).natural ?? 0)),
+          Math.max(0, ...lines.map(l => l[j]?.draw(undefined, mode).natural ?? 0)),
         ),
       }
     }
     const lineW = (ws: number[]) => ws.reduce((a, b) => a + b, 0) + cellGapPx * Math.max(0, ws.length - 1)
-    const chosen =
+    // The layout is chosen from what the cells need now. The widest a column has been only pads
+    // the chosen layout, and only while it still fits: one wide value (a long reset time, four
+    // companions) must not hold the band on a narrower layout after it has gone.
+    const natural =
       layouts.map(l => ({ ...l, ...widthsFor(l.k, l.mode) })).find(l => lineW(l.colW) <= roomPx) ??
       { k: 1, mode: 'bare' as Mode, ...widthsFor(1, 'bare') }
-    chosen.colW.forEach((w, j) => colMax.set(`${chosen.k}:${chosen.mode}:${j}`, w))
+    const held = natural.colW.map((w, j) => Math.max(w, colMax.get(`${natural.k}:${natural.mode}:${j}`) ?? 0))
+    const picked = { ...natural, colW: lineW(held) <= roomPx ? held : natural.colW }
+    picked.colW.forEach((w, j) => colMax.set(`${picked.k}:${picked.mode}:${j}`, w))
+    // One system: every column the same width where the room allows it, so the grid reads as a
+    // grid; else each column keeps its own (the rows still line up).
+    const evenW = picked.colW.map(() => Math.max(...picked.colW))
+    const chosen = { ...picked, colW: lineW(evenW) <= roomPx ? evenW : picked.colW }
+    // The band's one width: the grid's. The context line is drawn exactly that wide (its meter
+    // takes the room), and the top line's card stretches to it (the band shrinks to its widest
+    // row), so all three end on one right edge.
+    const gridPx = lineW(chosen.colW)
+    const ctxWidth = gridPx
+    const ctxLine = hudContextSvg(use.percent, ctxColor, { ...ctxOpts, width: ctxWidth })
+    // On its own glass card, like the cells under it; too narrow for one line, the meter goes under.
+    const ctxArt = ctxLine.natural > ctxWidth ? hudContextSvg(use.percent, ctxColor, { ...ctxOpts, stack: true, width: ctxWidth }) : ctxLine
+    // Every cell of a line is as tall as its tallest, so the line reads as one row.
+    const lineH = chosen.lines.map(line => Math.max(0, ...line.map((c, j) => c.draw(chosen.colW[j], chosen.mode).height)))
+    // The top line fits the same width: past it, its second group takes a line of its own.
+    const headRoomPx = Math.min(topRoomPx, gridPx - 24)
+    const stacked = leftPx + rightPx > headRoomPx
+    // The bar sits on the top line only with room to read as a bar (THEME.barMin px); with
+    // less it takes a line of its own under it. Stacked, the name's line is the bar's.
+    const barInline = stacked ? leftPx + THEME.barMin <= headRoomPx : leftPx + rightPx + THEME.barMin <= headRoomPx
+    // On a line of its own and still too wide: the version chip, the least needed, gives way.
+    const versionChip = chips.find(c => c.key === 'version')
+    const showVersion = !(THEME.compact && stacked && versionChip && rightPx > headRoomPx)
     // Whatever this draw set moving, the band draws its plain pictures as the last of it ends.
     const motionLeft = Math.max(reels.left(nowMs), glides.left(nowMs))
     if (motionLeft > 0 && nowMs + motionLeft > restDue) {
@@ -1171,7 +1319,8 @@ export const register: Register = on => {
     }
 
     return (
-      <Box flexDirection="column">
+      // With pictures, the band is as wide as its widest row (the grid), not the whole pane.
+      <Box flexDirection="column" {...(Svg && THEME.compact ? { alignItems: 'flex-start' } : {})}>
           {crewCards.length > 0 ? (
             <Box columnGap={1} rowGap={0} alignItems="center" flexWrap="wrap">
               {crewCards.map(({ a, moving, art }) =>
@@ -1197,35 +1346,26 @@ export const register: Register = on => {
           columnGap={1}
           alignItems={stacked ? 'stretch' : 'center'}
           // On a surface that draws the cards, the top line gets one of its own.
-          {...(Svg ? { borderStyle: 'round', borderColor: THEME.lineCard.border, backgroundColor: THEME.lineCard.bg, paddingX: 1 } : {})}
         >
           <Box gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0}>
             {Svg ? (
-              <Svg source={themed(dotSvg(THEME.working, e.props.isWorking, 14, true))} alt="" width={14} height={14} {...loop} />
+              // The session's name on its slab; the branch after it, as a path.
+              <Svg source={themed(titleArt.svg)} alt={title} width={titleArt.width} height={titleArt.height} />
             ) : (
-              <Text color={THEME.working}>●</Text>
-            )}
-            {iconEl({ Text, Svg }, 'folder', '#a3a3ab', 14, '')}
-            <Text bold>{title}</Text>
-            {branch ? (
               <Box gap={1} alignItems="center">
-                {iconEl({ Text, Svg }, 'branch', '#a3a3ab', 14, '⎇')}
-                <Text dimColor>{branch}</Text>
+                <Text color={THEME.working}>●</Text>
+                <Text bold>{title}</Text>
               </Box>
-            ) : null}
-            {Svg ? (
+            )}
+            {branch ? <Text dimColor>{`// ${branch}`}</Text> : null}
+            {Svg && barInline ? (
               // The bar takes what its line leaves, as the surface lays it out (from no width,
               // growing): bodyColumns * 8 undercounts Desktop's row, and a bar sized from it
               // came out under the cut-off and was dropped. Drawn THEME.barPx wide and clipped to fit.
               <Box flexGrow={1} flexShrink={1} minWidth={0} alignItems="center">
                 <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                   <Svg
-                    source={themed(loadingSvg(THEME.barPx, THEME.barHeight, THEME.working, {
-                      live: e.props.isWorking,
-                      rest: barRest,
-                      padBottom: THEME.barGap,
-                      motion: true,
-                    }))}
+                    source={themed(stripeSvg(THEME.barPx, THEME.barHeight, THEME.bar, { live: e.props.isWorking, rest: barRest, padBottom: THEME.barGap, motion: true }))}
                     alt={e.props.isWorking ? 'Working' : 'Idle'}
                     width={THEME.barPx}
                     height={THEME.barHeight + THEME.barGap}
@@ -1272,12 +1412,23 @@ export const register: Register = on => {
           </Box>
         </Box>
 
+        {Svg && !barInline ? (
+          // No room beside the name for a bar worth the name: it runs under the top line, the
+          // band's whole width, drawn exactly that wide.
+          <Svg
+            source={themed(stripeSvg(gridPx, THEME.barHeight, THEME.bar, { live: e.props.isWorking, rest: barRest, padBottom: THEME.barGap, motion: true }))}
+            alt={e.props.isWorking ? 'Working' : 'Idle'}
+            width={Math.max(120, gridPx)}
+            height={THEME.barHeight + THEME.barGap}
+            {...loop}
+          />
+        ) : null}
         {THEME.compact ? (
           Svg ? (
             <Svg source={ctxArt.svg} alt={`${useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`} context`} width={ctxArt.width} height={ctxArt.height} />
           ) : (
             <Text>
-              <Text bold>{use.percent === null ? '—' : `${use.percent}%`}</Text>
+              <Text bold>{use.percent === null || !Number.isFinite(use.percent) ? '—' : `${Math.round(use.percent)}%`}</Text>
               <Text dimColor> context </Text>
               <Text color={ctxColor}>{meter(use.percent ?? 0, 20).filled}</Text>
               <Text dimColor>{meter(use.percent ?? 0, 20).rest}</Text>
@@ -1289,8 +1440,8 @@ export const register: Register = on => {
           // Compact: the grid chosen above, one Box per line, nothing left to wrap on its own.
           <Box flexDirection="column">
             {chosen.lines.map((line, r) => (
-              <Box key={`line-${r}`} columnGap={1} alignItems="center" flexWrap="nowrap">
-                {line.map((c, j) => {
+              <Box key={`line-${r}`} columnGap={Svg ? 0 : 1} alignItems="center" flexWrap="nowrap">
+                {line.flatMap((c, j) => {
                   if (!Svg)
                     return (
                       <Text key={c.key}>
@@ -1298,8 +1449,9 @@ export const register: Register = on => {
                         <Text dimColor>{` ${chosen.mode === 'bare' ? c.bareLabel : c.label}`}</Text>
                       </Text>
                     )
-                  const art = c.draw(chosen.colW[j], chosen.mode)
-                  return <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
+                  const art = c.draw(chosen.colW[j], chosen.mode, lineH[r])
+                  const cell = <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
+                  return j === 0 ? [cell] : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="" width={GRID_GAP} height={1} />, cell]
                 })}
               </Box>
             ))}

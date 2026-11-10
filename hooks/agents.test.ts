@@ -81,8 +81,13 @@ describe('cost', () => {
 
   test('cache tokens use their own rates, and totals add up', () => {
     expect(cents(agentUsd('claude-fable-5-1', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 1_000_000 }))).toBe(12.75)
-    // Sonnet 5.5 cache reads are $0.20/MTok, as Opus 5.5's are.
-    expect(cents(agentUsd('claude-sonnet-5-5', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 0 }))).toBe(0.2)
+    // Sonnet 5.5 cache reads are $0.10/MTok, half of Opus 5.5's.
+    expect(cents(agentUsd('claude-sonnet-5-5', { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 0 }))).toBe(0.1)
+    // Fable 5.2 and Mythos 5.2: $8 in, $40 out, $0.20 cache reads, $10 cache writes.
+    expect(cents(agentUsd('claude-fable-5-2', { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 }))).toBe(58.2)
+    expect(cents(agentUsd('claude-mythos-5-2', { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 }))).toBe(8)
+    // The bare alias means the newest version.
+    expect(cents(agentUsd('fable', { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 }))).toBe(8)
     expect(totalTokens({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 })).toBe(10)
     expect(usd(0.29)).toBe('$0.29')
     expect(usd(0.001)).toBe('$0.00')
@@ -282,7 +287,7 @@ describe('small agent card', () => {
     expect(agentChipParts(mk()).body.svg).toBe(agentChipParts(mk()).body.svg)
   })
 
-  test('a running card turns its ring only with motion; a finished one shows a check', () => {
+  test('a running card turns its square only with motion; a finished one shows a check', () => {
     expect(agentChipParts(mk(), { motion: true }).mark.svg).toContain('class="spin"')
     expect(agentChipParts(mk()).mark.svg).not.toContain('class="spin"')
     const done = agentChipParts(mk({ status: 'done', endedAt: 5000 }), { motion: true }).mark.svg
@@ -291,9 +296,12 @@ describe('small agent card', () => {
   })
 
   test('a long name is fitted to its room and escaped', () => {
-    expect(agentChipParts(mk({ name: 'Research competitor launches & write up' })).body.svg).toContain('textLength')
-    expect(agentChipParts(mk({ name: 'a<b' })).body.svg).toContain('a&lt;b')
-    expect(agentChipParts(mk({ name: 'Short' })).body.svg).not.toContain('textLength')
+    const room = AGENT_CHIP.W - AGENT_CHIP.markW
+    const fitted = (svg: string) => Math.max(...[...svg.matchAll(/<text x="([\d.]+)"[^>]*textLength="([\d.]+)"/g)].map(m => Number(m[1]) + Number(m[2])))
+    expect(fitted(agentChipParts(mk({ name: 'Research competitor launches & write up' })).body.svg)).toBeLessThanOrEqual(room)
+    expect(fitted(agentChipParts(mk({ name: 'Short' })).body.svg)).toBeLessThan(room - 40)
+    expect(agentChipParts(mk({ name: 'a<b' })).body.svg).toContain('A&lt;B')
+    expect(agentChipParts(mk()).body.svg).not.toContain(`rx="${AGENT_CHIP.H / 2}"`)
   })
 })
 
@@ -302,9 +310,9 @@ describe('agent or background app', () => {
     expect(kindLabel(mk())).toBe('Agent')
     expect(kindLabel(mk({ kind: 'agent' }))).toBe('Agent')
     expect(kindLabel(mk({ kind: 'shell' }))).toBe('Bg app')
-    expect(agentChipParts(mk()).body.svg).toContain('>Agent<')
+    expect(agentChipParts(mk()).body.svg).toContain('>AGENT<')
     const shell = agentChipParts(mk({ kind: 'shell', model: '' })).body.svg
-    expect(shell).toContain('>Bg app<')
+    expect(shell).toContain('>BG APP<')
     expect(shell).toContain(SHELL_COLOR)
   })
 

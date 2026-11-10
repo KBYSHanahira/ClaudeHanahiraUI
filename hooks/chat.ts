@@ -90,6 +90,10 @@ export const HUE = {
   card: '#161618',
   snow: '#f4f1fb',
   night: '#0c0c0d',
+  // The HUD band's two signal colours: `sky` the one accent of every gauge and the working
+  // state, `hazard` the warning stripes of the loading bar.
+  sky: '#29b6f6',
+  hazard: '#f4d21f',
 }
 
 /** The mascot's outline: dark enough to edge its white coat, swapped lighter on a white card (LIGHT). */
@@ -122,6 +126,8 @@ export const LIGHT: Record<string, string> = {
   [HUE.rose]: '#d4475f',
   [HUE.peach]: '#c9774a',
   [HUE.lilac]: '#6f5cd0',
+  [HUE.sky]: '#0b7fc0',
+  [HUE.hazard]: '#b88a14',
   [MASCOT_LINE]: '#8a909a', // the mascot's outline, so its white coat shows on white
 }
 
@@ -495,7 +501,7 @@ export const speedoSvg = (fraction: number, color: string, size: number, from?: 
 export const fmtSpeed = (tps: number) => (!Number.isFinite(tps) ? '—' : tps < 10 ? String(Math.round(tps * 10) / 10) : String(Math.round(tps)))
 
 /** Rough width of a label in px at a given font size: symbols run wide, capitals a little wider. */
-const labelWidth = (text: string, fs: number) =>
+export const labelWidth = (text: string, fs: number) =>
   Math.round(
     [...text].reduce((w, ch) => {
       if (ch === ' ') return w + fs * 0.3
@@ -662,9 +668,10 @@ export const SLIDER = { width: METER.segs * (METER.w + METER.gap) - METER.gap, t
  * The context slider as SVG: a track, filled from the left to `percent` with a fur-to-petal
  * gradient that spans the whole track (so a fuller slider shows more of it), and a white knob at
  * the end. With `from`, the fill and the knob glide there from that reading (`glideHolder`).
+ * `width` draws a longer track (never a shorter one), for a hero line stretched to its row.
  */
-export const sliderSvg = (percent: number | null, from?: Since<number> | number | null) => {
-  const S = SLIDER
+export const sliderSvg = (percent: number | null, from?: Since<number> | number | null, width: number = SLIDER.width) => {
+  const S = { ...SLIDER, width: Math.max(SLIDER.width, Math.round(width)) }
   const height = 2 * S.knob + 2
   const share = (p: number | null) => (p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100)
   const r = S.knob
@@ -707,7 +714,8 @@ export const CONTEXT = { height: 24, fs: 15, labelFs: 11, icon: 15, gap: 10, aft
  * then its name and what is left (the window's size as detail). With `stack`, the meter goes
  * on a line of its own under the figure, for a band too narrow for one line. The figure turns
  * the meter's colour when `warn` (near the limit); otherwise it is ink and the meter alone
- * carries the colour. `width` pads the picture to a column.
+ * carries the colour. `width` makes the picture that wide, and the meter takes the room: the
+ * line then ends where its row ends, with no empty stretch after the words.
  */
 export const contextSvg = (
   percent: number | null,
@@ -725,23 +733,27 @@ export const contextSvg = (
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const C = CONTEXT
-  const meter = sliderSvg(percent, opts.fromPercent)
   const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
   const font = FIGURE_FONT
   const valueX = C.icon + 8
   const valueW = labelWidth(value, C.fs)
+  const wordsPad = 12
   const words =
     `<tspan fill="${INK.label}">context</tspan>` +
     (opts.left ? `<tspan fill="${INK.detail}"> · ${esc(opts.left)}</tspan>` : '') +
     (opts.window ? `<tspan fill="${INK.detail}"> · ${esc(opts.window)}</tspan>` : '')
   const wordsW = labelWidth(['context', opts.left, opts.window].filter(Boolean).join(' · '), C.labelFs)
+  // What the line needs with the meter at its own length; any width past that goes to the meter.
+  const lineNatural = valueX + valueW + C.afterValue + SLIDER.width + C.gap + wordsW + wordsPad
+  const spare = Math.max(0, (opts.width ?? 0) - Math.ceil(opts.stack ? valueX + SLIDER.width : lineNatural))
+  const meter = sliderSvg(percent, opts.fromPercent, SLIDER.width + spare)
   const y = C.baseline
   const meterY = opts.stack ? C.height + C.meterGap : (C.height - meter.height) / 2
   // The bold figure runs wider than the estimate: more room after it than between the rest.
   const meterX = opts.stack ? valueX : valueX + valueW + C.afterValue
   const wordsX = opts.stack ? valueX + valueW + C.afterValue : meterX + meter.width + C.gap
   const height = opts.stack ? C.height + C.meterGap + meter.height + 4 : C.height
-  const natural = Math.ceil(Math.max(wordsX + wordsW + 12, opts.stack ? meterX + meter.width : 0))
+  const natural = Math.ceil(opts.stack ? Math.max(wordsX + wordsW + wordsPad, valueX + SLIDER.width) : lineNatural)
   const width = Math.max(natural, opts.width ?? 0)
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +

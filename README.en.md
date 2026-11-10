@@ -8,7 +8,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.13.2-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.14.0-34c38f?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-Version_27-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
@@ -45,14 +45,14 @@ Other ways to install, SSH hosts included: [📦 Installation](#-installation).
 
 | | Part | What it shows |
 | :-: | :-- | :-- |
-| 📊 | **Top line** | Project, git branch, a loading bar (red while Claude works, green when the turn is done, grey if it stopped or failed), the turn's clock, a status chip (`working` → `success`, or `error` / `stopped`), tool calls this prompt (`⚡ 8 tools`) and the version. |
-| ▮▮▮ | **Context slider** | Context used as one big figure, what is left and the window size. The figure turns red past 85%. |
-| ⭕ | **Ring gauges** | 5-hour limit, 7-day limit and model speed (tok/s). The limits say when they reset (`resets in 3h 20m`) and appear only when the account reports rate limits. |
+| 📊 | **Top line** | Project, git branch, a loading bar of warning stripes (yellow and running while Claude works, green when the turn is done, grey otherwise; it takes a line of its own when the top line is tight), the turn's clock, a status chip (`working` → `success`, or `error` / `stopped`), tool calls this prompt (`TOOLS 8`) and the version. |
+| ▮▮▮ | **Context meter** | Context used as one big figure over a row of leaning blocks, what is left and the window size. The figure turns red past 85%. |
+| ▬ | **Gauge cells** | 5-hour limit, 7-day limit and model speed (tok/s), each a block meter under its figure. The limits say when they reset (`resets 3h 20m`) and appear only when the account reports rate limits. When the account also reports a week counted for one model (`seven_day_fable`), the 7-day cell shows it as a second meter. |
 | 💰 | **Totals** | Cost (`≈`, as the engine reports it), tokens, time spent working, model. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards: model, effort, tools, tokens and estimated cost. A finished card shows its check for about three seconds, then leaves. |
-| 🔘 | **Hanahira switch** | Green while Hanahira Claude UI mode is on, grey otherwise. |
+| 🔘 | **Mode cell** | The mascot awake and a pink label while Hanahira Claude UI mode is on, asleep and grey otherwise. |
 
-The version chip also says which copy of the skills is in use: `v1.13.2 Account` (synced from your claude.ai account) or `v1.13.2 SSH` (installed on an SSH host by `install-ssh.sh`).
+The version chip also says which copy of the skills is in use: `V1.14.0 // ACCOUNT` (synced from your claude.ai account) or `V1.14.0 // SSH` (installed on an SSH host by `install-ssh.sh`).
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported, the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
 
@@ -60,7 +60,7 @@ The version chip also says which copy of the skills is in use: `v1.13.2 Account`
 
 ### Motion
 
-Figures roll in like a slot reel when they change, rings and the context slider glide to their new value, the tok/s needle follows the stream, and the loading bar and running agent cards move while Claude works. All of it is CSS inside each picture, played at the screen's frame rate: a redraw never restarts or blinks it, and it stops when the system asks for reduced motion.
+Figures roll in like a slot reel when they change, the block meters glide to their new value, and the loading bar and running agent cards move while Claude works. All of it is CSS inside each picture, played at the screen's frame rate: a redraw never restarts or blinks it, and it stops when the system asks for reduced motion.
 
 ### Safety guard
 
@@ -81,22 +81,21 @@ The mode is **opt-in**: it never switches itself on because of the task, a file,
 
 **What changes while it is on**
 
-- **Sized work** — a quick question gets the answer; a few reversible steps get one plan line; a build, migration or anything irreversible gets a plan and your yes first.
-- **Asks only when it must** — reads and requested edits just happen; a change to a real system (service, database write, firewall, `sudo`, deleting files, pushing) waits for your yes; at most one question per reply, with the default it would pick.
+- **Effort where it changes the result** — the real goal, the proof, the plain report. No ceremony: a quick question gets the answer, and nothing has to be read or planned before work that does not need it.
+- **Asks only when it must** — reads and requested edits just happen, and an instruction that names the action and its target ("restart nginx on web-1") is the yes for exactly that. It asks first only when an irreversible or outward step was its own idea, or when what it found is not what the request assumed; a doubtful match is left alone and named.
 - **Done means verified** — no "fixed" or "should work now" without a check run after the last change.
 - **Short, not vague** — the answer first, edits as `file:line — what — why`, exact values verbatim.
 - **Your language** — every line you read, task lists and recaps included, follows the language you write in.
-- **Your model, your effort** — the work runs on the model and effort you picked for the session; helper agents start only when you ask for them, on that same pair, so no account burns tokens it can't spare. Decisions that are yours never leave the main thread.
+- **Your model, your effort** — the work runs on the model and effort you picked for the session. Helper agents are off by default: they start only when you ask, for sizeable independent pieces, or for a wide search of a large unfamiliar codebase.
 
-**Companions** join automatically while the mode is on, and the banner lists the ones that shaped each reply:
+**Companions** load while the mode is on, when most of a task lies in their field:
 
 | Companion | Covers |
 | :-- | :-- |
-| **Data** | MySQL, PostgreSQL, SQLite, SQL Server, MongoDB — queries, migrations, backups, indexes, bulk updates |
-| **Design** | Visual direction, palette, type (Thai typography included), responsive layout, design tokens, CSS, render checks |
-| **Security** | TLS and certificates, firewall and ports, auth and sessions, secrets, headers, unstable connections |
-| **Debug-Test** | Reproducing bugs, root causes, logs and traces, flaky tests, proving a fix |
-| **Project-Create** | A Hono + Vite + TypeScript project on Bun in one Docker container on the host's MySQL, or containerizing an existing one |
+| **Data** | MySQL, PostgreSQL, SQLite, SQL Server, MongoDB — queries, schema design, migrations, backups, indexes, bulk updates |
+| **Design** | Visual direction, palette, type (Thai typography included), responsive layout from phone to TV, accessibility, design tokens, CSS, render checks |
+| **Security** | TLS and certificates, firewall and ports, SSH, auth and sessions, secrets, headers, unstable or slow connections |
+| **Debug-Test** | Reproducing bugs, proving root causes, logs and traces, writing tests, flaky tests, proving a fix |
 
 ---
 
@@ -123,7 +122,7 @@ scripts/install-ssh.sh
 Then open a **new session** in Desktop.
 
 - **Skills come from this clone** (named `hanahira-claude-ui-ssh:`), so SSH sessions run the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) on this host only, so every skill is listed once; sessions on your local machine keep the account's copy.
-- **You can tell which copy is in use** — the band's version chip reads `v1.13.2 SSH`, and the skill's banner reads `V27 · SSH`.
+- **You can tell which copy is in use** — the band's version chip reads `V1.14.0 // SSH`, and the skill's banner reads `V29 · SSH`.
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** goes back to hooks only here, with the skills from your account.
 
 On your local machine none of this is needed; Option 1 works as is.
@@ -154,7 +153,7 @@ Open a **new session** afterwards; open sessions do not pick up changes. If noth
 | To change | Edit |
 | :-- | :-- |
 | Compact band (two rows of one-line gauges, on by default) or full cards | `THEME.compact` in `hooks/register.tsx` |
-| Colours, icons, ring size, bar length, agent card count and how long a finished one stays | `THEME` and `RING` at the top of `hooks/register.tsx` |
+| Colours, bar length, agent card count and how long a finished one stays | `THEME` and `RING` at the top of `hooks/register.tsx` |
 | Blocked commands | `dangerous` in `hooks/register.tsx` |
 | Band pictures (SVG, formats, charts) | `hooks/chat.ts` |
 | Agent cards and the price table | `hooks/agents.ts` |
@@ -200,10 +199,9 @@ hooks/
 skills/
   hanahira-claude-ui/                 the core mode and its references/
   hanahira-claude-ui-data/            companions: data, design, security,
-  hanahira-claude-ui-design/          debug-test, project-create
+  hanahira-claude-ui-design/          debug-test
   hanahira-claude-ui-security/
   hanahira-claude-ui-debug-test/
-  hanahira-claude-ui-project-create/
 scripts/
   install-ssh.sh    install on an SSH host
   update.sh         one-command update
@@ -212,6 +210,15 @@ scripts/
   test-preload.ts   engine stand-ins for bun test
 types/index.d.ts    the shape of the state ($.state)
 ```
+
+## 📜 License
+
+[Hanahira Claude UI License 1.0](LICENSE) — Copyright © 2026 Hanahira
+
+- ✅ Free to use, in commercial work too. Complete, unmodified copies may be redistributed with credit and the license.
+- ✅ You may change your own copy for your own private use.
+- ❌ No distributing or publishing modified versions or derived works, no renaming or repackaging, no presenting it as your own.
+- ❌ No copying the skill texts, code or artwork into another plugin or product.
 
 ---
 

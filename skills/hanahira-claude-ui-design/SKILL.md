@@ -1,157 +1,39 @@
 ---
 name: "hanahira-claude-ui-design"
-description: Hanahira Claude UI companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, render verification, frontend performance. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill's Activation rules; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Once ON, apply it whenever interface, layout, visual design or CSS work comes up.
-license: "MIT — Copyright (c) 2026 Hanahira. See LICENSE.txt"
+description: Hanahira Claude UI companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, accessibility, render verification. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when most of the task lies in this field.
+license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
-# Hanahira Claude UI Design
+# Hanahira Claude UI — Design
 
-Terse mode for UI and visual design: compress the packaging, never the substance. An under-specified design gets built wrong, and the cost lands at implementation. System design (architecture, services, APIs) follows `hanahira-claude-ui/references/system-design.md`, not this skill. Read the external `frontend-design` skill only if the user names it.
+A companion of the core `hanahira-claude-ui` skill: it applies only while the mode is ON, prints nothing of its own, and changes none of the core's rules. It holds what goes wrong most often in this field. Use the lines that bear on the task in hand; none of it is a procedure to walk through.
 
-## Role
+## Decide the look before writing CSS
 
-**Owns:** what people see and touch — direction, palette and type, layout, components and their states, CSS and its bugs, behavior from phone to TV, render checks, front-end performance.
+- **Extend what exists.** With a design system, tokens or an established look in the project, use them; a new direction is for a blank page or an explicit ask.
+- **One direction, named in a line**, taken from the subject and its audience, not from habit: what it should feel like, the one or two colours that carry it, the type that carries it. Then hold every later choice to that line.
+- **The defaults to refuse**: purple-to-blue gradients, everything centred in rounded cards with soft shadows, an emoji as an icon, three equal feature boxes, a hero that says nothing, glass on everything. If the page could be for any product, it is not designed yet.
+- **Hierarchy does the work.** One thing leads per screen. Size, weight and space separate levels before colour does; a few sizes on a scale, generous space, one accent used sparingly.
 
-**Hands off:** architecture, APIs and data flow → `hanahira-claude-ui/references/system-design.md`. The security logic behind login or permission screens → `hanahira-claude-ui-security`. The data model behind a screen → `hanahira-claude-ui-data`. A page that is broken for an unknown reason → `hanahira-claude-ui-debug-test` first, then back here for the fix.
+## Type, including Thai
 
-**Helpers** follow core *Who does the work* — typically gathering existing tokens and CSS, screenshots at set widths, the case against the leaning direction, and the fresh review of the diff; the design decisions stay with the lead.
+- Thai needs more line height than Latin (about 1.6–1.8 for body text) because of stacked vowels and tone marks, and never letter-spacing that splits them. Pick a face that has a real Thai design and a matching weight range; do not fake bold.
+- Thai has no spaces between words: check how lines break, and never truncate mid-cluster.
+- Body text about 16px and up, 45–75 characters a line for Latin; tabular figures for numbers that change or line up.
 
-## Core first
+## Build it so it holds
 
-Runs only while the core (`hanahira-claude-ui/SKILL.md`) says Hanahira Claude UI is ON; otherwise stand down silently. When ON and the core's rules aren't in context, read it first. Its *Sizing and when to ask* applies; this file's gates are stricter where they differ. Banner: the core's; roster entry **Hanahira Claude UI Design** (compact: `Design`).
+- **Tokens first**: colour, space, type and radius as custom properties, named for their role, redefined for dark mode. No hard-coded colour in a component.
+- **Layout from content**: flex and grid with `gap`, `minmax()`, `clamp()` and container or media queries, not fixed widths and magic numbers. Check the narrowest phone and a very wide screen; nothing scrolls sideways.
+- **Every state is drawn**: hover, focus-visible, active, disabled, loading, empty, error, long text, missing image.
+- **Accessible by construction**: real buttons and links, labels on inputs, text contrast at least 4.5:1, a visible focus ring, targets about 44px on touch, motion that respects `prefers-reduced-motion`.
 
-## What to read, when
+## Style bugs
 
-| Turn | Read (once per conversation; again if it has left context) |
-|---|---|
-| New page, component set, identity, overhaul | `references/direction.md` — choosing type, layout, components, motion, copy, devices |
-| Critique or redesign | `references/critique.md` — rubric, symptom table, preserve vs overhaul |
-| Produces or debugs CSS (incl. Tailwind, scoped, CSS-in-JS) | `references/css-implementation.md`; `assets/skeleton.css` only for a new design with no existing stylesheet |
-| Any work inside an existing design (incl. Tailwind or a component library) | no direction/critique read. Inventory first: the theme source (`:root` custom properties, `@theme` / `tailwind.config`, the library's theme object) and the 2–3 nearest existing components. Library components and variants before custom CSS. A needed value with no token → the nearest existing one, named under Open, never a new literal. No tokens at all → grep colour and size literals by frequency and propose them as tokens before building. Small fix: change nothing else. Never copy the skeleton |
-| Native app (SwiftUI, Compose, Flutter, React Native) or a TV app | no CSS reference or skeleton. Tokens go into the platform theme (asset-catalog colours, MaterialTheme, ThemeData, a theme object); verify on the smallest and largest supported device at the largest system text size |
-| Unsure of a specific UX or accessibility rule, or a platform's UI convention (web, iOS, Android, desktop) | the official source — WCAG, the platform's design guidelines, the framework's docs — looked up when a search or docs tool is available; otherwise say the rule is unverified. Never guess a platform minimum |
+Read the computed style and find which rule wins before changing anything. The usual causes: specificity or source order, a stacking context (`z-index` only works within one), an overflowing or collapsing flex or grid child (`min-width: 0`), margin collapse, a missing `box-sizing`, percentage height with no sized parent.
 
-## Never cut
+## Prove it by looking
 
-- **Exact token values** — hex, px/rem, families and weights, breakpoints, z-index, easing. "A warm neutral" isn't buildable; a hex is.
-- **The reason behind a non-obvious choice**, one clause — the subject trait it came from.
-- **Constraints that break the design if violated** — touch target, contrast, the container width the layout depends on, the narrow-breakpoint behaviour.
-- **Tradeoffs knowingly made**, one line, so they don't read as oversights.
-- **Behaviour at the extremes** — 320px (reflow) / 360px phone and 2560px monitor.
-- **Performance cost of a visual choice** (blur, big image, heavy font) in the same line as the choice.
-- **Structural relationships** a UI implies (cardinality, nullability, ownership).
+A layout is not done until it has been rendered and looked at, at a phone and a desktop width, in light and dark when both exist. Without a way to render, say it is unverified.
 
-Cut: good-design preamble, restating the brief, every option considered, praise before critique, rationale for the obvious, and vague advice — "improve the spacing" is useless; `24px → 40px between sections` is buildable.
-
-Outcome-changing unknowns for design are **who** it's for, **which device**, and **the page's one job**. If one is missing and inspection (existing CSS, screenshot, live page) can't settle it, the core's *Unknown* row applies — and a full page or component built on a guessed audience or device counts as not cheap to redo, so confirm it in one question; minor unknowns get picked and named in three words.
-
-## Design craft — the plan before the build
-
-Approach each brief as the lead of a studio whose clients never look like each other. Run the steps silently and thoroughly, then report the decisions, not the deliberation. Never skip a step to save tokens — a drifted token or clipped hero costs the user a review cycle.
-
-1. **Read the brief** — one line each: artifact, audience, visual language (specific, never "modern" or "clean"), narrative role (tool / story / catalogue / statement), viewing distance, mode (greenfield / extension / redesign-preserve / redesign-overhaul), constraints (brand, platform, viewport, assets, accessibility).
-2. **Ground in the subject.** Every choice comes from the subject's world — materials, vernacular, era, audience habits — never from a named style, preset, example, or a previous answer. Think each choice through for this brief; there is no list to pick from. List 3–5 concrete subject traits; each later token cites one.
-3. **Set the dials** (1–10; drop any that wouldn't change the plan): *variance* (stable grid → experimental), *motion* (state feedback → cinematic), *density* (one idea → cockpit), *assets* (type carries it → fails without real imagery; inventory first), *fidelity* (new identity → must look native). High variance + high density: keep the nav and grid spine stable, experiment in one layer. High motion + high density: animate transitions and focus, not elements. Accessibility overrides any dial without asking.
-4. **Tokens** — palette (below), one or two type families distinct in character, one scale ratio with no off-scale sizes, spacing scale, radius grammar by role, one shadow or none.
-5. **Layout concept** — one sentence + ASCII wireframe; alignment stated; marketing or editorial: the hero is the most characteristic thing in the subject's world in its most fitting form; an app or dashboard: no hero, the primary task area gets the first viewport.
-6. **Signature and states** — one element gets the boldness, everything around it stays quiet; then the states each interactive component and data region needs (direction.md *Component grammar*).
-7. **Review** — would the same plan come out for a similar prompt, or does it look like a familiar style copied whole? Then it's a default: revise that part and say what changed.
-
-## Building a palette
-
-Derived, not recalled. L is `oklch()` lightness. Every contrast figure is computed (the contrast script, or a few lines of code), never estimated by eye.
-
-1. **Hue from the subject** — its material, product, place, or the colour the brand already owns. Never a stock "trust blue" by default.
-2. **Ground**: light L 94–97%, or dark L 21–26%, carrying a low-chroma tint of the hue — not pure white, not cream by habit.
-3. **Surface** = ground shifted 3–4% L toward the ink; distinguishable without a border.
-4. **Ink** = the hue pushed near black (L 24–31%), so text and ground share a temperature.
-5. **Muted** = an opaque mix, `color-mix(in oklch, var(--color-ink) 70%, var(--color-bg))` (65–75%; 55–60% usually fails), checked ≥ 4.5:1 on both ground and surface.
-6. **Accent** — one, for action, state and the signature. Complementary for energy, analogous for calm. If the brand colour fails contrast: keep its true value for large fills and decoration (≥ 3:1 vs ground); on a button fill the label must reach 4.5:1 against the fill — switch to a dark label or darken the fill.
-7. **Semantic set** only if the artifact has states, derived at matching lightness, each paired with an icon or text — never colour alone (WCAG 1.4.1).
-8. **Check**: body ≥ 4.5:1, large text and UI components ≥ 3:1, focus ring ≥ 3:1 (accent fails → set `--color-focus`). Name each value by role.
-
-Dark mode is not inversion: ink lightens to L 91–95% (not pure white), accent gains lightness, shadows become borders, saturation drops slightly.
-
-## Thai essentials
-
-- `lang="th"` on `<html>` or the element — it drives `:lang(th)` line-heights and font fallback.
-- Body line-height 1.6–1.8, display 1.3–1.4; never a Latin 1.5 — tighter clips stacked marks.
-- `word-break: normal`; never `word-break: break-all` or `overflow-wrap: anywhere` on Thai text (mid-word breaks). Family choice: `references/direction.md`.
-
-## Spec gate — from decision to CSS
-
-No CSS for a new design, page or component until the spec is in the response: **tokens · wireframe · direction (the subject trait each token came from) · signature · states**. Even "just the CSS" for new work gets a short token block above it. A new component or page inside an existing design needs only **wireframe · states**, built from the existing tokens, no skeleton. A small fix inside an existing design skips the spec: use the existing tokens and change nothing else. Redesign-preserve: frozen list · changed tokens old → new · wireframe · states. Overhaul: the full spec plus the invariants carried through.
-
-```
-1. Spec       above the code
-2. Skeleton   plain CSS: assets/skeleton.css — copy whole, fill every empty value from the spec. Tailwind: tokens into @theme (v4)
-              or the theme config (v3), no skeleton reset; add only its :focus-visible, reduced-motion and :lang(th) rules
-3. Build      component rules reference tokens only; no literal colour, px/rem or ms/s
-4. Verify     measured with the reference's scripts. Starting a dev or preview server is a service start — ask first, bind 127.0.0.1.
-5. Report     the core's Done / Verified / Open; every acceptance row not run goes under Open as unverified, by name
-```
-
-## Performance
-
-- Layout-triggering properties (width, height, top/left, margin) never animate. Paint-only properties (colour, background, box-shadow) are fine for short state transitions on small elements. Large or continuous motion uses `transform`/`opacity` only. Honour `prefers-reduced-motion` whenever motion exceeds state feedback.
-- Fonts are the largest self-inflicted cost: 2–3 weights per script, variable font = one file, `font-display: swap`, subset.
-- `backdrop-filter` or several large shadows over big areas stutter on phones and TV browsers.
-- Images: explicit `width`/`height`, modern format, `srcset`/`sizes` near display size; `loading="lazy"` below the fold only — the hero / LCP image is never lazy and gets `fetchpriority="high"`. Budget for the low end of the audience.
-
-## Generic tells
-
-Run before delivering. Each is legitimate for *some* brief; the failure is reaching for it by default. Where the brief pins one, the brief wins.
-
-```
-palette   cream + serif display + terracotta  |  near-black + one acid-green/vermilion accent  |  stock trust-blue
-layout    centred hero + gradient + two CTAs  |  identical rounded cards, one radius, grey shadow
-          broadsheet: hairlines, zero radius, dense columns  |  bento with filler cells  |  3+ zigzag splits in a row
-chrome    ALL-CAPS eyebrow on every heading  |  meta joined A · B · C  |  'WORD — fragment' labels
-          mono for small data labels  |  '→' on every link  |  decorative version numbers / coordinates
-type      one accented word in a headline  |  the face most generated UI would use, as identity
-motion    entrance animation on every section  |  hover lift on every card
-```
-
-## Acceptance before delivery
-
-Check the artifact, not the intention. *Script* rows run from `references/css-implementation.md`; *manual* rows need a screenshot or keyboard pass. Anything not run is reported as unverified, by name.
-
-```
-320px     single column, no horizontal scroll (WCAG 1.4.10);              script (overflow) + screenshot
-          CTA in the first viewport at 360px
-targets   ≥ 44px touch, ≥ 24px dense desktop                            script (targets)
-768px     restructures where planned, not just scales                   manual (screenshot)
-1280px    measure ≤ 75ch, hero not stretched thin                       manual (screenshot)
-1920px+   desktop: content width capped, nothing orphaned               manual (screenshot)
-tv        (if a target) 1920×1080: body ≥ 24px, ~5% safe-area inset,     manual (arrow keys)
-          arrow keys reach every action with a visible ring, no hover-only UI
-keyboard  everything reachable, focus visible and never hidden under     manual (Tab through)
-          sticky bars (WCAG 2.4.11, scroll-padding), order follows layout
-motion    reduced-motion path exists; no layout property animates       manual (emulate) + script (motion grep)
-images    explicit dimensions, alt present                              script (images)
-contrast  text ≥ 4.5:1, large ≥ 3:1                                     script (contrast)
-ui        control borders, icons, focus ring ≥ 3:1 vs adjacent colour  manual (sample the values)
-thai      (if Thai) lang="th" set, no clipped marks at body or display  manual (screenshot)
-          line-height, no mid-word breaks at 360px
-```
-
-## Output shape
-
-Decision first. New work fills every slot, in this order (an extension: for · layout · states; redesign-preserve adds `frozen` and `changed old → new`):
-
-```
-mode       greenfield | extension | redesign-preserve | redesign-overhaul
-for        <audience> · <device(s)> · <one job>
-traits     t1 <…>  t2 <…>  t3 <…>
-tokens     bg <v> t1 · surface · ink · muted · accent <v> t2 · display <face weight, source> t3 · body … · ratio · radius · shadow
-layout     <one sentence, alignment> + ASCII wireframe
-signature  <element> — t<n>
-states     <component>: only the states that apply, one line each
-tradeoffs  <one line each>
-```
-
-Critique: `<axis> · <element> · problem → fix with values`, most severe first.
-
-## What this mode is not
-
-Not a reason to skip the plan — terse output, not terse thinking. A request to explore alternatives opens a full answer for that turn.
+Finding a direction and palette: `references/direction.md`. Latin and Thai type in depth: `references/typography.md`. Tokens, layout patterns and CSS bugs: `references/css.md`. Open only the one the task needs.

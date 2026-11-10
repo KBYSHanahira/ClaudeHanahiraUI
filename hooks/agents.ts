@@ -1,7 +1,8 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { clip, DISPLAY_FAMILY, EASE, fmtClock, fmtTokens, MOTION, motionStyle } from './chat'
+import { clip, EASE, fmtClock, fmtTokens, HUE, INK, MOTION, motionStyle } from './chat'
+import { capWidth, HUD_FAMILY } from './hud'
 import { iconGroup } from './icons'
 
 const EFFORT_COLOR: Record<string, string> = {
@@ -51,8 +52,10 @@ type Price = [number, number, number, number]
  * the counts here are totals, so the over-100k rate cannot be told apart. Edit to match yours.
  */
 export const PRICES: Record<string, Price> = {
+  'fable 5.2': [8, 40, 0.2, 10],
   'fable 5.1': [10, 50, 0.25, 12.5],
   'fable 5': [10, 50, 1, 12.5],
+  'mythos 5.2': [8, 40, 0.2, 10],
   'mythos 5.1': [10, 50, 0.25, 12.5],
   'mythos 5': [10, 50, 1, 12.5],
   'opus 5.5': [4, 20, 0.2, 5],
@@ -63,7 +66,7 @@ export const PRICES: Record<string, Price> = {
   'opus 4.5': [5, 25, 0.5, 6.25],
   'opus 4.1': [15, 75, 1.5, 18.75],
   'opus 4': [15, 75, 1.5, 18.75],
-  'sonnet 5.5': [2, 10, 0.2, 2.5],
+  'sonnet 5.5': [2, 10, 0.1, 2.5],
   'sonnet 5': [2, 10, 0.2, 2.5],
   'sonnet 4.6': [3, 15, 0.3, 3.75],
   'sonnet 4.5': [3, 15, 0.3, 3.75],
@@ -74,7 +77,7 @@ export const PRICES: Record<string, Price> = {
 }
 
 /** A bare alias (`opus`) means the newest version of the family. */
-const LATEST: Record<string, string> = { fable: 'fable 5.1', mythos: 'mythos 5.1', opus: 'opus 5.5', sonnet: 'sonnet 5.5', haiku: 'haiku 5.5' }
+const LATEST: Record<string, string> = { fable: 'fable 5.2', mythos: 'mythos 5.2', opus: 'opus 5.5', sonnet: 'sonnet 5.5', haiku: 'haiku 5.5' }
 
 export type Counts = Pick<Agent, 'input' | 'output' | 'cacheRead' | 'cacheWrite'>
 
@@ -239,7 +242,7 @@ export const agentCardSvg = (
 }
 
 /** The small card the strip draws: one line, about the height of the band's chips. */
-export const AGENT_CHIP = { W: 196, H: 24, markW: 24 }
+export const AGENT_CHIP = { W: 208, H: 24, markW: 24 }
 
 /** A background command's card colour: warm, apart from every model's and effort's. */
 export const SHELL_COLOR = '#f6b896'
@@ -263,10 +266,11 @@ export const settledStatus = (s: string): Agent['status'] | null =>
   s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' || s === 'stopped' ? 'stopped' : null
 
 /**
- * One agent as a small card in two pictures laid edge to edge: `body`, the sprite and the name
- * on a pill wearing the accent while it runs; `mark`, the right end, where a ring turns while it
- * runs (`motion`) and a finished one draws its check in once. The stats ride on the picture's
- * alt text (agentStats), not on the card, so the strip stays one line.
+ * One agent as a small HUD card in two pictures laid edge to edge: `body`, what it is on a solid
+ * slab in its accent, its sprite and its name in capitals, in a sharp frame that wears the
+ * accent while it runs; `mark`, the right end, where a square turns while it runs (`motion`) and
+ * a finished one draws its check in once. The stats ride on the picture's alt text
+ * (agentStats), not on the card, so the strip stays one line.
  */
 export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: boolean } = {}) => {
   const { W, H, markW } = AGENT_CHIP
@@ -274,47 +278,47 @@ export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: bo
   const accent = a.kind === 'shell' ? SHELL_COLOR : accentFor(a.effort, a.model)
   const running = a.status === 'running'
   const motion = opts.motion === true
-  const font = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif"'
-  const edge = running ? accent : '#2a2a2f'
-  const frame = `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${H - 1.5}" rx="${H / 2}" fill="#161618" stroke="${edge}" stroke-opacity="${running ? 0.55 : 1}" stroke-width="1.5"/>`
+  const face = `font-family="${HUD_FAMILY}" style="font-stretch:condensed"`
+  const edge = running ? accent : INK.line
+  const frame = `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" fill="${HUE.card}" stroke="${edge}" stroke-opacity="${running ? 0.7 : 1}"/>`
+  // What it is, on a solid slab at the card's head, its end cut on a slant.
+  const kind = kindLabel(a).toUpperCase()
+  const kindW = capWidth(kind, 9.5, 1.2)
+  const tagW = 6 + kindW + 10
+  const tag =
+    `<path d="M0 0H${tagW}L${tagW - 6} ${H}H0z" fill="${accent}"/>` +
+    `<text x="6" y="${H / 2 + 3.4}" ${face} font-size="9.5" font-weight="700" fill="${HUE.card}" textLength="${kindW}" lengthAdjust="spacingAndGlyphs">${kind}</text>`
   // A subagent wears its pixel creature; a background command, a terminal.
+  const spriteX = tagW + 3
   const sprite =
     a.kind === 'shell'
-      ? iconGroup('terminal', accent, 5, 4, 16, 2)
-      : `<svg x="5" y="4" width="16" height="16" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
-  // What it is, as a small tag before the name.
-  const kind = kindLabel(a)
-  const tagW = Math.round(kind.length * 5.6) + 10
-  const tag =
-    `<rect x="26" y="6" width="${tagW}" height="12" rx="6" fill="${accent}" fill-opacity="0.16"/>` +
-    `<text x="${26 + tagW / 2}" y="15" text-anchor="middle" ${font} font-size="9" font-weight="700" fill="${accent}">${kind}</text>`
-  // The name must stop short of the mark: pinned to the room it has.
-  const nameX = 26 + tagW + 6
-  const nameFull = clip(a.name, 20)
-  const nameMax = W - nameX - markW - 2
-  const nameFit = Math.round(nameFull.length * 6.6) > nameMax ? ` textLength="${nameMax}" lengthAdjust="spacingAndGlyphs"` : ''
-  const name = tag + `<text x="${nameX}" y="16" font-family="${DISPLAY_FAMILY}" font-size="12" font-weight="700" fill="#ededf0"${nameFit}>${esc(nameFull)}</text>`
+      ? iconGroup('terminal', accent, spriteX, 4, 16, 2)
+      : `<svg x="${spriteX}" y="4" width="16" height="16" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
+  // The name in capitals, pinned to its width, and to its room where it would run past the mark.
+  const nameX = spriteX + 16 + 6
+  const nameFull = clip(a.name, 22).toUpperCase()
+  const nameW = Math.min(capWidth(nameFull, 11.5, 0.8), W - nameX - markW - 2)
+  const name = `<text x="${nameX}" y="16" ${face} font-size="11.5" font-weight="700" fill="${INK.value}" textLength="${nameW}" lengthAdjust="spacingAndGlyphs">${esc(nameFull)}</text>`
   const cx = W - markW / 2 - 2
-  const r = 5
-  const sc = 2 * Math.PI * r
-  const ring =
-    `<circle cx="${cx}" cy="${H / 2}" r="${r}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2"/>` +
-    `<circle cx="${cx}" cy="${H / 2}" r="${r}" fill="none" stroke="${accent}" stroke-width="2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}"${motion ? ' class="spin"' : ''}/>` +
-    (motion ? motionStyle(`@keyframes spin{to{transform:rotate(360deg)}}.spin{transform-box:fill-box;transform-origin:center;animation:spin ${MOTION.spinMs}ms linear infinite}`) : '')
+  // Running: a small square, an open corner, that turns.
+  const square =
+    `<rect x="${cx - 5}" y="${H / 2 - 5}" width="10" height="10" fill="none" stroke="${accent}" stroke-opacity="0.25" stroke-width="2"/>` +
+    `<path d="M${cx - 5} ${H / 2 + 5}V${H / 2 - 5}H${cx + 5}" fill="none" stroke="${accent}" stroke-width="2"${motion ? ' class="spin"' : ''}/>` +
+    (motion ? motionStyle(`@keyframes spin{to{transform:rotate(360deg)}}.spin{transform-origin:${cx}px ${H / 2}px;animation:spin ${MOTION.spinMs}ms linear infinite}`) : '')
   const icon = (n: 'check' | 'cross' | 'ban', color: string) => iconGroup(n, color, cx - 6, H / 2 - 6, 12, n === 'ban' ? 2.4 : 2.8)
   const mark = running
-    ? ring
+    ? square
     : a.status === 'done'
       ? motion
-        ? `<g class="tick">${icon('check', '#8fdcb9')}</g>` +
+        ? `<g class="tick">${icon('check', HUE.mint)}</g>` +
           motionStyle(`@keyframes tick{from{stroke-dashoffset:24}}.tick path{stroke-dasharray:24;animation:tick ${MOTION.checkMs}ms ${EASE.out} both}`)
-        : icon('check', '#8fdcb9')
+        : icon('check', HUE.mint)
       : a.status === 'error'
-        ? icon('cross', '#f2879a')
-        : icon('ban', '#f3cf7a')
+        ? icon('cross', HUE.rose)
+        : icon('ban', HUE.butter)
   const bodyW = W - markW
   return {
-    body: { svg: svgWindow(0, 0, bodyW, H + pad, frame + sprite + name), width: bodyW, height: H + pad },
+    body: { svg: svgWindow(0, 0, bodyW, H + pad, frame + tag + sprite + name), width: bodyW, height: H + pad },
     mark: { svg: svgWindow(bodyW, 0, markW, H + pad, frame + mark), width: markW, height: H + pad },
   }
 }

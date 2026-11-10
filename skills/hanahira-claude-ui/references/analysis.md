@@ -1,26 +1,51 @@
-# Analysis and research — numbers, spreadsheets, comparisons
+# Analysis and research
 
-Read for any task about data, spreadsheets, metrics, charts, research questions, or choosing between options.
+A look-up for work with numbers, spreadsheets, charts, research across sources, or comparing options. The reader will decide something on the strength of this, so the standard is: every figure can be traced, and the conclusion is no stronger than the evidence.
+
+## Start from the decision
+
+Ask what will be decided with the answer, and how precise it needs to be for that. An estimate good to 20% that arrives today often beats an exact figure next week — but say which one it is.
 
 ## Numbers
 
-- **Compute, never eyeball.** Every number I state comes from code I ran; a formula alone only when the user will compute it themselves (a spreadsheet); with no code tool, show each step of the working and mark the result unverified. Mental arithmetic over more than a couple of values is a guess.
-- **Answer first**, then the 1–3 numbers that support it, each with units, period, and how it was derived ("Apr: 180 vs Mar 135 → +33.3% MoM").
-- **Check the data before the answer**: missing values, duplicates, mixed units or currencies, outliers, totals that don't add up. Report what was found in one line; don't silently clean.
-- **Say what the number can't tell you** when it matters (small sample, one period, correlation not cause).
-- **Spreadsheets**: give formulas the user can paste (`=AVERAGE(B2:B7)`), name the cells they reference, and note the locale if separators differ (`;` vs `,`).
-- Rounding: keep precision through the calculation, round only in the answer, and say how.
-- **Charts**: one message per chart, the type chosen by that message; axes labelled with units; the source data shown or attached.
+- **Compute, never estimate by eye.** Run the calculation with a tool, even for a sum. Then check the result a second way: an order-of-magnitude estimate, a total that must reconcile, a known reference point.
+- **Look at the data before trusting it.** Row count, date range, units, currency, duplicates, blanks, and whether a blank means zero or unknown. Say what was excluded and why.
+- **Keep units and bases attached.** "Up 12%" needs "from what, over what period". Percentage points are not percent. A rate needs its denominator.
+- **Show the path.** Inputs, formula, result — enough for the reader to redo it. In a spreadsheet, use formulas rather than pasted values, keep inputs separate from calculations, and label assumptions as assumptions.
+- **Precision matches the data.** Three significant figures from two-figure inputs is false confidence.
+
+## Traps that change conclusions
+
+| Trap | Check |
+|---|---|
+| Average hiding the spread | Look at the median and the distribution; one large value moves a mean |
+| Small sample | State n. A difference inside the noise is not a finding |
+| Correlation read as cause | Name what else changed at the same time |
+| Survivorship | Ask what is missing from the data and why |
+| Mixed groups | A trend can reverse when groups are split (and when they are combined) |
+| Moving baseline | Compare like with like: same period, same definition, same population |
+| Cherry-picked window | Check whether the result holds if the start date moves |
 
 ## Research
 
-- Anything that changes over time — prices, versions, laws, who holds a role, availability — gets looked up, not recalled. Cite the source; date it if it may age. With no search tool, say it's from memory, as of when, and unverified.
-- Keep **fact** (source says), **inference** (I conclude), and **unknown** apart. One unsupported claim makes the rest suspect.
-- Prefer primary sources (official docs, vendor pages, the data itself) over summaries.
+- **Go to the source.** Prefer the primary document — the standard, the filing, the changelog, the paper — over an article about it. Read the part that matters, not the headline.
+- **Date everything.** Prices, versions, laws and availability change; give the date of the source and look current facts up rather than recalling them.
+- **Two independent sources** for anything the decision rests on. Two articles quoting one press release are one source.
+- **Cite** so the reader can check: name and link, next to the claim.
+- **Separate three things** visibly: what the sources say, what I infer from them, and what remains unknown.
+- When sources disagree, say so and say which is more credible and why. Do not average them into a claim neither made.
 
-## Comparisons and recommendations
+## Comparing options
 
-- **Decide on the user's constraints**, not in general: budget, scale, team skills, deadline, existing stack.
-- **One recommendation** with the deciding reason. Name the runner-up only when it's close, with the one condition that would flip the choice.
-- A table only when there are 3+ options or 3+ criteria that matter; keep it to the criteria that decide.
-- Never a pros/cons dump with no verdict.
+1. Fix the criteria *before* scoring, with the user's priorities — what they must have, what they would trade.
+2. Compare on the same basis: same workload, same period, total cost rather than sticker price.
+3. Present a table: options as columns, criteria as rows, facts in the cells.
+4. Give one recommendation, the reason, and the condition under which the other option wins.
+
+## Charts
+
+One chart, one message; the title states the message. Choose by the question: change over time → line; comparing categories → bar; relationship → scatter; parts of a whole → stacked bar (a pie only for two or three parts). Bars start at zero. Label axes with units, label lines directly rather than with a distant legend, and do not rely on colour alone.
+
+## Reporting
+
+Lead with the answer and how sure it is. Then the two or three figures that carry it, the method in a line, and the limits: what the data cannot show, and what would change the conclusion.

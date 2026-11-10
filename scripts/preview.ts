@@ -9,25 +9,15 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AGENT_CHIP, agentChipParts, prettyModel } from '../hooks/agents'
-import { chipSvg, contextSvg, CONTEXT, dotSvg, HUE, INK, fmtClock, fmtElapsed, GLASS, inCard, loadingSvg, speedoSvg, STAT, statSvg } from '../hooks/chat'
-import { iconGroup, iconSvg } from '../hooks/icons'
+import { HUE, fmtClock, fmtElapsed } from '../hooks/chat'
+import { HUD_CONTEXT, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from '../hooks/hud'
+import { iconSvg } from '../hooks/icons'
 import { SKILLS_VERSION, VERSION } from '../hooks/version'
 import type { Agent } from '../types'
 
-const ACCENT = '#a9b6ec'
-const WARM = HUE.fur
 const font = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,Helvetica,Arial,sans-serif"'
 const nest = (art: string | { svg: string }, x: number, y: number) =>
   `<g transform="translate(${x} ${y})">${typeof art === 'string' ? art : art.svg}</g>`
-
-// Same donut as ringSvg in hooks/register.tsx with `bigIcon`, as the compact band draws it
-// (that file needs the host, so it is restated here).
-const ring = (percent: number, color: string, size: number, icon: Parameters<typeof iconGroup>[0]) => {
-  const stroke = 3.5
-  const r = (44 - stroke) / 2
-  const c = 2 * Math.PI * r
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}"><circle cx="22" cy="22" r="17" fill="${color}" fill-opacity="0.13"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="#2c2c31" stroke-width="${stroke}"/><circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${((percent / 100) * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 22 22)"/>${iconGroup(icon, color, 9.5, 9.5, 25, 2.3)}</svg>`
-}
 
 const now = 1_000_000
 const agents: Agent[] = [
@@ -36,66 +26,73 @@ const agents: Agent[] = [
   { id: 'b1', name: 'bun run build', type: 'shell', kind: 'shell', model: '', effort: null, background: true, status: 'running', startedAt: now - 20_000, endedAt: null, tools: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 ]
 
-const W = 1000
-const PETAL = HUE.petal
-// Agent strip, then the band: the top line on its card, the context card, two lines of stat cards.
+const GAP = 4 // px between two cells, as the band's spacer picture
+const SKY = HUE.sky
+// Agent strip, then the band: the top line, the context cell, two lines of stat cells.
 const top = 24 + AGENT_CHIP.H + 14
 const lineH = 34
-const cellH = STAT.height + GLASS.extra
-const frameH = 10 + lineH + 4 + CONTEXT.height + GLASS.extra + 2 * cellH + 10
-const H = top + frameH + 36
 const parts: string[] = []
-parts.push(`<rect width="${W}" height="${H}" rx="18" fill="#1f1f22"/>`)
 // agent strip, above the band as in a session
 agents.forEach((a, i) => {
   const art = agentChipParts(a, {})
   parts.push(nest(art.body, 28 + i * (AGENT_CHIP.W + 8), 24), nest(art.mark, 28 + i * (AGENT_CHIP.W + 8) + art.body.width, 24))
 })
-// the top line on a card of its own: title and branch, the bar (red while working), the time, the chips
-const y0 = top + 10
-parts.push(`<rect x="16.5" y="${y0 + 0.5}" width="${W - 33}" height="${lineH - 1}" rx="10" fill="#000000" fill-opacity=".3" stroke="#ffffff" stroke-opacity=".08"/>`)
-const ty = y0 + (lineH - 24) / 2
-parts.push(nest(dotSvg(PETAL, true), 30, ty + 5))
-parts.push(nest(iconSvg('folder', '#a3a3ab', 14), 52, ty + 5))
-parts.push(`<text x="72" y="${ty + 17}" ${font} font-size="15" font-weight="600" fill="${INK.value}">spa</text><text x="110" y="${ty + 17}" ${font} font-size="14" fill="#a3a3ab">⎇ main</text>`)
-const chips = [
-  chipSvg({ color: PETAL, label: 'working', dots: true, strong: true }),
-  chipSvg({ color: '#f3cf7a', icon: 'bolt', value: '8', label: 'tools', minWidth: chipSvg({ color: '', icon: 'bolt', value: '999', label: 'tools' }).natural, quiet: true }),
-  chipSvg({ color: '#86868f', icon: 'tag', label: `v${VERSION}`, quiet: true }),
+// The stats, built first: the grid's width is the band's width, and every row ends on it.
+// Each cell is drawn at its column's width and its line's height, as the band draws its grid.
+type Draw = (width?: number, height?: number) => ReturnType<typeof hudCellSvg>
+const gauges: Draw[] = [
+  (width, height) => hudCellSvg('5h limit', '4%', { index: '01', width, height, sub: '96% left · resets 3h 59m', bars: [{ percent: 4, color: SKY }] }),
+  (width, height) => hudCellSvg('7d limit', '22%', { index: '02', width, height, sub: '78% left · resets 2d 8h', bars: [{ label: 'all', percent: 22, color: SKY }, { label: 'fable', percent: 41, color: HUE.petal }] }),
+  (width, height) => hudCellSvg('tok/s', '58', { index: '03', width, height, sub: 'peak 81', bars: [{ percent: (58 / 100) * 100, color: SKY }] }),
+  (width, height) => hudCellSvg('mode', 'Hanahira', { index: '04', width, height, sub: `Active · V${SKILLS_VERSION} · design`, tone: HUE.petal, toggle: { on: true } }),
 ]
-const chipsW = chips.reduce((w, c) => w + c.width, 0) + 8 * (chips.length - 1)
-let chipX = W - 28 - chipsW
-const timeX = chipX - 92
-parts.push(nest(loadingSvg(timeX - 184 - 16, 6, PETAL, { live: true }), 184, ty + 9))
+const figures: Draw[] = ([['cost', '≈$46.22'], ['tokens', '172M'], ['run time', fmtClock(2_730_000)], ['model', prettyModel('claude-fable-5-2')]] as const).map(
+  ([label, value], i) => (width?: number, height?: number) => hudCellSvg(label, value, { index: `0${i + 5}`, width, height, rule: SKY }),
+)
+// Every column the same width: the widest cell's. Every line as tall as its tallest cell.
+const colPx = Math.max(...gauges.map(g => g().natural), ...figures.map(f => f().natural))
+const rowH = [gauges, figures].map(line => Math.max(...line.map(c => c().height)))
+const gridPx = gauges.length * colPx + (gauges.length - 1) * GAP
+const X0 = 14
+const R = X0 + gridPx // the band's right edge
+const frameH = 10 + lineH + 4 + HUD_CONTEXT.height + GAP + rowH[0]! + GAP + rowH[1]! + 10
+const H = top + frameH + 36
+// The picture is as wide as the band and its margins.
+const W = R + X0
+parts.unshift(`<rect width="${W}" height="${H}" rx="18" fill="#1f1f22"/>`)
+// the top line: the name on its slab, the branch, the stripes (running while working), the time, the chips
+const y0 = top + 10
+const ty = y0 + (lineH - 24) / 2
+const slab = slabSvg('spa')
+parts.push(nest(slab, X0, ty + 1))
+const branchX = X0 + slab.width + 10
+parts.push(`<text x="${branchX}" y="${ty + 17}" ${font} font-size="13" fill="#a3a3ab">// main</text>`)
+const chips = [
+  hudChipSvg({ color: SKY, label: 'working', fill: true }),
+  hudChipSvg({ color: '', label: 'tools', value: '8', minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural }),
+  hudChipSvg({ color: '', label: `v${VERSION}`, plain: true }),
+]
+const chipsW = chips.reduce((w, c) => w + c.width, 0) + 6 * (chips.length - 1)
+let chipX = R - chipsW
+const timeX = chipX - 84
+const barX = branchX + 58
+parts.push(`<svg x="${barX}" y="${ty + 7}" width="${timeX - barX - 12}" height="10" overflow="hidden">${stripeSvg(timeX - barX - 12, 10, HUE.hazard, { live: true })}</svg>`)
 parts.push(nest(iconSvg('clock', '#a3a3ab', 14), timeX, ty + 5))
 parts.push(`<text x="${timeX + 20}" y="${ty + 17}" ${font} font-size="14" fill="#a3a3ab">${fmtElapsed(134)}</text>`)
 for (const c of chips) {
   parts.push(nest(c, chipX, ty + (24 - c.height) / 2))
-  chipX += c.width + 8
+  chipX += c.width + 6
 }
-// The preview is the dark theme: the cards' light-theme style is left out.
+// The preview is the dark theme: the cells' light-theme style is left out.
 const dark = <A extends { svg: string }>(a: A) => ({ ...a, svg: a.svg.replace(/<style>@media \(prefers-color-scheme: light\)[\s\S]*?<\/style>/g, '') })
-// the context card: the one figure drawn big, its slider beside it
+// the context cell: the figure, its leaning blocks the band's width
 const cy = y0 + lineH + 4
-parts.push(nest(dark(inCard(contextSvg(15, WARM, { left: '849k left', window: '1M window' }))), 14, cy))
-// the stats: gauge cards over figure cards, on one grid so the columns line up
-// Each cell is drawn at its column's width (a builder per cell), as the band draws its grid.
-const gauges: ((width?: number) => ReturnType<typeof statSvg>)[] = [
-  width => statSvg('4%', '5h limit', { detail: '3h 59m', width, ring: ring(4, WARM, STAT.glyph, 'hourglass') }),
-  width => statSvg('22%', '7d limit', { detail: '2d 8h', width, ring: ring(22, WARM, STAT.glyph, 'calendar') }),
-  width => statSvg('58', 'tok/s', { detail: 'peak 81', width, ring: speedoSvg(58 / 81, ACCENT, STAT.glyph) }),
-  width => statSvg('Hanahira', `Active · V${SKILLS_VERSION}`, { detail: 'design', width, color: PETAL, tone: PETAL, toggle: { on: true } }),
-]
-const figures: [string, string, never, string][] = [['≈$46.22', 'cost', 'coin' as never, '#f3cf7a'], ['172M', 'tokens', 'hash' as never, '#a9b6ec'], [fmtClock(2_730_000), 'time', 'timer' as never, '#8fdcb9'], [prettyModel('claude-opus-5-5'), 'model', 'sparkles' as never, PETAL]]
-const figureArt = figures.map(([v, l, ic, c]) => (width?: number) => statSvg(v, l, { icon: ic, color: c, width }))
-const colW = gauges.map((g, i) => Math.max(g().natural, figureArt[i]!().natural))
-;[gauges, figureArt].forEach((line, r) => {
-  let x = 14
-  line.forEach((cell, i) => {
-    const card = dark(inCard(cell(colW[i])))
-    parts.push(nest(card, x, cy + CONTEXT.height + GLASS.extra + r * cellH))
-    x += card.width + 8
-  })
+parts.push(nest(dark(hudContextSvg(15, SKY, { left: '849k left', window: '1M window', width: gridPx })), X0, cy))
+// gauge cells over figure cells, on the one grid
+let ry = cy + HUD_CONTEXT.height + GAP
+;[gauges, figures].forEach((line, r) => {
+  line.forEach((cell, j) => parts.push(nest(dark(cell(colPx, rowH[r])), X0 + j * (colPx + GAP), ry)))
+  ry += rowH[r]! + GAP
 })
 parts.push(`<text x="${W - 40}" y="${H - 14}" text-anchor="end" ${font} font-size="11" fill="#5c5c63">Hanahira Claude UI · sample numbers</text>`)
 
