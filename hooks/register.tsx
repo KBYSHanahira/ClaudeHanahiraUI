@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Agent, Info, Outcome, Skill, Stats, Tokens, Usage } from '../types'
-import { agentChipParts, agentSpec, agentStats, kindLabel, prettyModel, settledStatus, taskNotice, visibleAgents } from './agents'
+import { agentChipParts, agentSpec, agentStats, kindLabel, prettyModel, settledStatus, shellFates, taskNotice, visibleAgents } from './agents'
 import {
   HUE,
   INK,
@@ -573,6 +573,41 @@ const reconcileAgents = async ($: EngineInterface) => {
   await restAgentBeat($)
 }
 
+// Running cards settled by something other than their own notification: `pick` names how each
+// one ended, or null to leave it running. One redraw once their stay is over, and the beat rests.
+const settleCards = async ($: EngineInterface, pick: (a: Agent) => Agent['status'] | null) => {
+  if (!asList(await read($, agents)).some(a => a.status === 'running' && pick(a))) return
+  const now = await $.clock.now()
+  await update($, agents, l =>
+    asList(l).map(a => {
+      const status = a.status === 'running' ? pick(a) : null
+      return status ? { ...a, status, endedAt: now } : a
+    }),
+  )
+  $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+  await restAgentBeat($)
+}
+
+// A background command's card has no engine list to settle it, and a command stopped from the
+// app's task list sends its notification only with the next prompt: so the host is asked which
+// commands still hold their output file (`<session>/tasks/<id>.output`, the command's stdout).
+// One whose file is there with nobody holding it has ended; its last line says if it was killed.
+// Linux only (/proc): elsewhere the probe says nothing, and the notification settles the card.
+const SHELL_PROBE =
+  '[ -d /proc/self/fd ] || exit 0; ' +
+  'find /proc/[0-9]*/fd -maxdepth 1 -lname "*/$1/tasks/*.output" -printf "H %l\\n" 2>/dev/null | sort -u; ' +
+  'for f in "${TMPDIR:-/tmp}"/claude-*/*/"$1"/tasks/*.output; do [ -f "$f" ] || continue; ' +
+  'if tail -c 64 "$f" | grep -q "\\[killed\\]"; then echo "K $f"; else echo "F $f"; fi; done; echo OK'
+
+const reconcileShells = async ($: EngineInterface) => {
+  if (!asList(await read($, agents)).some(a => a.status === 'running' && a.kind === 'shell')) return
+  const sid = await $.session.id()
+  const out = await $.process.run(['sh', '-c', SHELL_PROBE, 'sh', sid]).catch(() => null)
+  if (!out || out.exitCode !== 0) return
+  const fates = shellFates(out.stdout)
+  await settleCards($, a => (a.kind === 'shell' ? (fates.get(a.id) ?? null) : null))
+}
+
 // Nothing running any more: the beat stops. Every path that settles a card ends here, so the
 // beat never outlives the last running card (a background command settled by its notification).
 const restAgentBeat = async ($: EngineInterface) => {
@@ -590,6 +625,7 @@ const agentBeat = ($: EngineInterface) => {
   agentTicker = $.clock.every(1000, () => {
     beats += 1
     if (beats % 5 === 0) void reconcileAgents($).catch(() => undefined)
+    if (beats % 5 === 2) void reconcileShells($).catch(() => undefined)
     if (!turnBeat) void update($, tick, n => (n ?? 0) + 1)
   })
 }
@@ -615,6 +651,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await locate($)
     await reconcileMode($)
+    // Cards still running from before a reload: the beat that settles them starts again.
+    if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
     const fresh = await $.session.usage().catch(() => null)
     if (fresh) {
@@ -695,6 +733,7 @@ export const register: Register = on => {
       }
       return next(e)
     }
+    if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
     startedAt = await $.clock.now()
     // A beat every second while the turn runs, so the clock and figures move live.
     ticker?.cancel()
@@ -814,6 +853,14 @@ export const register: Register = on => {
         await update($, agents, list => [...asList(list).filter(x => x.id !== id), rec].slice(-12))
         agentBeat($)
       }
+    }
+
+    // A task stopped by hand sends no notification: its card settles here.
+    if (name === 'TaskStop' && !agentId) {
+      const out = (result as { result?: unknown }).result as { task_id?: string } | undefined
+      const input = e as unknown as { task_id?: string; shell_id?: string }
+      const id = out?.task_id ?? input.task_id ?? input.shell_id
+      if (id) await settleCards($, a => (a.id === id ? 'stopped' : null))
     }
 
     // The Agent tool's own record carries the id and the model (a launch the spawn hook missed

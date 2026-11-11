@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
 import { fmtClock, MOTION } from './chat'
-import { AGENT_CHIP, BAR_ROOM, agentSpec, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { AGENT_CHIP, BAR_ROOM, agentSpec, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, shellFates, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -357,5 +357,19 @@ describe('agent or background app', () => {
     expect(settledStatus('failed')).toBe('error')
     expect(settledStatus('killed')).toBe('stopped')
     expect(settledStatus('running')).toBeNull()
+  })
+})
+
+describe('shellFates', () => {
+  const dir = '/tmp/claude-0/proj/sid/tasks'
+  test('a file nobody holds is an ended command; a held one is left running', () => {
+    const fates = shellFates(`H ${dir}/aaa.output\nF ${dir}/aaa.output\nF ${dir}/bbb.output\nK ${dir}/ccc.output\nOK\n`)
+    expect(fates.has('aaa')).toBe(false)
+    expect(fates.get('bbb')).toBe('done')
+    expect(fates.get('ccc')).toBe('stopped')
+  })
+  test('a probe that did not finish settles nothing', () => {
+    expect(shellFates(`F ${dir}/bbb.output\n`).size).toBe(0)
+    expect(shellFates('').size).toBe(0)
   })
 })

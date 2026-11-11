@@ -278,6 +278,25 @@ export const settledStatus = (s: string): Agent['status'] | null =>
   s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' || s === 'stopped' ? 'stopped' : null
 
 /**
+ * The host's word on background commands (register's SHELL_PROBE), read into how each ended:
+ * `H <file>` a command still holds its output file, `F <file>` the file is there, `K <file>` it
+ * ends in `[killed]`; the id is the file's name. A file nobody holds is an ended command, `done`
+ * or `stopped`; a held one, or one with no file, is not named. Nothing without the closing `OK`.
+ */
+export const shellFates = (out: string): Map<string, Agent['status']> => {
+  const fates = new Map<string, Agent['status']>()
+  const lines = out.split('\n').map(l => l.trim())
+  if (!lines.includes('OK')) return fates
+  const idOf = (l: string) => /([^/]+)\.output$/.exec(l)?.[1]
+  const held = new Set(lines.filter(l => l.startsWith('H ')).map(idOf))
+  for (const l of lines) {
+    const id = idOf(l)
+    if (id && (l.startsWith('F ') || l.startsWith('K ')) && !held.has(id)) fates.set(id, l.startsWith('K ') ? 'stopped' : 'done')
+  }
+  return fates
+}
+
+/**
  * One agent as a small HUD card in two pictures laid edge to edge: `body`, what it is on a solid
  * slab in its accent, its sprite and its name in capitals, in a sharp frame that wears the
  * accent while it runs; `mark`, the right end, where a square turns while it runs (`motion`) and
