@@ -75,6 +75,8 @@ const LIVE_SPEED_MS = 150
 // The live speed is the rate over this last stretch of the stream, in ms: short, so the figure
 // follows the stream within a moment, and long enough to smooth over a single burst.
 const LIVE_WINDOW_MS = 800
+// A live speed sets the peak only once it has been held this long, in ms.
+const PEAK_HOLD_MS = 1000
 const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
 // The weeks counted for one model alone (Fable), which the engine does not hand to a plugin:
 // read from the account's usage answer, and when (`at`, ms; 0 before the first try).
@@ -891,9 +893,12 @@ export const register: Register = on => {
         const tps = liveSpeed(samples, at, { charsPerToken, windowMs: LIVE_WINDOW_MS, minMs: 250 })
         if (tps === null) continue
         drawnAt = at
-        // The peak is set by a response's own average alone (below): a buffered burst read live
+        // The peak follows the stream too, or it would sit below the figure beside it: a
+        // response's own average (below) counts the wait for its first piece, so it reads under
+        // the live speed. Only a rate held for a full second counts: a buffered burst read live
         // would set a peak no real speed reaches, and the needle would sit near zero after it.
-        void update($, speed, s => ({ tps, peak: s.peak ?? 0 }))
+        const held = liveSpeed(samples, at, { charsPerToken, windowMs: LIVE_WINDOW_MS + 400, minMs: PEAK_HOLD_MS }) ?? 0
+        void update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, held) }))
       }
     } finally {
       stall?.cancel()
