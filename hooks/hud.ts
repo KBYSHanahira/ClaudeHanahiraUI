@@ -131,10 +131,8 @@ export const CHARGE_CUT = { head: 14, arcs: CELL.valueY + 1, bars: CELL.barsY + 
  *   other way along it; at 3 a hot scan pulse racing ahead, and a tick rail along the top edge.
  * - `foot`: at 3, a tick rail along the bottom edge.
  * With `motion` every line slides along itself for good (a loop, each at its own pace, faster the
- * higher the level). Nothing in it follows the clock or the cell's figure, so its picture stays
- * the same for as long as the level and the size do: set in a strip of its own (hudCellParts
- * `rows`) and drawn in the surface's frame, like the loading bar, it runs on whatever else is
- * redrawn. Every line is drawn two widths long and repeats every width (`spots`).
+ * higher the level); the band draws it still, as its cell is one picture redrawn with its figure,
+ * and a loop in such a picture starts over at every redraw. Every line is drawn two widths long and repeats every width (`spots`).
  */
 const chargeLayers = (level: number, width: number, height: number, motion: boolean) => {
   if (level < 1) return { still: '', head: '', arcs: '', foot: '', lines: '' }
@@ -365,50 +363,26 @@ export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) 
   // The frame running on from `lead` px past the seam. Each arc is two widths long (arcPath), so
   // its copies sit two widths apart: closer, they would lie on each other and glow twice as bright.
   // Drawn `w` wide: only the copies that width shows, and their CSS once.
-  const fillFrom = (lead: number, w: number, lines = true) =>
+  const fillFrom = (lead: number, w: number) =>
     glass(-40, w + 80, c.height) +
     (c.level > 0
       ? (c.level >= 2 ? `<path d="M-40 0.5H${w + 40}M-40 ${c.height - 0.5}H${w + 40}" fill="none" stroke="${CHARGE_COLOR[c.level]}" stroke-opacity="0.65"/>` : '') +
-        (lines ? Array.from({ length: Math.max(1, Math.ceil((w + seam + lead - c.width) / (2 * c.width)) + 1) }, (_, i) => `<g transform="translate(${i * 2 * c.width - seam - lead} 0)">${c.charge.lines}</g>`).join('') : '')
+        (Array.from({ length: Math.max(1, Math.ceil((w + seam + lead - c.width) / (2 * c.width)) + 1) }, (_, i) => `<g transform="translate(${i * 2 * c.width - seam - lead} 0)">${c.charge.lines}</g>`).join(''))
       : '')
   const rest = c.figure + c.meters + c.charge.head
   const arcs = c.charge.arcs + c.charge.foot
   const bare = c.indexArt ? c.base.replace(c.indexArt, '') : c.base
   const index = `<g transform="translate(${-seam} 0)">${c.indexArt}</g>`
-  // The four pictures of the cell, or of the strip of it `h` px tall from `y`. `lit`: the arcs
-  // and nothing that changes (a strip of the charge alone); else everything but the arcs.
-  // Whole (`lit` not given), both.
-  const pieces = (y: number, h: number, lit?: boolean) => {
-    const inner = lit === undefined ? rest + arcs : lit ? c.charge.head + arcs : rest
-    return {
-      left: { svg: slice(0, seam, h, c.base + inner, y), width: seam },
-      // The filler after `even` goes on from where `even` ends, so its arcs run on unbroken.
-      fill: { svg: slice(0, FILL.cell, h, fillFrom(Math.max(0, short), FILL.cell, lit !== false), y), width: FILL.cell },
-      // The right end without the number (one that runs past the seam goes on in `even`) and
-      // without the arcs: it follows a filler cut at any width, where no arc could meet its own.
-      right: { svg: slice(seam, SEAM, h, bare + (lit ? c.charge.head : rest), y), width: SEAM },
-      even: short > 0 ? { svg: slice(0, short, h, fillFrom(0, short, lit !== false) + index, y), width: short } : null,
-    }
-  }
-  // A charged cell in strips, one under another: the arcs in strips of their own (`live`), whose
-  // pictures hold while the figure and the meters change in the strips between them. A picture
-  // that changes is swapped, which starts its motion over; one that holds runs on.
-  const K = CHARGE_CUT
-  const foot = c.level >= 3 ? K.foot : 0
-  const cuts: [number, number, boolean][] =
-    c.level < 1
-      ? []
-      : [
-          ...(c.level >= 3 ? ([[0, K.head, true], [K.head, K.arcs - K.head, false]] as [number, number, boolean][]) : ([[0, K.arcs, false]] as [number, number, boolean][])),
-          [K.arcs, K.bars - K.arcs, true],
-          [K.bars, c.height - K.bars - foot, false],
-          ...(foot ? ([[c.height - foot, foot, true]] as [number, number, boolean][]) : []),
-        ]
+  // The cell's four pictures, each the whole cell's height.
+  const h = c.height
   return {
-    ...pieces(0, c.height),
-    // `id`: a strip of arcs is named by all its picture is drawn from, so a new level or size is
-    // a new picture set in its place, never the old one's source swapped under a running loop.
-    rows: cuts.length ? cuts.map(([y, h, live]) => ({ ...pieces(y, h, live), height: h, live, id: live ? `arc${c.level}-${y}-${c.width}x${c.height}-${Math.max(0, short)}` : `row${y}` })) : null,
+    left: { svg: slice(0, seam, h, c.base + rest + arcs), width: seam },
+    // The filler after `even` goes on from where `even` ends, so its lines run on unbroken.
+    fill: { svg: slice(0, FILL.cell, h, fillFrom(Math.max(0, short), FILL.cell)), width: FILL.cell },
+    // The right end without the number (one that runs past the seam goes on in `even`) and
+    // without the lines: it follows a filler cut at any width, where no line could meet its own.
+    right: { svg: slice(seam, SEAM, h, bare + rest), width: SEAM },
+    even: short > 0 ? { svg: slice(0, short, h, fillFrom(0, short) + index), width: short } : null,
     width: c.width,
     height: c.height,
     natural: c.natural,

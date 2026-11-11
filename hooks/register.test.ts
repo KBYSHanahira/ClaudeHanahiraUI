@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { chargeHolder, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -323,30 +323,3 @@ describe('sameLimits', () => {
   })
 })
 
-describe('chargeHolder', () => {
-  test('it climbs one level at a time, in order, however fast the start', () => {
-    const held = chargeHolder(1200, 2500)
-    // A burst at red from the first moment still shows blue, then purple, then red.
-    expect(held(3, 0)).toBe(1)
-    expect(held(3, 1000)).toBe(1)
-    expect(held(3, 1200)).toBe(2)
-    expect(held(3, 2000)).toBe(2)
-    expect(held(3, 2400)).toBe(3)
-  })
-  test('it steps down one level at a time, and a speed hovering at a threshold does not flap', () => {
-    const held = chargeHolder(1200, 2500)
-    held(3, 0); held(3, 1200); held(3, 2400)
-    expect(held(1, 3000)).toBe(3)
-    expect(held(1, 5500)).toBe(2)
-    expect(held(1, 7900)).toBe(2)
-    expect(held(1, 8000)).toBe(1)
-    // Flapping between 1 and 2 faster than upMs never climbs.
-    for (let t = 9000; t < 12000; t += 500) expect(held(t % 1000 ? 2 : 1, t)).toBe(1)
-  })
-  test('to none at once, and from none it starts again at 1', () => {
-    const held = chargeHolder(1200, 2500)
-    held(2, 0); held(2, 1200)
-    expect(held(0, 1300)).toBe(0)
-    expect(held(3, 1400)).toBe(1)
-  })
-})

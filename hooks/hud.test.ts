@@ -164,22 +164,13 @@ describe('charge', () => {
     // Held still, nothing in it moves.
     expect(hudCellSvg('tok/s', '120', { charge: { level: 3 } }).svg).not.toMatch(/@keyframes|animation/)
   })
-  test('a charged cell comes in strips: the arcs in pictures that hold while the figure changes', () => {
-    const at = (value: string, level = 1) => hudCellParts('tok/s', value, { width: 160, bars: [{ percent: 40, color: HUE.sky }], charge: { level, motion: true } })
-    const a = at('76'), b = at('91')
-    expect(hudCellParts('tok/s', '76', { width: 160 }).rows).toBe(null)
-    expect(a.rows!.map(r => r.live)).toEqual([false, true, false])
-    expect(a.rows!.reduce((h, r) => h + r.height, 0)).toBe(a.height)
-    // The strip of arcs is the same picture whatever the figure reads; the others are not.
-    for (const k of ['left', 'fill', 'right'] as const) expect(a.rows![1]![k].svg).toBe(b.rows![1]![k].svg)
-    expect(a.rows![0]!.left.svg).not.toBe(b.rows![0]!.left.svg)
-    // Only the arcs' strip moves.
-    expect(a.rows![1]!.left.svg).toContain('linear infinite')
-    for (const n of [0, 2]) for (const k of ['left', 'fill', 'right'] as const) expect(a.rows![n]![k].svg).not.toContain('@keyframes')
-    // At 3 the arcs along the top and bottom edges get strips of their own too.
-    const c = at('250', 3)
-    expect(c.rows!.map(r => r.live)).toEqual([true, false, true, false, true])
-    expect(c.rows!.reduce((h, r) => h + r.height, 0)).toBe(c.height)
+  test('a charged cell is one picture, like any other cell: no strips', () => {
+    const p = hudCellParts('tok/s', '76', { width: 160, bars: [{ percent: 40, color: HUE.sky }], charge: { level: 3 } })
+    expect('rows' in p).toBe(false)
+    for (const k of ['left', 'fill', 'right'] as const) {
+      expect(p[k].svg).toContain(`height="${p.height}"`)
+      expect(p[k].svg).not.toMatch(/@keyframes|animation/)
+    }
   })
   test('no repeating pattern strobes: each moves well under half its step a frame', () => {
     for (const width of [120, 260, 420]) {

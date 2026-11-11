@@ -31,7 +31,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { CHARGE_COLOR, SEAM, branchChipSvg, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { SEAM, branchChipSvg, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -65,7 +65,7 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
 // `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
-type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[]; charge?: number }
+type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[] }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
 // How often the live speed redraws the gauge while a response streams, in ms: about seven times a
@@ -240,46 +240,6 @@ const reels = reelHolder()
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 
-/**
- * The charge level the speed cell shows, one level at a time and always in order: it starts at 1
- * the moment there is speed, climbs one level once the speed has stayed above it for `upMs`, and
- * steps back one level once it has stayed below for `downMs`, so a fast start shows 1, then 2,
- * then 3, and a speed hovering at a threshold does not swap the pictures (each swap loads them
- * anew) several times a second. To none (no speed, the turn over) at once.
- */
-export const chargeHolder = (upMs = 250, downMs = 500) => {
-  let shown = 0
-  let aboveSince: number | null = null
-  let belowSince: number | null = null
-  return (level: number, nowMs: number) => {
-    if (level <= 0) {
-      shown = 0
-      aboveSince = belowSince = null
-      return 0
-    }
-    if (shown === 0) {
-      shown = 1
-      aboveSince = belowSince = null
-    }
-    if (level > shown) {
-      belowSince = null
-      aboveSince ??= nowMs
-      if (nowMs - aboveSince >= upMs) {
-        shown++
-        aboveSince = level > shown ? nowMs : null
-      }
-    } else if (level < shown) {
-      aboveSince = null
-      belowSince ??= nowMs
-      if (nowMs - belowSince >= downMs) {
-        shown--
-        belowSince = level < shown ? nowMs : null
-      }
-    } else aboveSince = belowSince = null
-    return shown
-  }
-}
-const chargeHeld = chargeHolder()
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
 const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
 const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
@@ -1178,7 +1138,6 @@ export const register: Register = on => {
       .map(l => ({ ...l, models: l.kind === 'seven_day' ? use.limits.filter(m => weeklyModel(m.kind)) : [] }))
     // Stat tiles: a ring when the figure is a percentage, else the icon.
     const speedPct = sp.tps === null ? 0 : Math.min(100, (sp.tps / speedScale(sp.peak ?? 0)) * 100)
-    const charge = e.props.isWorking ? chargeHeld(chargeLevel(sp.tps), nowMs) : chargeHeld(0, nowMs)
     const tiles: Tile[] = [
       {
         key: 'context',
@@ -1226,8 +1185,7 @@ export const register: Register = on => {
         calm: true,
         name: 'tok/s',
         // Charged while the turn streams: blue from the first token a second, purple from 100, red from 200.
-        charge,
-        bars: [{ percent: speedPct, color: charge ? CHARGE_COLOR[charge]! : THEME.accent, from: from('tps', speedPct) }],
+        bars: [{ percent: speedPct, color: HUE.red, from: from('tps', speedPct) }],
       },
       // Hanahira Claude UI mode: active or not and the skills' version, under the name, and the
       // companions loaded beside the core.
@@ -1289,7 +1247,6 @@ export const register: Register = on => {
           ...(t.bars ? { bars: t.bars } : {}),
           ...(mode !== 'bare' && sub ? { sub } : {}),
           ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
-          ...(t.charge ? { charge: { level: t.charge, motion: true } } : {}),
         },
       ]
     }
@@ -1398,23 +1355,9 @@ export const register: Register = on => {
     const stretch = (key: string, art: Parts, alt: string, props: { isInteractive?: boolean } = {}) => {
       if (!Svg) return []
       type Piece = { svg: string; width: number }
-      // A cell in strips (a charged one): each of its pictures is its strips one under another,
-      // the charge's own in the surface's frame while Claude works, where they run on.
-      const rows = 'rows' in art && art.rows ? art.rows : null
-      const pic = (k: string, of: (r: { left: Piece; fill: Piece; right: Piece; even: Piece | null }) => Piece | null) =>
-        rows ? (
-          <Box key={k} flexDirection="column" flexShrink={0}>
-            {rows.map(r => {
-              const p = of(r)!
-              // A strip of charge keeps one alt for good: Desktop loads a picture anew (blank for a
-              // moment, its loop started over) when any of its props changes, and the cell's alt
-              // carries the figure, which changes many times a second while Claude answers.
-              return <Svg key={`${k}-${r.id}`} source={p.svg} alt={r.live ? 'speed charge' : alt} width={p.width} height={r.height} {...(r.live ? loop : {})} />
-            })}
-          </Box>
-        ) : (
-          <Svg key={k} source={of(art as never)!.svg} alt={alt} width={of(art as never)!.width} height={art.height} {...props} />
-        )
+      const pic = (k: string, of: (r: { left: Piece; fill: Piece; right: Piece; even: Piece | null }) => Piece | null) => (
+        <Svg key={k} source={of(art as never)!.svg} alt={alt} width={of(art as never)!.width} height={art.height} {...props} />
+      )
       return [
         pic(key, r => r.left),
         ...('even' in art && art.even
@@ -1603,8 +1546,7 @@ export const register: Register = on => {
                         <Text dimColor>{` ${chosen.mode === 'bare' ? c.bareLabel : c.label}`}</Text>
                       </Text>
                     )
-                  // Each cell in three pictures, stretched to its share of the line; a charged one
-                  // in strips, its arcs in pictures of their own (hudCellParts `rows`).
+                  // Each cell in three pictures, stretched to its share of the line.
                   const cell = stretch(c.key, c.parts(chosen.colW[j], chosen.mode, lineH[r], Math.max(...chosen.colW) - SEAM), c.alt, c.live ? loop : {})
                   return j === 0 ? cell : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="gap" width={GRID_GAP} height={1} />, ...cell]
                 })}
