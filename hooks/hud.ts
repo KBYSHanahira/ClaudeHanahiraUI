@@ -35,11 +35,21 @@ const cap = (x: number, y: number, text: string, fs: number, fill: string, opts:
 // wide bold face: a system with no condensed one must not run it past its cell.
 /** A cell's measures: its padding, the slab label, the figure, the meters and the line under them. */
 export const CELL = { pad: 10, tabH: 14, tabFs: 10, fs: 22, valueY: 38, barsY: 45, barH: 4, barPitch: 9, namedPitch: 13, segs: 10, segGap: 2, subFs: 10, subLine: 14, ruleH: 8, bottom: 7, minWidth: 96 }
+/**
+ * A cell may be cut `SEAM` px from its right edge: nothing but the frame's lines crosses there
+ * (the meters, their shares and the faint number end on it; the corner mark is past it), so a
+ * filler set in the cut widens the cell without redrawing it (hudCellParts).
+ */
+export const SEAM = CELL.pad
+/** The widest a filler is drawn, in px: a cell's, and a whole line's. The surface clips it to the room. */
+export const FILL = { cell: 320, line: 2400 }
 
 /** The cell's ground: a sharp near-black card with a hairline, and a `+` in two corners. */
-const frame = (width: number, height: number, low = true) =>
+const glass = (x: number, width: number, height: number) =>
   `<defs><filter id="glass-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.10"/></filter></defs>` +
-  `<rect class="glass" x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="#000000" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.12"/>` +
+  `<rect class="glass" x="${x + 0.5}" y="0.5" width="${width - 1}" height="${height - 1}" fill="#000000" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.12"/>`
+const frame = (width: number, height: number, low = true) =>
+  glass(0, width, height) +
   `<path d="M${width - 10} 6.5h5M${width - 7.5} 4v5${low ? `M5 ${height - 6.5}h5M7.5 ${height - 9}v5` : ''}" stroke="${INK.detail}" stroke-opacity="0.7" fill="none"/>`
 
 /** A slab label at the cell's top-left corner: solid, its text knocked out dark, its end cut on a slant. */
@@ -74,10 +84,10 @@ export const blocksSvg = (id: string, x: number, y: number, w: number, h: number
   )
 }
 
-/** The speed at which each charge level starts, in tokens a second: blue, then purple, then gold. */
-export const CHARGE_AT = [50, 100, 200]
-/** A speed's charge level, 0 (none) to 3: one more for each of CHARGE_AT it has reached. */
-export const chargeLevel = (tps: number | null) => (tps === null || !Number.isFinite(tps) ? 0 : CHARGE_AT.filter(at => tps >= at).length)
+/** The speed at which each charge level starts, in tokens a second: blue from the first token, then purple, then gold. */
+export const CHARGE_AT = [0, 100, 200]
+/** A speed's charge level, 0 (none: no reading, or no speed) to 3: one more for each of CHARGE_AT it has reached. */
+export const chargeLevel = (tps: number | null) => (tps === null || !Number.isFinite(tps) || tps <= 0 ? 0 : CHARGE_AT.filter(at => tps >= at).length)
 /** Each level's colour: sky, lilac, then the warning yellow at the top. */
 export const CHARGE_COLOR = ['', HUE.sky, HUE.lilac, HUE.hazard]
 
@@ -92,16 +102,30 @@ const jitter = (seed: number, k: number) => {
 /**
  * An electric arc across `width` px at height `y`: a jagged line, `amp` px to either side,
  * drawn two widths long with the same shape in each, so sliding it one width shows no seam.
+ * `forks`: short branches off some of its corners, the same in each width too.
  */
 const arcPath = (width: number, y: number, amp: number, seed: number) => {
   const n = Math.max(6, Math.round(width / 8))
-  const pt = (k: number) => {
-    const j = ((k % n) + n) % n
-    return `${((width * (k + (jitter(seed, j * 2) - 0.5) * 0.6)) / n).toFixed(1)} ${(y + (jitter(seed, j * 2 + 1) - 0.5) * 2 * amp).toFixed(1)}`
+  const mod = (k: number) => ((k % n) + n) % n
+  const at = (k: number) => {
+    const j = mod(k)
+    return [(width * (k + (jitter(seed, j * 2) - 0.5) * 0.6)) / n, y + (jitter(seed, j * 2 + 1) - 0.5) * 2 * amp] as const
   }
-  let d = `M${pt(-n)}`
-  for (let k = -n + 1; k <= n; k++) d += `L${pt(k)}`
-  return d
+  const pt = (k: number) => `${at(k)[0].toFixed(1)} ${at(k)[1].toFixed(1)}`
+  let line = `M${pt(-n)}`
+  let forks = ''
+  for (let k = -n; k <= n; k++) {
+    if (k > -n) line += `L${pt(k)}`
+    const j = mod(k)
+    // About one corner in four throws a branch: two short strokes, away from the line's middle.
+    if (jitter(seed, 900 + j) < 0.26) {
+      const [x, py] = at(k)
+      const up = py < y ? -1 : 1
+      const r = (i: number, lo: number, hi: number) => lo + jitter(seed, 950 + j * 4 + i) * (hi - lo)
+      forks += `M${x.toFixed(1)} ${py.toFixed(1)}l${r(0, 2.5, 4.5).toFixed(1)} ${(up * r(1, 1.5, 3)).toFixed(1)}l${r(2, 1.5, 3.5).toFixed(1)} ${(up * r(3, 0.5, 2.5)).toFixed(1)}`
+    }
+  }
+  return { line, forks }
 }
 
 /** A small lightning bolt, `size` px tall, its top-left corner at (`x`, `y`). */
@@ -128,40 +152,59 @@ export const CHARGE_CUT = { head: 14, arcs: 40, bars: 49, foot: 3, drop: 4 }
  * itself (a negative animation-delay), and a redraw goes on from where the last one was.
  */
 const chargeLayers = (level: number, width: number, height: number, motion: boolean, at = 0) => {
-  if (level < 1) return { still: '', head: '', arcs: '', foot: '' }
+  if (level < 1) return { still: '', head: '', arcs: '', foot: '', lines: '' }
   const color = CHARGE_COLOR[level]!
   const C = CELL
   const pace = [0, 1500, 1050, 760][level]!
   let n = 0
   const into = (ms: number) => `;animation-delay:-${Math.round(((at % ms) + ms) % ms)}ms`
-  // One arc, sliding one width a loop; `back` slides it the other way.
+  // One arc, sliding one width a loop; `back` slides it the other way. Drawn as lightning: a
+  // soft glow in two widths under the line, the line with its branches (which flickers, each
+  // arc at its own beat), and a hot white thread down its middle.
   const arc = (y: number, amp: number, seed: number, w: number, ms: number, back = false) => {
     const cls = `a${n++}`
+    const a = arcPath(width, y, amp, seed)
+    const beat = 420 + ((seed * 131) % 5) * 90
     return (
-      `<path d="${arcPath(width, y, amp, seed)}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="bevel"${motion ? ` class="${cls}"` : ''}/>` +
-      (motion ? motionStyle(`@keyframes ${cls}{to{transform:translateX(${back ? -width : width}px)}}.${cls}{${back ? `transform:translateX(${width}px);` : ''}animation:${cls} ${ms}ms linear infinite${into(ms)}}`) : '')
+      `<g${motion ? ` class="${cls}"` : ''} fill="none" stroke="${color}" stroke-linejoin="round" stroke-linecap="round">` +
+      // Each stroke carries the line itself: a `use` of one shared path would be shorter, but a
+      // surface that scrubs the markup may drop it, and the arcs with it.
+      `<path d="${a.line}" stroke-width="${w + 5}" stroke-opacity="0.09"/>` +
+      `<path d="${a.line}" stroke-width="${w + 2}" stroke-opacity="0.24"/>` +
+      `<g${motion ? ` class="${cls}f"` : ''}><path d="${a.line}${a.forks}" stroke-width="${w}" stroke-linejoin="bevel"/>` +
+      `<path d="${a.line}" stroke="#ffffff" stroke-width="${(w * 0.38).toFixed(2)}" stroke-opacity="0.8"/></g>` +
+      `</g>` +
+      (motion
+        ? motionStyle(
+            `@keyframes ${cls}{to{transform:translateX(${back ? -width : width}px)}}.${cls}{${back ? `transform:translateX(${width}px);` : ''}animation:${cls} ${ms}ms linear infinite${into(ms)}}` +
+              `@keyframes ${cls}f{0%,100%{opacity:1}7%{opacity:.45}10%{opacity:1}48%{opacity:.7}52%{opacity:1}81%{opacity:.3}84%{opacity:1}}.${cls}f{animation:${cls}f ${beat}ms linear infinite${into(beat)}}`,
+          )
+        : '')
     )
   }
   const flicker = motion ? motionStyle(`@keyframes zf{0%,100%{opacity:1}42%{opacity:.35}47%{opacity:1}71%{opacity:.55}}.zf{animation:zf ${900 - level * 170}ms linear infinite${into(900 - level * 170)}}`) : ''
   const spark = (x: number, y: number, dx: number, dy: number) => `<path d="M${x} ${y}l${dx * 5} ${dy * 3}l${-dx * 2} ${dy * 2}l${dx * 5} ${dy * 4}" fill="none" stroke="${color}" stroke-width="1.1"/>`
   const arcY = (CHARGE_CUT.arcs + CHARGE_CUT.bars) / 2
+  // Drawn in this order, so each arc keeps its class name.
+  const top = level >= 3 ? arc(1.6, 1.3, 51, 1.4, pace) : ''
+  const arcs =
+    arc(arcY, level >= 2 ? 3.2 : 2.6, level, 1.3, pace) +
+    (level >= 2 ? arc(arcY, 3.6, level + 20, 0.8, Math.round(pace * 0.62), true) : '') +
+    (level >= 3 ? arc(arcY, 3, level + 40, 1, Math.round(pace * 0.45)) : '')
+  const foot = level >= 3 ? arc(height - 1.6, 1.3, 52, 1.4, pace, true) : ''
   return {
     still:
       level >= 2
         ? `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="none" stroke="${color}" stroke-opacity="0.65"/>` +
-          spark(width - 3, height - 16, -1, 1) +
-          spark(width - 4, C.tabH + 6, -1, 1) +
+          spark(width - SEAM - 1, height - 16, -1, 1) +
+          spark(width - SEAM - 1, C.tabH + 6, -1, 1) +
           spark(width - 46, height - 15, 1, 1)
         : '',
-    head:
-      bolt(width - 23, 2, 10, color, motion ? 'zf' : '') +
-      (level >= 3 ? bolt(width - 35, 2, 10, color, motion ? 'zf' : '') + arc(1.6, 1.3, 51, 1.4, pace) : '') +
-      flicker,
-    arcs:
-      arc(arcY, level >= 2 ? 3.2 : 2.6, level, 1.3, pace) +
-      (level >= 2 ? arc(arcY, 3.6, level + 20, 0.8, Math.round(pace * 0.62), true) : '') +
-      (level >= 3 ? arc(arcY, 3, level + 40, 1, Math.round(pace * 0.45)) : ''),
-    foot: level >= 3 ? arc(height - 1.6, 1.3, 52, 1.4, pace, true) : '',
+    head: bolt(width - 23, 2, 10, color, motion ? 'zf' : '') + (level >= 3 ? bolt(width - 35, 2, 10, color, motion ? 'zf' : '') : '') + top + flicker,
+    arcs,
+    foot,
+    // Every arc, and nothing else: each repeats every `width` px, so copies set `width` apart run on as one line.
+    lines: top + arcs + foot,
   }
 }
 
@@ -174,6 +217,8 @@ export const cellHeight = (bars: number, sub: boolean, rule = false, named = fal
 /** What a cell is given beyond its name and figure (hudCellSvg). */
 export type CellOpts = {
   index?: string
+  /** Where the faint number ends, in px from the cell's left edge, when past the cell's own seam: a line of cells stretched to one width sets it for all (hudCellParts). */
+  indexEnd?: number
   width?: number
   height?: number
   sub?: string
@@ -200,7 +245,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const nameW = labelled ? Math.max(...bars.map(b => capWidth((b.label ?? '').toUpperCase(), 9, 1))) + 6 : 0
   const pctW = labelled ? capWidth('100%', 10) + 6 : 0
   const subW = opts.sub ? capWidth(opts.sub.toUpperCase(), C.subFs, 0.8) : 0
-  const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, slab.width + 22, x + subW + 8, C.pad + nameW + 60 + pctW + C.pad)))
+  const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, slab.width + 22, x + subW + SEAM, C.pad + nameW + 60 + pctW + C.pad)))
   const width = Math.max(natural, Math.round(opts.width ?? 0))
   const pitch = labelled ? C.namedPitch : C.barPitch
   const height = Math.max(cellHeight(bars.length, opts.sub !== undefined, opts.rule !== undefined, labelled), Math.round(opts.height ?? 0))
@@ -222,9 +267,12 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const charge = chargeLayers(level, width, height, opts.charge?.motion === true, opts.charge?.at ?? 0)
   // The cell in layers: what never changes while its name, size and charge hold; the figure;
   // the meters and the line under them.
+  const indexArt = opts.index
+    ? `<text x="${Math.max(width - SEAM, Math.round(opts.indexEnd ?? 0))}" y="${height + 3}" text-anchor="end" ${FACE} font-size="42" font-weight="700" fill="${INK.value}" fill-opacity="0.06">${esc(opts.index)}</text>`
+    : ''
   const base =
     frame(width, height) +
-    (opts.index ? `<text x="${width - 5}" y="${height + 3}" text-anchor="end" ${FACE} font-size="42" font-weight="700" fill="${INK.value}" fill-opacity="0.06">${esc(opts.index)}</text>` : '') +
+    indexArt +
     slab.svg +
     charge.still
   const figure =
@@ -237,7 +285,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
     (opts.rule ? `<path d="M${C.pad} ${C.barsY + 1}h22" stroke="${opts.rule}" stroke-width="2"/>` : '') +
     (opts.sub ? cap(x, subY, opts.sub, C.subFs, opts.tone ?? INK.detail, { ls: 0.8 }) : '') +
     (lower ? '</g>' : '')
-  return { width, height, natural, level, base, figure, meters, charge }
+  return { width, height, natural, level, base, figure, meters, charge, indexArt }
 }
 
 /** The cell's svg document, `h` px tall from `y`. */
@@ -259,6 +307,52 @@ export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) =>
   return { svg, width: c.width, height: c.height, natural: c.natural }
 }
 
+/**
+ * A picture of `w` px from `x` of a drawing `h` tall: one piece of a cell cut at its seam.
+ * `slice`: a surface that fits a picture into a narrower box keeps its height and crops its
+ * right end, where the default would shrink the whole drawing into the box (stripeSvg too).
+ */
+const slice = (x: number, w: number, h: number, inner: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="xMinYMid slice">${x ? `<g transform="translate(${-x} 0)">${inner}</g>` : inner}${themeStyle()}</svg>`
+
+/** A drawing `width` wide cut at `seam`, with `fill` (drawn from x = 0, `fillW` wide) to set in the cut. */
+const stretchParts = (inner: string, fill: string, fillW: number, width: number, height: number, seam: number) => ({
+  left: { svg: slice(0, seam, height, inner), width: seam },
+  fill: { svg: slice(0, fillW, height, fill), width: fillW },
+  right: { svg: slice(seam, width - seam, height, inner), width: width - seam },
+  width,
+  height,
+})
+
+/**
+ * hudCellSvg in three pictures, for a band whose width in px is not known: `left` and `right`
+ * are the cell cut at its seam, and `fill` is the frame running on (a charged cell's arcs too),
+ * drawn `FILL.cell` wide. The band sets `fill` between them in a box that takes the room its
+ * line has left and clips the rest, so the cell is exactly as wide as the surface gives it.
+ * With `indexEnd` past the seam, `even` is a filler exactly that much wide, to set before `fill`.
+ */
+export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) => {
+  const c = cellLayers(label, value, opts)
+  const seam = c.width - SEAM
+  const run =
+    c.level > 0
+      ? (c.level >= 2 ? `<path d="M-40 0.5H${FILL.cell + 40}M-40 ${c.height - 0.5}H${FILL.cell + 40}" fill="none" stroke="${CHARGE_COLOR[c.level]}" stroke-opacity="0.65"/>` : '') +
+        Array.from({ length: Math.ceil((FILL.cell + seam) / c.width) }, (_, i) => `<g transform="translate(${i * c.width - seam} 0)">${c.charge.lines}</g>`).join('')
+      : ''
+  const fill = glass(-40, FILL.cell + 80, c.height) + run
+  // What the cell is short of `indexEnd`: the frame running on from the seam, with the rest of
+  // the faint number, so the number sits at one place in every cell of an evened line.
+  const short = Math.min(FILL.cell, Math.round(opts.indexEnd ?? 0) - seam)
+  const rest = c.figure + c.meters + c.charge.head + c.charge.arcs + c.charge.foot
+  return {
+    ...stretchParts(c.base + rest, fill, FILL.cell, c.width, c.height, seam),
+    // The right end without the number: one that runs past the seam goes on in `even`, not here.
+    right: { svg: slice(seam, SEAM, c.height, (c.indexArt ? c.base.replace(c.indexArt, '') : c.base) + rest), width: SEAM },
+    even: short > 0 ? { svg: slice(0, short, c.height, fill + `<g transform="translate(${-seam} 0)">${c.indexArt}</g>`), width: short } : null,
+    natural: c.natural,
+  }
+}
+
 /** The context line's measures: its height, the figure, the leaning blocks and the gaps. */
 export const HUD_CONTEXT = { height: 30, fs: 17, baseline: 21, barH: 10, slant: 4.5, pitch: 9, minBar: 150, gap: 12, stackGap: 6 }
 
@@ -267,7 +361,7 @@ export const HUD_CONTEXT = { height: 30, fs: 17, baseline: 21, barH: 10, slant: 
  * blocks that takes the room, and what is left. With `stack` the blocks go under, for a band
  * too narrow for one line. The figure takes the meter's colour when `warn`.
  */
-export const hudContextSvg = (
+const contextLayers = (
   percent: number | null,
   color: string,
   opts: { left?: string | null; window?: string | null; stack?: boolean; width?: number; warn?: boolean; from?: Since<string> | string | null; fromPercent?: Since<number> | number | null } = {},
@@ -287,17 +381,30 @@ export const hudContextSvg = (
   const barX = opts.stack ? CELL.pad : valueX + valueW + X.gap
   const barW = opts.stack ? width - CELL.pad - end : width - barX - (words ? X.gap + wordsW : 0) - end
   const barY = opts.stack ? X.height - 2 : (X.height - X.barH) / 2
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+  const inner =
     frame(width, height, false) +
     slab.svg +
     reelText(valueX, X.baseline, X.fs, `${FACE} font-size="${X.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
     blocksSvg('ctx', barX, barY, barW, X.barH, percent, color, { n: Math.max(8, Math.floor(barW / X.pitch)), gap: 3, slant: X.slant, from: opts.fromPercent }) +
-    (words ? cap(width - end, X.baseline - 1.5, words, 10, INK.detail, { ls: 1, anchor: 'end' }) : '') +
-    themeStyle() +
-    `</svg>`
-  return { svg, width, height, natural }
+    (words ? cap(width - end, X.baseline - 1.5, words, 10, INK.detail, { ls: 1, anchor: 'end' }) : '')
+  // Where the line may be cut: after the meter and before the words; stacked, after both.
+  const seam = Math.round(opts.stack || !words ? width - end : width - end - wordsW - X.gap / 2)
+  return { inner, width, height, natural, seam }
 }
+
+type ContextOpts = Parameters<typeof contextLayers>[2]
+
+export const hudContextSvg = (percent: number | null, color: string, opts: ContextOpts = {}) => {
+  const c = contextLayers(percent, color, opts)
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${c.width} ${c.height}" width="${c.width}" height="${c.height}">${c.inner}${themeStyle()}</svg>`, width: c.width, height: c.height, natural: c.natural }
+}
+
+/** hudContextSvg in three pictures (see hudCellParts): the meter stays, the words keep the right end. */
+export const hudContextParts = (percent: number | null, color: string, opts: ContextOpts = {}) => {
+  const c = contextLayers(percent, color, opts)
+  return { ...stretchParts(c.inner, glass(-40, FILL.line + 80, c.height), FILL.line, c.width, c.height, c.seam), natural: c.natural }
+}
+
 
 /** A chip of the top line: its height, its text and how far its ends lean. */
 export const HUD_CHIP = { height: 20, fs: 11, lean: 5, pad: 9, baseline: 14 }
@@ -501,4 +608,21 @@ export const toolKind = (tool: string): keyof typeof TOOL_KIND => {
   if (/^Web(Fetch|Search)$/.test(tool)) return 'net'
   if (/^(Agent|Task|SendMessage)$/.test(tool)) return 'unit'
   return 'tool'
+}
+
+/**
+ * The tags of the rows around a tool call, in the tool tags' look: what a call gave back (or its
+ * error), a run of calls the transcript folds into one line, and what a slash command printed.
+ */
+export const ROW_TAG = {
+  result: { label: 'output', color: INK.detail },
+  error: { label: 'error', color: HUE.rose },
+  group: { label: 'tools', color: INK.label },
+  command: { label: 'command', color: HUE.fur },
+}
+
+/** A folded run's tag: its calls' own kind where they are all of one, else the plain `tools`. */
+export const groupTag = (tools: readonly string[]) => {
+  const kinds = [...new Set(tools.map(toolKind))]
+  return kinds.length === 1 ? TOOL_KIND[kinds[0]!] : ROW_TAG.group
 }

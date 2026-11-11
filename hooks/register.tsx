@@ -32,7 +32,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { CHARGE_COLOR, SPEAKER, TOOL_KIND, TOOL_TAG, chargeLevel, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, speakerSvg, stripeSvg, toolKind, toolTagSvg } from './hud'
+import { CHARGE_COLOR, ROW_TAG, SEAM, SPEAKER, TOOL_KIND, TOOL_TAG, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, speakerSvg, stripeSvg, groupTag, toolKind, toolTagSvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -271,7 +271,8 @@ const RING = 38
 // The px between two cards of the grid, drawn as an empty picture so it is exact (a Box gap is
 // in cells). With each card's own margin (GLASS.margin) the cards sit 8px apart.
 const GRID_GAP = 4
-const GAP_ART = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GRID_GAP} 1" width="${GRID_GAP}" height="1"></svg>`
+const blankArt = (width: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 1" width="${width}" height="1"><rect width="${width}" height="1" fill="none"/></svg>`
+const GAP_ART = blankArt(GRID_GAP)
 
 // Stat cards: least width in cells, so they do not shrink to their text.
 const CARD_MIN = 18
@@ -289,7 +290,7 @@ const THEME = {
   // Two even rows of one-line stats (gauges over figures, in aligned columns) in place of
   // three-line tiles over tall cards: about half the height. false brings back the full band.
   compact: true,
-  barPx: 900, // widest the loading bar grows, in px
+  barPx: 2400, // widest the loading bar is drawn, in px: the surface clips it to its room
   barHeight: 10, // its height in px: leaning stripes
   barMin: 200, // the least the bar is drawn on the top line, in px: under that it takes its own line
   barGap: 4, // room under the bar, in px: keeps it off the rings below
@@ -300,7 +301,8 @@ const THEME = {
   // The transcript in the band's look: a header over the person's messages and over each
   // reply, and a tag before each tool row. Any of the three set false leaves those rows as
   // the app draws them. `motion` false draws them still.
-  chat: { user: true, reply: true, tools: true, motion: true, replyName: 'Claude' },
+  // `results`: a tag on what a tool call gave back; `groups`: on a folded run of calls; `commands`: on a slash command's output.
+  chat: { user: true, reply: true, tools: true, results: true, groups: true, commands: true, motion: true, replyName: 'Claude' },
 }
 
 /**
@@ -537,7 +539,7 @@ const pillEl = (els: { Text: any; Svg: any; Box?: any }, p: PillSpec) => {
   const word = p.text.charAt(0).toUpperCase() + p.text.slice(1)
   return (
     <Box gap={1} alignItems="center">
-      {mark ? <Svg source={badgeSvg(color, mark, ROW.tile, p.running === true)} alt="" width={ROW.tile} height={ROW.tile} /> : null}
+      {mark ? <Svg source={badgeSvg(color, mark, ROW.tile, p.running === true)} alt={mark} width={ROW.tile} height={ROW.tile} /> : null}
       <Text weight="semibold" color={color}>{word}</Text>
     </Box>
   )
@@ -547,7 +549,7 @@ const pillEl = (els: { Text: any; Svg: any; Box?: any }, p: PillSpec) => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, size: number, fallback: string) => {
   const { Text, Svg } = els
-  return Svg ? <Svg source={themed(iconSvg(name, color, size))} alt="" width={size} height={size} /> : <Text dimColor>{fallback}</Text>
+  return Svg ? <Svg source={themed(iconSvg(name, color, size))} alt={name} width={size} height={size} /> : <Text dimColor>{fallback}</Text>
 }
 
 // A second beat while an agent runs: it can outlive the turn that started it.
@@ -626,7 +628,7 @@ const agentBeat = ($: EngineInterface) => {
 }
 
 /** Every tool tag is as wide as the widest, so the rows after them line up. */
-const TAG_WIDTH = Math.max(...Object.values(TOOL_KIND).map(k => toolTagSvg(k.label, k.color).natural))
+const TAG_WIDTH = Math.max(...[...Object.values(TOOL_KIND), ...Object.values(ROW_TAG)].map(k => toolTagSvg(k.label, k.color).natural))
 
 /**
  * How long ago the row `id` came, in ms, while its coming-in (`ms` long) still plays; else null.
@@ -1211,7 +1213,7 @@ export const register: Register = on => {
         color: THEME.accent,
         calm: true,
         name: 'tok/s',
-        // Electric while the turn streams fast: blue from 50 tokens a second, purple from 100, gold from 200.
+        // Electric while the turn streams: blue from the first token a second, purple from 100, gold from 200.
         charge,
         bars: [{ percent: speedPct, color: charge ? CHARGE_COLOR[charge]! : THEME.accent, from: from('tps', speedPct) }],
       },
@@ -1258,7 +1260,7 @@ export const register: Register = on => {
     // over everything else (narrower still); `bare`, one line without the detail.
     type Mode = 'line' | 'stack' | 'tall' | 'bare'
     // `live`: the cell moves, so it is drawn in the surface's frame.
-    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg> }
+    type Cell = { key: string; alt: string; value: string; label: string; bareLabel: string; live?: boolean; draw: (width?: number, mode?: Mode, height?: number) => ReturnType<typeof hudCellSvg>; parts: (width?: number, mode?: Mode, height?: number, indexEnd?: number) => ReturnType<typeof hudCellParts> }
     // Context is the hero line above the grid (below); the other gauges share the grid.
     // What a gauge's cell is drawn from.
     const cellArgs = (t: Tile, width: number | undefined, mode: Mode, height: number | undefined): Parameters<typeof hudCellSvg> => {
@@ -1292,9 +1294,11 @@ export const register: Register = on => {
       // A HUD cell (hudCellSvg): its name on the slab, the figure, its meters, and under them
       // what is left and the detail on one dim line, which `bare` leaves out.
       draw: (width, mode = 'line', height) => hudCellSvg(...cellArgs(t, width, mode, height)),
+      parts: (width, mode = 'line', height, indexEnd) => { const [name, big, o] = cellArgs(t, width, mode, height); return hudCellParts(name, big, { ...o, indexEnd }) },
     }))
     const figureCells: Cell[] = cards.map(c => {
       const label = c.label.toLowerCase()
+      const figureOpts = (width?: number, height?: number) => ({ index: String(index(`card-${c.label}`)).padStart(2, '0'), width, height, rule: THEME.accent, reel: c.roll ? reel(c.roll, c.value) : null })
       return {
         key: `card-${c.label}`,
         alt: `${c.label} ${c.value}`,
@@ -1302,8 +1306,8 @@ export const register: Register = on => {
         label,
         bareLabel: label,
         // A figure has no meter: a short accent rule under it instead.
-        draw: (width, _mode, height) =>
-          hudCellSvg(label, c.value, { index: String(index(`card-${c.label}`)).padStart(2, '0'), width, height, rule: THEME.accent, reel: c.roll ? reel(c.roll, c.value) : null }),
+        draw: (width, _mode, height) => hudCellSvg(label, c.value, figureOpts(width, height)),
+        parts: (width, _mode, height, indexEnd) => hudCellParts(label, c.value, { ...figureOpts(width, height), indexEnd }),
       }
     })
     // The stats sit on a grid: gauges in the first lines, figures under them, k columns to a
@@ -1360,14 +1364,39 @@ export const register: Register = on => {
     // grid; else each column keeps its own (the rows still line up).
     const evenW = picked.colW.map(() => Math.max(...picked.colW))
     const chosen = { ...picked, colW: lineW(evenW) <= roomPx ? evenW : picked.colW }
-    // The band's one width: the grid's. The context line is drawn exactly that wide (its meter
-    // takes the room), and the top line's card stretches to it (the band shrinks to its widest
-    // row), so all three end on one right edge.
+    // The grid's width as drawn: the least the band is. The band itself takes the pane's whole
+    // width, which it cannot know in px (a cell's px differ with the app's text size), so the
+    // surface's own layout gives it: every cell and the context line are cut at a seam, and a
+    // filler in the cut takes what room the line has left (`stretch`). All rows so end on the
+    // pane's right edge, whatever its size.
     const gridPx = lineW(chosen.colW)
+    // What a column is short of the widest (none where the columns were drawn even).
+    const evenPx = (j: number) => Math.max(...chosen.colW) - (chosen.colW[j] ?? 0)
     const ctxWidth = gridPx
     const ctxLine = hudContextSvg(use.percent, ctxColor, { ...ctxOpts, width: ctxWidth })
     // On its own glass card, like the cells under it; too narrow for one line, the meter goes under.
-    const ctxArt = ctxLine.natural > ctxWidth ? hudContextSvg(use.percent, ctxColor, { ...ctxOpts, stack: true, width: ctxWidth }) : ctxLine
+    const ctxArt = hudContextParts(use.percent, ctxColor, { ...ctxOpts, stack: ctxLine.natural > ctxWidth, width: ctxWidth })
+    // A picture in three (hudCellParts): its two ends as drawn, and between them the filler, in
+    // a box that starts from no width, grows into the room left and clips the filler to it.
+    type Parts = ReturnType<typeof hudCellParts> | ReturnType<typeof hudContextParts>
+    // `art.even`: a cell narrower than its line's widest has a second filler that makes it up,
+    // one that starts that wide and gives way first where the line is short of room: with room,
+    // every cell of a line comes out the same width (and its faint number at the same place);
+    // without, each still shows whole.
+    const stretch = (key: string, art: Parts, alt: string, props: { isInteractive?: boolean } = {}) => !Svg ? [] : [
+      <Svg key={key} source={art.left.svg} alt={alt} width={art.left.width} height={art.height} {...props} />,
+      ...('even' in art && art.even
+        ? [
+            <Box key={`${key}-even`} flexGrow={0} flexShrink={1} minWidth={0} overflow="hidden">
+              <Svg source={art.even.svg} alt={alt} width={art.even.width} height={art.height} {...props} />
+            </Box>,
+          ]
+        : []),
+      <Box key={`${key}-fill`} width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+        <Svg source={art.fill.svg} alt={alt} width={art.fill.width} height={art.height} {...props} />
+      </Box>,
+      <Svg key={`${key}-end`} source={art.right.svg} alt={alt} width={art.right.width} height={art.height} {...props} />,
+    ]
     // Every cell of a line is as tall as its tallest, so the line reads as one row.
     const lineH = chosen.lines.map(line => Math.max(0, ...line.map((c, j) => c.draw(chosen.colW[j], chosen.mode).height)))
     // The top line fits the same width: past it, its second group takes a line of its own.
@@ -1387,8 +1416,8 @@ export const register: Register = on => {
     }
 
     return (
-      // With pictures, the band is as wide as its widest row (the grid), not the whole pane.
-      <Box flexDirection="column" {...(Svg && THEME.compact ? { alignItems: 'flex-start' } : {})}>
+      // The band takes the pane's whole width; its rows stretch to it (`stretch`).
+      <Box flexDirection="column">
           {crewCards.length > 0 ? (
             <Box columnGap={1} rowGap={0} alignItems="center" flexWrap="wrap">
               {crewCards.map(({ a, moving, art }) =>
@@ -1482,18 +1511,24 @@ export const register: Register = on => {
 
         {Svg && !barInline ? (
           // No room beside the name for a bar worth the name: it runs under the top line, the
-          // band's whole width, drawn exactly that wide.
-          <Svg
-            source={themed(stripeSvg(gridPx, THEME.barHeight, THEME.bar, { live: e.props.isWorking, rest: barRest, padBottom: THEME.barGap, motion: true }))}
-            alt={e.props.isWorking ? 'Working' : 'Idle'}
-            width={Math.max(120, gridPx)}
-            height={THEME.barHeight + THEME.barGap}
-            {...loop}
-          />
+          // band's whole width: drawn THEME.barPx wide and clipped to the room, like the cells' fillers.
+          <Box flexDirection="row">
+            <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+              <Svg
+                source={themed(stripeSvg(THEME.barPx, THEME.barHeight, THEME.bar, { live: e.props.isWorking, rest: barRest, padBottom: THEME.barGap, motion: true }))}
+                alt={e.props.isWorking ? 'Working' : 'Idle'}
+                width={THEME.barPx}
+                height={THEME.barHeight + THEME.barGap}
+                {...loop}
+              />
+            </Box>
+          </Box>
         ) : null}
         {THEME.compact ? (
           Svg ? (
-            <Svg source={ctxArt.svg} alt={`${useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`} context`} width={ctxArt.width} height={ctxArt.height} />
+            <Box flexDirection="row" flexWrap="nowrap">
+              {stretch('context', ctxArt, `${useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`} context`)}
+            </Box>
           ) : (
             <Text>
               <Text bold>{use.percent === null || !Number.isFinite(use.percent) ? '—' : `${Math.round(use.percent)}%`}</Text>
@@ -1509,7 +1544,20 @@ export const register: Register = on => {
           <Box flexDirection="column">
             {chosen.lines.map((line, r) => (
               <Box key={`line-${r}`} columnGap={Svg ? 0 : 1} alignItems="center" flexWrap="nowrap">
-                {line.flatMap((c, j) => {
+                {[...line, ...(Svg ? Array.from({ length: chosen.k - line.length }, () => null) : [])].flatMap((c, j) => {
+                  // A short line keeps its columns: an empty place as wide as a cell's, growing as one does.
+                  if (c === null)
+                    return !Svg ? [] : [
+                      <Svg key={`gap-${r}-${j}`} source={blankArt(GRID_GAP + (chosen.colW[j] ?? 0))} alt="gap" width={GRID_GAP + (chosen.colW[j] ?? 0)} height={1} />,
+                      ...(evenPx(j) > 0
+                        ? [
+                            <Box key={`even-${r}-${j}`} flexGrow={0} flexShrink={1} minWidth={0} overflow="hidden">
+                              <Svg source={blankArt(evenPx(j))} alt="gap" width={evenPx(j)} height={1} />
+                            </Box>,
+                          ]
+                        : []),
+                      <Box key={`fill-${r}-${j}`} width={0} flexGrow={1} flexShrink={1} minWidth={0} />,
+                    ]
                   if (!Svg)
                     return (
                       <Text key={c.key}>
@@ -1517,10 +1565,10 @@ export const register: Register = on => {
                         <Text dimColor>{` ${chosen.mode === 'bare' ? c.bareLabel : c.label}`}</Text>
                       </Text>
                     )
-                  const art = c.draw(chosen.colW[j], chosen.mode, lineH[r])
-                  // One picture per cell; a charged one stays plain and its loops carry the clock (hudCellSvg).
-                  const cell = <Svg key={c.key} source={art.svg} alt={c.alt} width={art.width} height={art.height} {...(c.live ? loop : {})} />
-                  return j === 0 ? [cell] : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="" width={GRID_GAP} height={1} />, cell]
+                  // Each cell in three pictures, stretched to its share of the line; a charged one
+                  // stays plain and its loops carry the clock (hudCellSvg).
+                  const cell = stretch(c.key, c.parts(chosen.colW[j], chosen.mode, lineH[r], Math.max(...chosen.colW) - SEAM), c.alt, c.live ? loop : {})
+                  return j === 0 ? cell : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="gap" width={GRID_GAP} height={1} />, ...cell]
                 })}
               </Box>
             ))}
@@ -1625,6 +1673,68 @@ export const register: Register = on => {
       <Box flexDirection="row" columnGap={1} alignItems="flex-start">
         <Box flexShrink={0}>
           <Svg source={art.svg} alt={kind.label} width={art.width} height={art.height} {...(e.props.isRunning ? { isInteractive: true } : {})} />
+        </Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+          {row}
+        </Box>
+      </Box>
+    )
+  })
+
+  // What a call gave back, under its row: the same tag column, `output`, or `error` in rose.
+  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+    const row = await next(e)
+    const table = $.ui.resolve(e)
+    if (!THEME.chat.results || !row || !('Svg' in table)) return row
+    const { Box, Svg } = table
+    const tag = e.props.isErrored ? ROW_TAG.error : ROW_TAG.result
+    const art = toolTagSvg(tag.label, tag.color, { minWidth: TAG_WIDTH })
+    return (
+      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
+        <Box flexShrink={0}>
+          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} />
+        </Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+          {row}
+        </Box>
+      </Box>
+    )
+  })
+
+  // A run of calls folded into one count line: one tag for the run, its calls' kind where they
+  // share one. Unfolded, each call is a ToolUse row with its own tag, so the run gets none.
+  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+    const row = await next(e)
+    const table = $.ui.resolve(e)
+    if (!THEME.chat.groups || !row || e.props.isExpanded || !('Svg' in table)) return row
+    const { Box, Svg } = table
+    const tag = groupTag(e.props.calls.map(c => c.tool))
+    const running = e.props.isActive && e.props.calls.some(c => c.isRunning)
+    const art = toolTagSvg(tag.label, tag.color, { minWidth: TAG_WIDTH, running })
+    return (
+      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
+        <Box flexShrink={0}>
+          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} {...(running ? { isInteractive: true } : {})} />
+        </Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+          {row}
+        </Box>
+      </Box>
+    )
+  })
+
+  // What a slash command printed: `command`, or `error` where the run threw.
+  on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
+    const row = await next(e)
+    const table = $.ui.resolve(e)
+    if (!THEME.chat.commands || !row || !('Svg' in table)) return row
+    const { Box, Svg } = table
+    const tag = e.props.isErrored ? ROW_TAG.error : ROW_TAG.command
+    const art = toolTagSvg(tag.label, tag.color, { minWidth: TAG_WIDTH })
+    return (
+      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
+        <Box flexShrink={0}>
+          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} />
         </Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
           {row}

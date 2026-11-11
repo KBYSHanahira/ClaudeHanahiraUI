@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, SPEAKER, speakerSvg, stripeSvg, TOOL_KIND, TOOL_TAG, toolKind, toolTagSvg } from './hud'
+import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, SPEAKER, speakerSvg, stripeSvg, TOOL_KIND, TOOL_TAG, groupTag, ROW_TAG, toolKind, toolTagSvg } from './hud'
 
 describe('hudCellSvg', () => {
   test('sets the name on a slab and the figure in capitals', () => {
@@ -122,8 +122,8 @@ describe('slabSvg and stripeSvg', () => {
 })
 
 describe('charge', () => {
-  test('blue from 50 tokens a second, purple from 100, gold from 200', () => {
-    expect([null, NaN, 0, 49, 50, 99, 100, 199, 200, 2000].map(chargeLevel)).toEqual([0, 0, 0, 0, 1, 1, 2, 2, 3, 3])
+  test('blue from the first token a second, purple from 100, gold from 200', () => {
+    expect([null, NaN, 0, 1, 49, 50, 99, 100, 199, 200, 2000].map(chargeLevel)).toEqual([0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3])
     expect(CHARGE_COLOR.slice(1)).toEqual([HUE.sky, HUE.lilac, HUE.hazard])
   })
   test('each level adds to the one under it, in its own colour', () => {
@@ -231,5 +231,44 @@ describe('transcript motion', () => {
     const run = toolTagSvg('exec', HUE.hazard, { running: true }).svg
     expect(run).toContain('infinite')
     expect(run).toContain('prefers-reduced-motion')
+  })
+})
+
+describe('stretch parts', () => {
+  test('a cell cut at its seam: the two ends make its width, the filler is drawn FILL.cell wide', () => {
+    const whole = hudCellSvg('5h limit', '7%', { index: '01', width: 180, bars: [{ percent: 7, color: HUE.sky }] })
+    const p = hudCellParts('5h limit', '7%', { index: '01', width: 180, bars: [{ percent: 7, color: HUE.sky }] })
+    expect(p.left.width + p.right.width).toBe(whole.width)
+    expect(p.right.width).toBe(SEAM)
+    expect(p).toMatchObject({ width: whole.width, height: whole.height, natural: whole.natural })
+    expect(p.right.svg).toContain(`<g transform="translate(${SEAM - whole.width} 0)">`)
+    expect(p.fill.width).toBe(FILL.cell)
+  })
+  test('a charged cell runs its arcs on through the filler', () => {
+    const p = hudCellParts('tok/s', '77', { width: 120, charge: { level: 3 } })
+    expect(p.fill.svg).toContain('translate(-110 0)')
+    expect(hudCellParts('tok/s', '77', { width: 120 }).fill.svg).not.toContain('translate(')
+  })
+  test('the context line is cut before its words; stacked, after them', () => {
+    const line = hudContextParts(6, HUE.sky, { left: '944K left', window: '1M window', width: 700 })
+    const whole = hudContextSvg(6, HUE.sky, { left: '944K left', window: '1M window', width: 700 })
+    expect(line.left.width + line.right.width).toBe(whole.width)
+    expect(line.right.width).toBeGreaterThan(100)
+    expect(hudContextParts(6, HUE.sky, { left: '944K left', stack: true, width: 300 }).right.width).toBe(16)
+  })
+})
+
+describe('row tags', () => {
+  test('a folded run takes its calls\' kind where they share one, else the plain tools', () => {
+    expect(groupTag(['Read', 'Read'])).toBe(TOOL_KIND.read)
+    expect(groupTag(['Grep', 'Glob'])).toBe(TOOL_KIND.scan)
+    expect(groupTag(['Read', 'Bash'])).toBe(ROW_TAG.group)
+    expect(groupTag([])).toBe(ROW_TAG.group)
+  })
+  test('each row tag is one word and draws as a tool tag', () => {
+    for (const t of Object.values(ROW_TAG)) {
+      expect(t.label).toMatch(/^[a-z]+$/)
+      expect(toolTagSvg(t.label, t.color).svg).toContain(t.label.toUpperCase())
+    }
   })
 })
