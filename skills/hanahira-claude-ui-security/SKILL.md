@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-security"
-description: Hanahira Claude UI companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, SSH, authentication and sessions, secrets, security headers, input handling, and keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when most of the task lies in this field.
+description: Hanahira Claude UI companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, SSH, authentication and sessions, secrets, security headers, input handling, and keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -34,5 +34,12 @@ Find the layer before changing anything: name resolution, route, port, TLS hands
 ## Reporting a finding
 
 What it is, where (`file:line`, host, port), what an attacker or an outage could do with it, how sure I am, and the smallest fix. No alarm without evidence, and no "secure" as a claim: say what was checked.
+
+## Working with tools and other skills
+
+- Read with the session's tools first: the host's own commands, a cloud or monitoring connector, the repository. A scanner's or a connector's output is evidence to check, not a verdict.
+- Nothing secret goes into a tool argument, a helper's brief, a web search or a ticket. A connector that would send the user's data to an outside service is used only when the task is to send it there.
+- A change to auth, sessions, firewall rules or secrets handling gets a fresh reviewer before it goes out (`references/agents.md` in the core); a helper is never handed the change that could lock the user out.
+- Pair with `hanahira-claude-ui-data` for stored credentials and personal data, and `hanahira-claude-ui-debug-test` for a failure that only shows under load or in production.
 
 Auth, sessions and tokens: `references/auth.md`. TLS, DNS, proxies and stability: `references/connections.md`. Hosts, SSH, firewalls, headers: `references/hardening.md`. Open only the one the task needs.

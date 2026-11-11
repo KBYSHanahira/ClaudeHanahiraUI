@@ -9,7 +9,8 @@ A look-up for work with branches, commits, worktrees and history. Git mistakes a
 | `status`, `log`, `diff`, `show`, `branch -a`, `stash list`, `fetch`, `blame` | Free — read-only |
 | Creating a branch, staging, and committing work the user asked me to commit | Do it |
 | Committing when the user did not ask for a commit | Ask — a commit is the user's record, not mine |
-| `push`, `merge`, rewriting history that has been pushed, `reset --hard`, `clean -fd`, `branch -D`, `stash drop`, `push --force`, tag deletion, anything that discards work | Ask first, each time, showing the exact command and what it will affect |
+| `push` or `merge` the user asked for by name ("commit and push", "merge it") | Do it, to the branch they named or the project's usual one, and say which |
+| `push` or `merge` that was my idea; rewriting history that has been pushed, `reset --hard`, `clean -fd`, `branch -D`, `stash drop`, `push --force`, tag deletion, anything that discards work | Ask first, each time, showing the exact command and what it will affect |
 
 Before any command that discards — `reset --hard`, `clean`, `checkout -- <file>`, `restore` — look at what would be lost (`git status`, `git stash list`, `git diff`) and say so. Uncommitted work has no reflog.
 

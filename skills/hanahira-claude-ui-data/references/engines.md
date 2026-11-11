@@ -39,7 +39,7 @@ Reading them: PostgreSQL — compare `rows=` estimated with actual; `Seq Scan` o
 | SQL Server | `SELECT * FROM sys.dm_exec_requests;` | `blocking_session_id` in the same view |
 | MongoDB | `db.currentOp({active:true})` | `waitingForLock` in the same output |
 
-Cancelling or killing a session is a state change: ask first. In PostgreSQL prefer `pg_cancel_backend(pid)` (stops the query) over `pg_terminate_backend(pid)` (drops the connection).
+Cancelling or killing a session is a state change: ask first unless the user named it (core rule 2). In PostgreSQL prefer `pg_cancel_backend(pid)` (stops the query) over `pg_terminate_backend(pid)` (drops the connection).
 
 ## Schema changes without a long lock
 

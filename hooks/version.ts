@@ -6,4 +6,4 @@ export const VERSION = '1.14.0'
 export const SKILLS_FROM: 'Account' | 'SSH' = 'Account'
 // Mirrors "# Hanahira Claude UI Version <n>" in skills/hanahira-claude-ui/SKILL.md, shown on the
 // band's Hanahira tile; scripts/repo.spec.ts keeps the two equal.
-export const SKILLS_VERSION = 29
+export const SKILLS_VERSION = 30

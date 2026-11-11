@@ -9,7 +9,7 @@
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
 ![Version](https://img.shields.io/badge/version-1.14.0-34c38f?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-Version_27-e8825f?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-Version_30-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
 **🇯🇵 日本語（このページ）** ｜ [🇬🇧 English](README.en.md)
@@ -122,7 +122,7 @@ scripts/install-ssh.sh
 その後、Desktop で **新しいセッション** を開きます。
 
 - **スキルはこのクローンのもの**（`hanahira-claude-ui-ssh:` の名前）になり、SSH セッションでは開発中のバージョンが動きます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストでだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシンのセッションでは、これまでどおりアカウントのコピーが使われます。
-- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `V1.14.0 // SSH`、スキルのバナーは `V29 · SSH` になります。
+- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `V1.14.0 // SSH`、スキルのバナーは `V30 · SSH` になります。
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 手元のマシンで使う場合はこの手順は不要で、方法 1 のままで動きます。

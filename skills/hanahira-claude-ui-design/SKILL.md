@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-design"
-description: Hanahira Claude UI companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, accessibility, render verification. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when most of the task lies in this field.
+description: Hanahira Claude UI companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, accessibility, render verification. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -35,5 +35,12 @@ Read the computed style and find which rule wins before changing anything. The u
 ## Prove it by looking
 
 A layout is not done until it has been rendered and looked at, at a phone and a desktop width, in light and dark when both exist. Without a way to render, say it is unverified.
+
+## Working with tools and other skills
+
+- Render with what the session has: a browser or preview tool for screenshots at each width, the project's own dev server. A screenshot I looked at is the proof; code that should work is not.
+- A design-tool connector or a design-system skill, when the session has one, is the source of truth for tokens and components: read it before inventing a colour or a spacing.
+- When the result is a file with its own skill (a deck, a document, a published page), load that skill and bring this one's direction, type and hierarchy into it.
+- Pair with `hanahira-claude-ui-debug-test` for a layout bug that will not yield, and `hanahira-claude-ui-security` when the screen is a login, a payment or a permission dialog.
 
 Finding a direction and palette: `references/direction.md`. Latin and Thai type in depth: `references/typography.md`. Tokens, layout patterns and CSS bugs: `references/css.md`. Open only the one the task needs.

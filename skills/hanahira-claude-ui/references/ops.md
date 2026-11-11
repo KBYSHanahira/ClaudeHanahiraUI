@@ -4,7 +4,7 @@ A look-up for work on a running service, container, build or deploy, and for any
 
 ## Rule one: look before touching
 
-Every command below is read-only and needs no yes. Anything that starts, stops, restarts, reloads, installs, deletes or rewrites is asked first: show the exact command and its target, then ask. When it is unclear whether a host is production, it is production.
+Every command below is read-only and needs no yes. Anything that starts, stops, restarts, reloads, installs, deletes or rewrites follows core rule 2: when the user named the action and its target, look, do it and check it; when it was my idea, show the exact command and its target and ask once. When it is unclear whether a host is production, it is production.
 
 Find out where I am before running anything: which host, which OS, which user, which service manager. Never assume systemd, Docker or bash.
 

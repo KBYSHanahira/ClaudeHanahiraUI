@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-debug-test"
-description: Hanahira Claude UI companion for debugging and testing — reproducing bugs, isolating root causes, reading stack traces and logs, flaky or failing suites, writing regression tests, proving a fix. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when most of the task lies in this field.
+description: Hanahira Claude UI companion for debugging and testing — reproducing bugs, isolating root causes, reading stack traces and logs, flaky or failing suites, writing regression tests, proving a fix. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -33,5 +33,11 @@ Stale build or cache, or the running code is not the edited code · wrong enviro
 - Never weaken an assertion, skip a test or raise a timeout to get green without saying so and why.
 - Report against the baseline: tests already red before my change are named, not counted as mine.
 - Temporary logging and instrumentation come out before the work is called done.
+
+## Working with tools and other skills
+
+- Observe with the session's tools before reasoning: a browser tool for console and network errors, a log or monitoring connector for the failing request, the database connector for the row that broke.
+- When two or three causes still stand after reproducing, a read-only helper for each, told to prove or kill its own, is faster than testing them in turn (`references/agents.md` in the core). The fix and its proof stay with me.
+- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for a query or migration, `hanahira-claude-ui-security` for auth, TLS or a dropping connection, `hanahira-claude-ui-design` for a layout bug.
 
 Hard cases (heisenbugs, memory, performance, production-only, concurrency): `references/hard-bugs.md`. Choosing what to test and at which level, fixtures, mocks: `references/testing.md`. Open them only when the plain method above has stalled.

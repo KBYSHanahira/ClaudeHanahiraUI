@@ -69,8 +69,9 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[]; charge?: number }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
-// How often the live speed redraws the gauge while a response streams, in ms.
-const LIVE_SPEED_MS = 250
+// How often the live speed redraws the gauge while a response streams, in ms. Each one redraws
+// the whole band (some thirty pictures), so twice a second: live enough, at half the load of four.
+const LIVE_SPEED_MS = 500
 const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
 // The weeks counted for one model alone (Fable), which the engine does not hand to a plugin:
 // read from the account's usage answer, and when (`at`, ms; 0 before the first try).
@@ -1668,11 +1669,13 @@ export const register: Register = on => {
     // A call that failed shows it on its tag; one cut short goes quiet.
     const color = e.props.isErrored ? HUE.rose : e.props.isInterrupted ? INK.detail : kind.color
     const enter = await entering($, `t:${e.requestId}`, TOOL_TAG.inMs)
+    // A plain picture even while its square blinks: a plain picture plays its own CSS, a row is
+    // redrawn only as its call starts and ends, and a frame for each running call is heavy.
     const art = toolTagSvg(kind.label, color, { minWidth: TAG_WIDTH, enter, running: e.props.isRunning })
     return (
       <Box flexDirection="row" columnGap={1} alignItems="flex-start">
         <Box flexShrink={0}>
-          <Svg source={art.svg} alt={kind.label} width={art.width} height={art.height} {...(e.props.isRunning ? { isInteractive: true } : {})} />
+          <Svg source={art.svg} alt={kind.label} width={art.width} height={art.height} />
         </Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
           {row}
@@ -1714,7 +1717,7 @@ export const register: Register = on => {
     return (
       <Box flexDirection="row" columnGap={1} alignItems="flex-start">
         <Box flexShrink={0}>
-          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} {...(running ? { isInteractive: true } : {})} />
+          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} />
         </Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
           {row}
