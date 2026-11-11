@@ -263,6 +263,15 @@ describe('band pictures', () => {
     expect(cents(liveSpeed(s, 2000, { charsPerToken: 2 }))).toBe(200)
   })
 
+  test('a stalled stream reads as slowing, and 0 once a whole window has passed with nothing', () => {
+    // 100 tok/s up to 2000 ms, then nothing more arrives.
+    const s: Array<[number, number]> = [[1200, 0], [1400, 80], [1600, 160], [1800, 240], [2000, 320]]
+    const at = (now: number) => liveSpeed(s, now, { windowMs: 800, minMs: 250 })!
+    expect(cents(at(2000))).toBe(100)
+    expect(at(2400)).toBeLessThan(at(2000))
+    expect(at(2900)).toBe(0)
+  })
+
   test('the speedometer scale is a round step clear of the peak', () => {
     expect(speedScale(0)).toBe(50)
     expect(speedScale(91)).toBe(150)

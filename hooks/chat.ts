@@ -94,6 +94,10 @@ export const HUE = {
   // state, `hazard` the warning stripes of the loading bar.
   sky: '#29b6f6',
   hazard: '#f4d21f',
+  // The speed cell's top charge: a hot red, apart from the softer `rose` of an error.
+  red: '#ff4d5a',
+  // The loading bar's stripes and frame.
+  gold: '#e6b422',
 }
 
 /** The mascot's outline: dark enough to edge its white coat, swapped lighter on a white card (LIGHT). */
@@ -128,6 +132,8 @@ export const LIGHT: Record<string, string> = {
   [HUE.lilac]: '#6f5cd0',
   [HUE.sky]: '#0b7fc0',
   [HUE.hazard]: '#b88a14',
+  [HUE.red]: '#d42a3a',
+  [HUE.gold]: '#a87a00',
   [MASCOT_LINE]: '#8a909a', // the mascot's outline, so its white coat shows on white
 }
 

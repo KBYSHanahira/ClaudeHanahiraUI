@@ -86,12 +86,12 @@ export const blocksSvg = (id: string, x: number, y: number, w: number, h: number
   )
 }
 
-/** The speed at which each charge level starts, in tokens a second: blue from the first token, then purple, then gold. */
+/** The speed at which each charge level starts, in tokens a second: blue from the first token, then purple, then red. */
 export const CHARGE_AT = [0, 100, 200]
 /** A speed's charge level, 0 (none: no reading, or no speed) to 3: one more for each of CHARGE_AT it has reached. */
 export const chargeLevel = (tps: number | null) => (tps === null || !Number.isFinite(tps) || tps <= 0 ? 0 : CHARGE_AT.filter(at => tps >= at).length)
-/** Each level's colour: sky, lilac, then the warning yellow at the top. */
-export const CHARGE_COLOR = ['', HUE.sky, HUE.lilac, HUE.hazard]
+/** Each level's colour: blue up to 100 tok/s, purple up to 200, red from 200. */
+export const CHARGE_COLOR = ['', HUE.sky, HUE.lilac, HUE.red]
 
 // A cheap deterministic hash in [0, 1): the same arc draws the same every time, so a redraw
 // with nothing changed sends the same picture.
@@ -102,104 +102,132 @@ const jitter = (seed: number, k: number) => {
 }
 
 /**
- * An electric arc across `width` px at height `y`: a jagged line, `amp` px to either side,
- * drawn two widths long with the same shape in each, so sliding it one width shows no seam.
- * `forks`: short branches off some of its corners, the same in each width too.
+ * Spots along a conduit, `per` to a width, from one width left of 0 to one right of it: each
+ * `[x, j]`, `j` its place in the width, so a pattern drawn from `j` repeats every width and
+ * sliding it one width shows no seam.
  */
-const arcPath = (width: number, y: number, amp: number, seed: number) => {
-  const n = Math.max(6, Math.round(width / 8))
-  const mod = (k: number) => ((k % n) + n) % n
-  const at = (k: number) => {
-    const j = mod(k)
-    return [(width * (k + (jitter(seed, j * 2) - 0.5) * 0.6)) / n, y + (jitter(seed, j * 2 + 1) - 0.5) * 2 * amp] as const
-  }
-  const pt = (k: number) => `${at(k)[0].toFixed(1)} ${at(k)[1].toFixed(1)}`
-  let line = `M${pt(-n)}`
-  let forks = ''
-  for (let k = -n; k <= n; k++) {
-    if (k > -n) line += `L${pt(k)}`
-    const j = mod(k)
-    // About one corner in four throws a branch: two short strokes, away from the line's middle.
-    if (jitter(seed, 900 + j) < 0.26) {
-      const [x, py] = at(k)
-      const up = py < y ? -1 : 1
-      const r = (i: number, lo: number, hi: number) => lo + jitter(seed, 950 + j * 4 + i) * (hi - lo)
-      forks += `M${x.toFixed(1)} ${py.toFixed(1)}l${r(0, 2.5, 4.5).toFixed(1)} ${(up * r(1, 0.8, 1.5)).toFixed(1)}l${r(2, 1.5, 3.5).toFixed(1)} ${(up * r(3, 0.3, 1.25)).toFixed(1)}`
-    }
-  }
-  return { line, forks }
+const spots = (width: number, per: number) => {
+  const n = Math.max(3, per)
+  return Array.from({ length: 2 * n }, (_, i) => [((i - n) * width) / n, i % n] as const)
 }
 
-/** A small lightning bolt, `size` px tall, its top-left corner at (`x`, `y`). */
-const bolt = (x: number, y: number, size: number, color: string, cls = '') =>
-  `<path d="M7 0L1 7h4l-2 5 6-7.5H5z" transform="translate(${x} ${y}) scale(${(size / 12).toFixed(3)})" fill="${color}"${cls ? ` class="${cls}"` : ''}/>`
+/** A short angled marker (two chevrons, `»`), `size` px tall, its top-left corner at (`x`, `y`). */
+const marker = (x: number, y: number, size: number, color: string) =>
+  `<path d="M0 0L4 6L0 12H2.6L6.6 6L2.6 0ZM4.6 0L8.6 6L4.6 12H7.2L11.2 6L7.2 0Z" transform="translate(${x} ${y}) scale(${(size / 12).toFixed(3)})" fill="${color}"/>`
 
 /**
- * A charged cell's bands: the arcs run between `arcs` (just under the figure) and `bars` (the top of the
- * meter). `drop` is how far a charged cell's meters sit lower than a plain one's, which is the
- * room the arcs run in, clear of the figure.
+ * A charged cell's bands: the conduits run between `arcs` (just under the figure) and `bars`
+ * (the top of the meter). `drop` is how far a charged cell's meters sit lower than a plain one's,
+ * which is the room the conduits run in, clear of the figure.
  */
 export const CHARGE_CUT = { head: 14, arcs: CELL.valueY + 1, bars: CELL.barsY + 11, foot: 3, drop: 11 }
 
 /**
- * The electric charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`,
- * in layers:
- * - `still`: at 2, a lit frame and a spark in the corner.
- * - `head`: a bolt under the corner mark (two at 3).
- * - `arcs`: at 3 an arc along the top edge; an arc just above the meter; at 2 a second, finer one against it; at 3 a third.
- * - `foot`: at 3, an arc along the bottom edge.
- * With `motion` every arc slides along its line for good (a loop, each at its own pace, faster
- * the higher the level). Nothing in it follows the clock or the cell's figure, so its picture
- * stays the same for as long as the level and the size do: set in a strip of its own
- * (hudCellParts `rows`) and drawn in the surface's frame, like the loading bar, it runs on
- * whatever else is redrawn.
+ * The charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`: an
+ * industrial power conduit, clean and angular, in layers:
+ * - `still`: at 2, a lit frame and a corner bracket with hazard ticks.
+ * - `head`: a chevron marker under the corner mark (two at 3).
+ * - `arcs`: just above the meter, a rail carrying data packets; at 2 a chevron stream running the
+ *   other way along it; at 3 a hot scan pulse racing ahead, and a tick rail along the top edge.
+ * - `foot`: at 3, a tick rail along the bottom edge.
+ * With `motion` every line slides along itself for good (a loop, each at its own pace, faster the
+ * higher the level). Nothing in it follows the clock or the cell's figure, so its picture stays
+ * the same for as long as the level and the size do: set in a strip of its own (hudCellParts
+ * `rows`) and drawn in the surface's frame, like the loading bar, it runs on whatever else is
+ * redrawn. Every line is drawn two widths long and repeats every width (`spots`).
  */
 const chargeLayers = (level: number, width: number, height: number, motion: boolean) => {
   if (level < 1) return { still: '', head: '', arcs: '', foot: '', lines: '' }
   const color = CHARGE_COLOR[level]!
-  const pace = [0, 1500, 1050, 760][level]!
+  // Each line's speed in px a second, faster the higher the level, turned into the time one width
+  // takes. A pattern that repeats every few px must move well under half its step a frame (60 a
+  // second), or the eye sees it strobe or run backwards: the ticks (a step of about 6 px) crawl,
+  // the chevrons (about 9 px) walk, and only the pulse, once a width, may race.
+  const loop = (pxPerSec: number) => Math.max(400, Math.round((width / pxPerSec) * 1000))
+  const pace = loop([0, 60, 80, 100][level]!)
   let n = 0
-  // One arc, drawn as lightning: a soft glow in two widths under the line, the line with its
-  // branches, and a hot white thread down its middle. It slides one width a loop (`back`: the
-  // other way), and the line repeats every width, so the loop shows no seam.
-  const arc = (y: number, amp: number, seed: number, w: number, ms: number, back = false) => {
-    const a = arcPath(width, y, amp, seed)
+  const f = (v: number) => +v.toFixed(1)
+  // One line of the conduit in its own group: what it draws (`inner`), and its slide one width a
+  // loop (`back`: the other way).
+  const line = (inner: string, ms: number, back = false) => {
     const cls = `a${n++}`
     return (
-      `<g class="${cls}" fill="none" stroke="${color}" stroke-linejoin="round" stroke-linecap="round">` +
-      // Each stroke carries the line itself: a `use` of one shared path would be shorter, but a
-      // surface that scrubs the markup may drop it, and the arcs with it.
-      `<path d="${a.line}" stroke-width="${w + 5}" stroke-opacity="0.09"/>` +
-      `<path d="${a.line}" stroke-width="${w + 2}" stroke-opacity="0.24"/>` +
-      `<path d="${a.line}${a.forks}" stroke-width="${w}" stroke-linejoin="bevel"/>` +
-      `<path d="${a.line}" stroke="#ffffff" stroke-width="${(w * 0.38).toFixed(2)}" stroke-opacity="0.8"/>` +
-      `</g>` +
+      `<g class="${cls}" fill="none" stroke="${color}" stroke-linecap="butt" stroke-linejoin="miter">${inner}</g>` +
       (motion ? motionStyle(`@keyframes ${cls}{from{transform:translateX(${back ? width : 0}px)}to{transform:translateX(${back ? 0 : width}px)}}.${cls}{animation:${cls} ${ms}ms linear infinite}`) : '')
     )
   }
-  const spark = (x: number, y: number, dx: number, dy: number) => `<path d="M${x} ${y}l${dx * 5} ${dy * 3}l${-dx * 2} ${dy * 2}l${dx * 5} ${dy * 4}" fill="none" stroke="${color}" stroke-width="1.1"/>`
-  // Midway between the figure and the meter, leaving the glow (3.2 px) room above: an arc reaches
-  // 3.6 px and its branches 2.75 more to either side.
-  const arcY = (CHARGE_CUT.arcs + 3.2 + CHARGE_CUT.bars - 0.5) / 2
-  // Drawn in this order, so each arc keeps its class name.
-  const top = level >= 3 ? arc(1.6, 1.3, 51, 1.4, pace) : ''
+  const rail = (y: number) => `M${-width} ${y}L${width} ${y}`
+  // Data packets on a rail: a thin rail, and blocks of different lengths along it, under a glow.
+  const packets = (y: number, seed: number, ms: number) => {
+    const unit = width / Math.max(3, Math.round(width / 14))
+    let d = ''
+    for (const [x, j] of spots(width, Math.round(width / unit))) {
+      if (jitter(seed, j) > 0.72) continue
+      const len = unit * (0.22 + 0.5 * jitter(seed, j + 100))
+      d += `M${f(x)} ${y}L${f(x + len)} ${y}`
+    }
+    return line(
+      `<path d="${rail(y)}" stroke-width="0.7" stroke-opacity="0.35"/>` +
+        `<path d="${d}" stroke-width="7" stroke-opacity="0.08"/>` +
+        `<path d="${d}" stroke-width="2.4"/>` +
+        `<path d="${d}" stroke="#ffffff" stroke-width="0.7" stroke-opacity="0.75"/>`,
+      ms,
+    )
+  }
+  // A stream of chevrons pointing the way they run, every third one lit.
+  const chevrons = (y: number, ms: number, back: boolean) => {
+    const per = Math.max(3, Math.round(width / 9 / 3) * 3)
+    const s = back ? -1 : 1
+    let lit = ''
+    let dim = ''
+    for (const [x, j] of spots(width, per)) {
+      const d = `M${f(x - s * 1.4)} ${f(y - 2.8)}L${f(x + s * 1.4)} ${y}L${f(x - s * 1.4)} ${f(y + 2.8)}`
+      if (j % 3 === 0) lit += d
+      else dim += d
+    }
+    return line(`<path d="${dim}" stroke-width="1.1" stroke-opacity="0.4"/><path d="${lit}" stroke-width="1.4"/>`, ms, back)
+  }
+  // A scan pulse: a hot white head with a tail fading behind it, once a width.
+  const pulse = (y: number, seed: number, ms: number) => {
+    const at = width * jitter(seed, 7)
+    const seg = (from: number, to: number, w: number, o: number, white = false) =>
+      `<path d="${[at - width, at].map(x => `M${f(x + from)} ${y}L${f(x + to)} ${y}`).join('')}" stroke-width="${w}" stroke-opacity="${o}"${white ? ' stroke="#ffffff"' : ''}/>`
+    return line(seg(-46, 10, 7, 0.12) + seg(-44, -24, 1.2, 0.25) + seg(-24, -8, 2, 0.6) + seg(-8, 10, 3.2, 1) + seg(-4, 10, 1.6, 1, true), ms)
+  }
+  // A measuring rail along an edge: a thin line with ticks, every fourth one long.
+  const ticks = (y: number, up: number, ms: number, back = false) => {
+    let short = ''
+    let long = ''
+    for (const [x, j] of spots(width, Math.max(4, Math.round(width / 24) * 4))) {
+      if (j % 4 === 0) long += `M${f(x)} ${y}L${f(x)} ${f(y + up * 1.4)}L${f(x + 5)} ${f(y + up * 1.4)}`
+      else short += `M${f(x)} ${y}L${f(x)} ${f(y + up * 0.9)}`
+    }
+    return line(`<path d="${rail(y)}" stroke-width="0.8" stroke-opacity="0.45"/><path d="${short}" stroke-width="0.8" stroke-opacity="0.6"/><path d="${long}" stroke-width="1.2"/>`, ms, back)
+  }
+  // Midway between the figure and the meter; from 2 the packets and chevrons sit 2.6 px to either side of it.
+  const arcY = f((CHARGE_CUT.arcs + 3.2 + CHARGE_CUT.bars - 0.5) / 2)
+  // Drawn in this order, so each line keeps its class name.
+  const top = level >= 3 ? ticks(1.2, 1, loop(24)) : ''
+  // From 2 the packets ride a little high and the chevrons run under them, so the two never cross.
+  const packY = level >= 2 ? f(arcY - 2.6) : arcY
   const arcs =
-    arc(arcY, level >= 2 ? 3.2 : 2.6, level, 1.3, pace) +
-    (level >= 2 ? arc(arcY, 3.6, level + 20, 0.8, Math.round(pace * 0.62), true) : '') +
-    (level >= 3 ? arc(arcY, 3, level + 40, 1, Math.round(pace * 0.45)) : '')
-  const foot = level >= 3 ? arc(height - 1.6, 1.3, 52, 1.4, pace, true) : ''
+    packets(packY, level, pace) +
+    (level >= 2 ? chevrons(f(arcY + 2.6), loop([0, 0, 70, 90][level]!), true) : '') +
+    (level >= 3 ? pulse(packY, level + 40, loop(320)) : '')
+  const foot = level >= 3 ? ticks(height - 1.2, -1, loop(24), true) : ''
   return {
     still:
       level >= 2
         ? `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="none" stroke="${color}" stroke-opacity="0.65"/>` +
-          // In the last SEAM px, so a widened band (hudCellParts) keeps it in the corner.
-          spark(width - 2, height - 16, -1, 1)
+          // A corner bracket and two hazard ticks, in the last SEAM px, so a widened band keeps them in its corner.
+          `<path d="M${width - 2} ${height - 15}l0 11l-7 0" fill="none" stroke="${color}" stroke-width="1.6"/>` +
+          `<path d="M${width - 2} ${height - 21}L${width - 6} ${height - 17}M${width - 2} ${height - 25}L${width - 6} ${height - 21}" fill="none" stroke="${color}" stroke-width="1.2" stroke-opacity="0.8"/>`
         : '',
-    // Under the corner mark, in the last SEAM px, like the spark.
-    head: bolt(width - 9, 12, 10, color) + (level >= 3 ? bolt(width - 9, 24, 10, color) : ''),
+    // Under the corner mark, in the last SEAM px.
+    head: marker(width - 9.4, 12, 10, color) + (level >= 3 ? marker(width - 9.4, 24, 10, color) : ''),
     arcs: top + arcs,
     foot,
-    // Every arc, and nothing else: each is two widths long, so copies set two widths apart run on as one line.
+    // Every line, and nothing else: each is two widths long, so copies set two widths apart run on as one.
     lines: top + arcs + foot,
   }
 }
@@ -223,7 +251,7 @@ export type CellOpts = {
   tone?: string
   reel?: Since<string> | string | null
   toggle?: { on: boolean; enter?: number | null; motion?: boolean }
-  /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
+  /** A power conduit over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
   charge?: { level: number; motion?: boolean }
 }
 
@@ -274,7 +302,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
     charge.still
   const figure =
     (opts.toggle ? mascotSvg(opts.toggle.on, C.pad, C.valueY - 2 - (mascotW * MASCOT.h) / MASCOT.w / 2 - 4, mascotW, { enter: opts.toggle.enter ?? null, motion: opts.toggle.motion === true }) : '') +
-    reelText(x, opts.toggle ? C.valueY - 4 : C.valueY, fs, `${FACE} font-size="${fs}" font-weight="700" letter-spacing="0.4" fill="${level >= 3 ? HUE.hazard : INK.value}"`, shown, opts.reel)
+    reelText(x, opts.toggle ? C.valueY - 4 : C.valueY, fs, `${FACE} font-size="${fs}" font-weight="700" letter-spacing="0.4" fill="${level >= 3 ? CHARGE_COLOR[3] : INK.value}"`, shown, opts.reel)
   const lower = level > 0 ? CHARGE_CUT.drop : 0
   const meters =
     (lower ? `<g transform="translate(0 ${lower})">` : '') +
@@ -295,7 +323,7 @@ const strip = (width: number, y: number, h: number, inner: string) =>
  * and its share after), then `sub`, a dim line. `rule` draws a short accent line under a
  * figure that has no meter. `index` is the faint number in the corner. With `toggle` the
  * mascot sits before the figure (the Hanahira mode) and `tone` colours the slab and `sub`.
- * `charge` lays electricity over it. `width` and `height` only ever grow the cell, to its
+ * `charge` lays a power conduit over it. `width` and `height` only ever grow the cell, to its
  * column and its line.
  */
 export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) => {
@@ -442,6 +470,31 @@ export const hudContextParts = (percent: number | null, color: string, opts: Con
 
 /** A chip of the top line: its height, its text and how far its ends lean. */
 export const HUD_CHIP = { height: 20, fs: 11, lean: 5, pad: 9, baseline: 14 }
+
+/**
+ * The branch as a gold chip on the band's top line, after the session's slab: a leaning box in a
+ * gold frame on a faint gold ground, `// name` in gold. The name keeps its own case: branch names
+ * are case-sensitive.
+ */
+export const branchChipSvg = (branch: string) => {
+  const H = HUD_CHIP
+  const h = H.height
+  const text = `// ${branch}`
+  const fs = H.fs + 1
+  const textW = labelWidth(text, fs)
+  const pad = 7
+  const width = Math.ceil(H.lean + pad + textW + pad + H.lean)
+  const shape = `M${H.lean + 0.5} 0.5H${width - 0.5}L${width - H.lean - 0.5} ${h - 0.5}H0.5z`
+  return {
+    svg:
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
+      `<path d="${shape}" fill="${HUE.gold}" fill-opacity="0.14" stroke="${HUE.gold}"/>` +
+      `<text x="${H.lean + pad}" y="${H.baseline}" ${FACE} font-size="${fs}" font-weight="700" fill="${HUE.gold}" textLength="${textW}" lengthAdjust="spacingAndGlyphs">${esc(text)}</text>` +
+      `</svg>`,
+    width,
+    height: h,
+  }
+}
 
 /**
  * A chip for the top line, a parallelogram: `fill` paints it solid in `color` with dark text

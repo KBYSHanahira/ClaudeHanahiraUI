@@ -37,6 +37,8 @@ export type Agent = {
   output: number
   cacheRead: number
   cacheWrite: number
+  /** Output speed of its latest measured response, tokens a second; null or left out = not measured yet. */
+  tps?: number | null
   /** A subagent, or a shell command running in the background; left out (older records) = agent. */
   kind?: 'agent' | 'shell'
 }

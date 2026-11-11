@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CELL, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
 
 describe('hudCellSvg', () => {
   test('sets the name on a slab and the figure in capitals', () => {
@@ -112,6 +112,18 @@ describe('hudChipSvg', () => {
   })
 })
 
+describe('branch chip', () => {
+  test('the branch sits in a gold frame on a gold ground, in its own case, escaped', () => {
+    const a = branchChipSvg('main')
+    expect(a.svg).toContain(`stroke="${HUE.gold}"`)
+    expect(a.svg).toContain(`fill="${HUE.gold}" fill-opacity="0.14"`)
+    expect(a.svg).toContain('>// main</text>')
+    expect(a.height).toBe(HUD_CHIP.height)
+    expect(branchChipSvg('feature/Long-Name').width).toBeGreaterThan(a.width)
+    expect(branchChipSvg('a<b').svg).toContain('// a&lt;b')
+  })
+})
+
 describe('slabSvg and stripeSvg', () => {
   test('the slab fits its name', () => {
     expect(slabSvg('a longer name').width).toBeGreaterThan(slabSvg('spa').width)
@@ -130,9 +142,9 @@ describe('slabSvg and stripeSvg', () => {
 })
 
 describe('charge', () => {
-  test('blue from the first token a second, purple from 100, gold from 200', () => {
+  test('blue from the first token a second, purple from 100, red from 200', () => {
     expect([null, NaN, 0, 1, 49, 50, 99, 100, 199, 200, 2000].map(chargeLevel)).toEqual([0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3])
-    expect(CHARGE_COLOR.slice(1)).toEqual([HUE.sky, HUE.lilac, HUE.hazard])
+    expect(CHARGE_COLOR.slice(1)).toEqual([HUE.sky, HUE.lilac, HUE.red])
   })
   test('each level adds to the one under it, in its own colour', () => {
     const at = (level: number) => hudCellSvg('tok/s', '120', { bars: [{ percent: 50, color: HUE.sky }], charge: { level } }).svg
@@ -140,13 +152,13 @@ describe('charge', () => {
     const sizes = [0, 1, 2, 3].map(l => at(l).length)
     for (let l = 1; l <= 3; l++) expect(sizes[l]!).toBeGreaterThan(sizes[l - 1]!)
     for (let l = 1; l <= 3; l++) expect(at(l)).toContain(`stroke="${CHARGE_COLOR[l]}"`)
-    expect(at(3)).toContain(`fill="${HUE.hazard}">120</text>`)
-    expect(at(2)).not.toContain(`fill="${HUE.hazard}">120</text>`)
+    expect(at(3)).toContain(`fill="${HUE.red}">120</text>`)
+    expect(at(2)).not.toContain(`fill="${HUE.red}">120</text>`)
   })
   test('with motion its arcs run on by themselves, and nothing in the picture follows the clock', () => {
     const run = hudCellSvg('tok/s', '120', { charge: { level: 3, motion: true } }).svg
-    // Every arc slides one width for good; the loop is 760 ms at level 3.
-    expect(run).toContain('animation:a0 760ms linear infinite}')
+    // Every line slides one width for good.
+    for (const k of [0, 1, 2, 3, 4]) expect(run).toMatch(new RegExp(`animation:a${k} \\d+ms linear infinite}`))
     expect(run).not.toContain('animation-delay')
     expect(run).not.toContain('NaN')
     // Held still, nothing in it moves.
@@ -168,6 +180,16 @@ describe('charge', () => {
     const c = at('250', 3)
     expect(c.rows!.map(r => r.live)).toEqual([true, false, true, false, true])
     expect(c.rows!.reduce((h, r) => h + r.height, 0)).toBe(c.height)
+  })
+  test('no repeating pattern strobes: each moves well under half its step a frame', () => {
+    for (const width of [120, 260, 420]) {
+      const svg = hudCellSvg('tok/s', '250', { width, charge: { level: 3, motion: true } }).svg
+      const ms = (k: number) => Number(new RegExp(`animation:a${k} (\\d+)ms`).exec(svg)![1])
+      const perFrame = (k: number) => width / (ms(k) / 1000) / 60
+      // a0 and a4 are the tick rails (a step of 6 px or so), a2 the chevrons (about 9 px).
+      for (const k of [0, 4]) expect(perFrame(k)).toBeLessThan(6 / 4)
+      expect(perFrame(2)).toBeLessThan(9 / 4)
+    }
   })
   test('the lit frame never flickers', () => {
     expect(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg).toMatch(/<rect [^>]*stroke-opacity="0.65"\/>/)
@@ -235,7 +257,9 @@ describe('stretch parts', () => {
     expect(copies(p.even!.svg)).toBe(2)
     expect(copies(p.fill.svg)).toBe(3)
     // The fillers slide with the cell, from the same place in the loop.
-    for (const svg of [p.even!.svg, p.fill.svg]) expect(svg).toContain('animation:a0 760ms linear infinite}')
+    const loop = (svg: string) => /animation:a0 (\d+)ms linear infinite}/.exec(svg)?.[1]
+    expect(loop(p.even!.svg)).toBeDefined()
+    for (const svg of [p.even!.svg, p.fill.svg]) expect(loop(svg)).toBe(loop(hudCellSvg('tok/s', '77', { width: 120, charge: { level: 3, motion: true } }).svg))
   })
   test('the right end, set after a filler cut anywhere, carries no arc; its bolts and spark sit in it', () => {
     const p = hudCellParts('tok/s', '77', { width: 120, charge: { level: 3, motion: true } })

@@ -16,7 +16,7 @@ Before any command that discards — `reset --hard`, `clean`, `checkout -- <file
 
 ## Starting
 
-`git status` and the current branch come first, every time. On the default branch, create a branch before changing anything; name it the way the project names its branches. A dirty tree that is not mine is left alone: do not stash, commit or discard someone's uncommitted work without asking.
+`git status` and the current branch come first, every time. On the default branch, create a branch before committing, named the way the project names its branches, unless the project's own history commits there or the user said to; editing needs no branch. A dirty tree that is not mine is left alone: do not stash, commit or discard someone's uncommitted work without asking.
 
 ## Commits
 

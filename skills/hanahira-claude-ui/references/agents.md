@@ -24,6 +24,7 @@ The brief is all the helper will ever know. It has these parts, in plain sentenc
 Goal       what the user is after and why, in one or two lines
 Known      what I already found, and what is ruled out and how
 Scope      the exact files, folders or systems; read-only, or which files it may edit
+Steps      the steps in order, with the exact search terms, commands and checks to run
 Limits     the user's constraints (stack, versions, style); no deleting, pushing,
            deploying, sending or posting; stop and report instead
 Return     the shape I need back: verdict first, then
@@ -31,6 +32,7 @@ Return     the shape I need back: verdict first, then
 Stop       what counts as finished, and when to give up and say so
 ```
 
+- Write it so the helper can follow it without having to work anything out: a helper runs on low effort (section 3) and does what the brief says and little more. The detail I put in is the thinking it does not have to do; the result is the same, faster and cheaper.
 - Point at files and commands to read instead of retyping their contents.
 - Ask a question, not for a confirmation. A helper handed my hypothesis tends to hand it back confirmed; give it the evidence and ask what explains it.
 - A reviewer gets the diff and the intent, never "I think this is fine".
@@ -39,6 +41,7 @@ Stop       what counts as finished, and when to give up and say so
 
 ## 3. Running them
 
+- **Low effort by default.** Every helper is started with `effort: "low"` where the tool takes an effort, and a brief exact enough for it (section 2). Low thinks least and follows the brief to the letter, so a precise brief gets the same result in less time and fewer tokens. A higher effort only when the user asks for one, or for a fresh reviewer of auth, payments, stored data or a deploy, where the helper's own judgment is the point.
 - Start independent helpers in one message so they run together. A cheaper model suits mechanical and read-only pieces where the session lets me pick one.
 - Pick the agent type the session lists for the job (a search agent for searching, a planner for a design, a general one otherwise) rather than a general one for everything.
 - Two writers never touch the same files. Parallel edits get separate files, or separate worktrees when the session offers them.
@@ -54,7 +57,7 @@ Stop       what counts as finished, and when to give up and say so
 
 ## 5. What goes wrong
 
-- A vague brief ("look into the auth bug") returns a vague report at full price.
+- A vague brief ("look into the auth bug") returns a vague report at full price. On low effort it returns less still: the helper does not fill the gaps itself.
 - A helper told to "fix" something it was meant to study makes a wide change. Say read-only when I mean it.
 - A helper's confident mistake reads exactly like its findings. Check the lines the conclusion rests on.
 - Helpers started to look thorough: each one spends the user's tokens. If the answer would be the same without it, it should not run.

@@ -1,7 +1,7 @@
 // Pure helpers for the agent strip: no engine calls, so tests run them as is.
 
 import type { Agent } from '../types'
-import { clip, EASE, fmtClock, fmtTokens, HUE, INK, MOTION, motionStyle } from './chat'
+import { clip, EASE, fmtClock, fmtSpeed, fmtTokens, HUE, INK, MOTION, motionStyle } from './chat'
 import { capWidth, HUD_FAMILY } from './hud'
 import { iconGroup } from './icons'
 
@@ -242,7 +242,19 @@ export const agentCardSvg = (
 }
 
 /** The small card the strip draws: one line, about the height of the band's chips. */
-export const AGENT_CHIP = { W: 208, H: 24, markW: 24 }
+export const AGENT_CHIP = { W: 372, shellW: 208, H: 24, markW: 24 }
+
+/**
+ * What a subagent runs on, as the chip says it: the model as the API reported it and the effort
+ * the engine sent, then how fast its latest response came, `SONNET 5.5 · LOW · 82 TOK/S`. Unknown
+ * parts are left out, never guessed: no model yet reads `MODEL PENDING`, no speed yet shows none.
+ * A background command runs on no model and says nothing.
+ */
+export const agentSpec = (a: Agent) =>
+  a.kind === 'shell' ? '' : [a.model ? prettyModel(a.model) : 'model pending', a.effort ? String(a.effort) : '', speedText(a)].filter(Boolean).join(' · ')
+
+/** A subagent's speed as the chip says it, `82 tok/s`; '' until one is measured. */
+const speedText = (a: Agent) => (a.kind !== 'shell' && typeof a.tps === 'number' && Number.isFinite(a.tps) && a.tps > 0 ? `${fmtSpeed(a.tps)} tok/s` : '')
 
 /** A background command's card colour: warm, apart from every model's and effort's. */
 export const SHELL_COLOR = '#f6b896'
@@ -273,7 +285,9 @@ export const settledStatus = (s: string): Agent['status'] | null =>
  * (agentStats), not on the card, so the strip stays one line.
  */
 export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: boolean } = {}) => {
-  const { W, H, markW } = AGENT_CHIP
+  const { H, markW } = AGENT_CHIP
+  // A subagent's chip has room for what it runs on; a background command's runs on nothing.
+  const W = a.kind === 'shell' ? AGENT_CHIP.shellW : AGENT_CHIP.W
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
   const accent = a.kind === 'shell' ? SHELL_COLOR : accentFor(a.effort, a.model)
   const running = a.status === 'running'
@@ -294,10 +308,33 @@ export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: bo
     a.kind === 'shell'
       ? iconGroup('terminal', accent, spriteX, 4, 16, 2)
       : `<svg x="${spriteX}" y="4" width="16" height="16" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
-  // The name in capitals, pinned to its width, and to its room where it would run past the mark.
+  // What it runs on, set to end just short of the mark: the model dim, the effort in the accent.
+  const specEnd = W - markW - 6
+  const modelPart = a.kind === 'shell' ? '' : (a.model ? prettyModel(a.model) : 'model pending').toUpperCase()
+  const effortPart = a.kind === 'shell' || !a.effort ? '' : String(a.effort).toUpperCase()
+  const speedPart = speedText(a).toUpperCase()
+  // Laid out from the right: the speed in white, the effort in the accent, the model dim.
+  const parts = [
+    { t: modelPart, fill: INK.label, weight: 600 },
+    { t: effortPart, fill: accent, weight: 700 },
+    { t: speedPart, fill: INK.value, weight: 700 },
+  ].filter(p => p.t)
+  const gap = capWidth(' · ', 10)
+  const widths = parts.map(p => capWidth(p.t, 10, 0.8))
+  const specW = widths.reduce((s, w) => s + w, 0) + gap * Math.max(0, parts.length - 1)
+  let px = specEnd - specW
+  const spec = parts
+    .map((p, i) => {
+      const t = `<text x="${px}" y="15.6" ${face} font-size="10" font-weight="${p.weight}" fill="${p.fill}" textLength="${widths[i]}" lengthAdjust="spacingAndGlyphs">${esc(p.t)}</text>`
+      px += widths[i]! + gap
+      return t
+    })
+    .join('')
+  // The name in capitals, pinned to its width, and to its room where it would run into the spec.
   const nameX = spriteX + 16 + 6
   const nameFull = clip(a.name, 22).toUpperCase()
-  const nameW = Math.min(capWidth(nameFull, 11.5, 0.8), W - nameX - markW - 2)
+  const nameRoom = (specW ? specEnd - specW - 8 : W - markW - 2) - nameX
+  const nameW = Math.max(0, Math.min(capWidth(nameFull, 11.5, 0.8), nameRoom))
   const name = `<text x="${nameX}" y="16" ${face} font-size="11.5" font-weight="700" fill="${INK.value}" textLength="${nameW}" lengthAdjust="spacingAndGlyphs">${esc(nameFull)}</text>`
   const cx = W - markW / 2 - 2
   // Running: a small square, an open corner, that turns.
@@ -318,7 +355,7 @@ export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: bo
         : icon('ban', HUE.butter)
   const bodyW = W - markW
   return {
-    body: { svg: svgWindow(0, 0, bodyW, H + pad, frame + tag + sprite + name), width: bodyW, height: H + pad },
+    body: { svg: svgWindow(0, 0, bodyW, H + pad, frame + tag + sprite + name + spec), width: bodyW, height: H + pad },
     mark: { svg: svgWindow(bodyW, 0, markW, H + pad, frame + mark), width: markW, height: H + pad },
   }
 }

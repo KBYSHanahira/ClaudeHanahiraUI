@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Agent, Info, Outcome, Skill, Stats, Tokens, Usage } from '../types'
-import { agentChipParts, agentStats, kindLabel, prettyModel, settledStatus, taskNotice, visibleAgents } from './agents'
+import { agentChipParts, agentSpec, agentStats, kindLabel, prettyModel, settledStatus, taskNotice, visibleAgents } from './agents'
 import {
   HUE,
   INK,
@@ -31,7 +31,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { CHARGE_COLOR, SEAM, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CHARGE_COLOR, SEAM, branchChipSvg, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -68,9 +68,13 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[]; charge?: number }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
-// How often the live speed redraws the gauge while a response streams, in ms. Each one redraws
-// the whole band (some thirty pictures), so twice a second: live enough, at half the load of four.
-const LIVE_SPEED_MS = 500
+// How often the live speed redraws the gauge while a response streams, in ms: about seven times a
+// second, so the figure reads as live. Every loop on the band holds its props across a redraw
+// (its alt included), so a redraw this often restarts none of them.
+const LIVE_SPEED_MS = 150
+// The live speed is the rate over this last stretch of the stream, in ms: short, so the figure
+// follows the stream within a moment, and long enough to smooth over a single burst.
+const LIVE_WINDOW_MS = 800
 const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
 // The weeks counted for one model alone (Fable), which the engine does not hand to a plugin:
 // read from the account's usage answer, and when (`at`, ms; 0 before the first try).
@@ -237,20 +241,41 @@ const reels = reelHolder()
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 
 /**
- * The charge level the speed cell shows: a new level is taken once the speed has stayed at it
- * for `holdMs`, so a speed hovering at a threshold does not swap the arcs' pictures (each swap
- * loads them anew) several times a second. From none, and to none, at once.
+ * The charge level the speed cell shows, one level at a time and always in order: it starts at 1
+ * the moment there is speed, climbs one level once the speed has stayed above it for `upMs`, and
+ * steps back one level once it has stayed below for `downMs`, so a fast start shows 1, then 2,
+ * then 3, and a speed hovering at a threshold does not swap the pictures (each swap loads them
+ * anew) several times a second. To none (no speed, the turn over) at once.
  */
-export const chargeHolder = (holdMs = 2500) => {
+export const chargeHolder = (upMs = 250, downMs = 500) => {
   let shown = 0
-  let want = 0
-  let since = 0
+  let aboveSince: number | null = null
+  let belowSince: number | null = null
   return (level: number, nowMs: number) => {
-    if (level !== want) {
-      want = level
-      since = nowMs
+    if (level <= 0) {
+      shown = 0
+      aboveSince = belowSince = null
+      return 0
     }
-    if (shown === 0 || level === 0 || nowMs - since >= holdMs) shown = level
+    if (shown === 0) {
+      shown = 1
+      aboveSince = belowSince = null
+    }
+    if (level > shown) {
+      belowSince = null
+      aboveSince ??= nowMs
+      if (nowMs - aboveSince >= upMs) {
+        shown++
+        aboveSince = level > shown ? nowMs : null
+      }
+    } else if (level < shown) {
+      aboveSince = null
+      belowSince ??= nowMs
+      if (nowMs - belowSince >= downMs) {
+        shown--
+        belowSince = level < shown ? nowMs : null
+      }
+    } else aboveSince = belowSince = null
     return shown
   }
 }
@@ -879,22 +904,39 @@ export const register: Register = on => {
     const samples: Array<[number, number]> = []
     let chars = 0
     let drawnAt = 0
-    for await (const c of stream) {
-      yield c
-      if (aid0) continue
-      if (c.kind === 'text' || c.kind === 'thinking') chars += c.text.length
-      else if (c.kind === 'input') chars += c.json.length
-      else continue
-      const at = performance.now()
-      samples.push([at, chars])
-      while (samples.length > 2 && at - samples[0]![0] > 2000) samples.shift()
-      if (at - drawnAt < LIVE_SPEED_MS) continue
-      const tps = liveSpeed(samples, at, { charsPerToken })
-      if (tps === null) continue
-      drawnAt = at
-      // The peak is set by a response's own average alone (below): a buffered burst read live
-      // would set a peak no real speed reaches, and the needle would sit near zero after it.
-      void update($, speed, s => ({ tps, peak: s.peak ?? 0 }))
+    // A stream that stalls sends no pieces, so nothing above would redraw: the figure would hold
+    // its last reading. While it is quiet, the same reading is taken on a beat, and falls as the
+    // window empties, to 0 once a whole window has passed with nothing.
+    const stall = aid0
+      ? null
+      : $.clock.every(LIVE_SPEED_MS * 2, () => {
+          const at = performance.now()
+          if (!samples.length || at - drawnAt < LIVE_SPEED_MS * 2) return
+          const tps = liveSpeed(samples, at, { charsPerToken, windowMs: LIVE_WINDOW_MS, minMs: 250 })
+          if (tps === null) return
+          drawnAt = at
+          void update($, speed, s => ({ tps, peak: s.peak ?? 0 }))
+        })
+    try {
+      for await (const c of stream) {
+        yield c
+        if (aid0) continue
+        if (c.kind === 'text' || c.kind === 'thinking') chars += c.text.length
+        else if (c.kind === 'input') chars += c.json.length
+        else continue
+        const at = performance.now()
+        samples.push([at, chars])
+        while (samples.length > 2 && at - samples[0]![0] > LIVE_WINDOW_MS + 400) samples.shift()
+        if (at - drawnAt < LIVE_SPEED_MS) continue
+        const tps = liveSpeed(samples, at, { charsPerToken, windowMs: LIVE_WINDOW_MS, minMs: 250 })
+        if (tps === null) continue
+        drawnAt = at
+        // The peak is set by a response's own average alone (below): a buffered burst read live
+        // would set a peak no real speed reaches, and the needle would sit near zero after it.
+        void update($, speed, s => ({ tps, peak: s.peak ?? 0 }))
+      }
+    } finally {
+      stall?.cancel()
     }
     const r = await stream.result
     const u = r.usage
@@ -913,6 +955,8 @@ export const register: Register = on => {
     if (!aid && u?.model) await update($, model, () => u.model)
     // The response's own average settles the needle once it ends.
     if (tps !== null) await update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, tps) }))
+    // A subagent's own speed: its latest response's output over the time that response took.
+    const agentTps = aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
     if (aid) {
       await update($, agents, list =>
         asList(list).map(a =>
@@ -923,6 +967,8 @@ export const register: Register = on => {
                 model: u?.model || a.model,
                 // The engine's word wins over what was asked: no effort sent means none applies.
                 effort: effort ?? null,
+                // Too short a response to time keeps the last speed measured.
+                tps: agentTps ?? a.tps ?? null,
               },
         ),
       )
@@ -1100,7 +1146,8 @@ export const register: Register = on => {
     // The top line is two groups: who (dot, folder, branch) and how it goes (time, status,
     // count, version). When both do not fit on one line, the second group takes a line of its
     // own, whole, instead of running past the frame; the bar goes where there is room for it.
-    const leftPx = slabSvg(title).width + (branch ? gapPx + textPx(`// ${branch}`) : 0) + 3 * gapPx
+    const branchArt = branch ? branchChipSvg(branch) : null
+    const leftPx = slabSvg(title).width + (branchArt ? gapPx + branchArt.width : 0) + 3 * gapPx
     const rightPx =
       // The clock counts for what it took before it had a frame (an icon and its figures), so
       // the frame's few px more never move the bar or the chips to another line.
@@ -1178,7 +1225,7 @@ export const register: Register = on => {
         color: THEME.accent,
         calm: true,
         name: 'tok/s',
-        // Electric while the turn streams: blue from the first token a second, purple from 100, gold from 200.
+        // Charged while the turn streams: blue from the first token a second, purple from 100, red from 200.
         charge,
         bars: [{ percent: speedPct, color: charge ? CHARGE_COLOR[charge]! : THEME.accent, from: from('tps', speedPct) }],
       },
@@ -1359,7 +1406,10 @@ export const register: Register = on => {
           <Box key={k} flexDirection="column" flexShrink={0}>
             {rows.map(r => {
               const p = of(r)!
-              return <Svg key={`${k}-${r.id}`} source={p.svg} alt={alt} width={p.width} height={r.height} {...(r.live ? loop : {})} />
+              // A strip of charge keeps one alt for good: Desktop loads a picture anew (blank for a
+              // moment, its loop started over) when any of its props changes, and the cell's alt
+              // carries the figure, which changes many times a second while Claude answers.
+              return <Svg key={`${k}-${r.id}`} source={p.svg} alt={r.live ? 'speed charge' : alt} width={p.width} height={r.height} {...(r.live ? loop : {})} />
             })}
           </Box>
         ) : (
@@ -1406,11 +1456,11 @@ export const register: Register = on => {
               {crewCards.map(({ a, moving, art }) =>
                 Svg ? (
                   <Box key={`agent-${a.id}`} flexDirection="row">
-                    <Svg source={themed(art.body.svg)} alt={`${kindLabel(a)} ${a.name}: ${a.kind === 'shell' ? 'running in the background' : agentStats(a)}`} width={art.body.width} height={art.body.height} />
+                    <Svg source={themed(art.body.svg)} alt={`${kindLabel(a)} ${a.name}: ${a.kind === 'shell' ? 'running in the background' : `${agentSpec(a)} · ${agentStats(a)}`}`} width={art.body.width} height={art.body.height} />
                     <Svg source={themed(art.mark.svg)} alt={`${a.name} ${a.status === 'running' ? 'working' : a.status}`} width={art.mark.width} height={art.mark.height} {...(moving ? { isInteractive: true } : {})} />
                   </Box>
                 ) : (
-                  <Text key={`agent-${a.id}`} dimColor>{`◈ ${kindLabel(a)} · ${a.name} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
+                  <Text key={`agent-${a.id}`} dimColor>{`◈ ${kindLabel(a)} · ${a.name}${agentSpec(a) ? ` · ${agentSpec(a)}` : ''} · ${a.status === 'running' ? 'working' : a.status}`}</Text>
                 ),
               )}
               {crew.more > 0 ? <Text dimColor>{`+${crew.more} more`}</Text> : null}
@@ -1437,7 +1487,12 @@ export const register: Register = on => {
                 <Text bold>{title}</Text>
               </Box>
             )}
-            {branch ? <Text dimColor>{`// ${branch}`}</Text> : null}
+            {branch && branchArt && Svg ? (
+              // The branch in a gold frame, after the slab.
+              <Svg source={themed(branchArt.svg)} alt={`branch ${branch}`} width={branchArt.width} height={branchArt.height} />
+            ) : branch ? (
+              <Text dimColor>{`// ${branch}`}</Text>
+            ) : null}
             {Svg && barInline ? (
               // The bar takes what its line leaves, as the surface lays it out (from no width,
               // growing): bodyColumns * 8 undercounts Desktop's row, and a bar sized from it

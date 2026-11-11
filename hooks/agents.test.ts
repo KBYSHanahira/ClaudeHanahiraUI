@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
 import { fmtClock, MOTION } from './chat'
-import { AGENT_CHIP, BAR_ROOM, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { AGENT_CHIP, BAR_ROOM, agentSpec, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -299,9 +299,38 @@ describe('small agent card', () => {
     const room = AGENT_CHIP.W - AGENT_CHIP.markW
     const fitted = (svg: string) => Math.max(...[...svg.matchAll(/<text x="([\d.]+)"[^>]*textLength="([\d.]+)"/g)].map(m => Number(m[1]) + Number(m[2])))
     expect(fitted(agentChipParts(mk({ name: 'Research competitor launches & write up' })).body.svg)).toBeLessThanOrEqual(room)
-    expect(fitted(agentChipParts(mk({ name: 'Short' })).body.svg)).toBeLessThan(room - 40)
+    expect(fitted(agentChipParts(mk({ name: 'Short', model: '', kind: 'shell' })).body.svg)).toBeLessThan(room - 40)
     expect(agentChipParts(mk({ name: 'a<b' })).body.svg).toContain('A&lt;B')
     expect(agentChipParts(mk()).body.svg).not.toContain(`rx="${AGENT_CHIP.H / 2}"`)
+  })
+})
+
+describe('what an agent runs on', () => {
+  test('the chip says the model and the effort; unknown parts are left out, never guessed', () => {
+    const svg = agentChipParts(mk({ model: 'claude-sonnet-5-5', effort: 'low' })).body.svg
+    expect(svg).toContain('>SONNET 5.5<')
+    expect(svg).toContain('>LOW<')
+    expect(agentSpec(mk({ model: 'claude-opus-5-5', effort: 'high' }))).toBe('Opus 5.5 · high')
+    expect(agentSpec(mk({ model: '', effort: null }))).toBe('model pending')
+    expect(agentChipParts(mk({ model: '', effort: null })).body.svg).toContain('>MODEL PENDING<')
+    for (const w of ['LOW', 'MEDIUM', 'HIGH', 'XHIGH', 'MAX']) expect(agentChipParts(mk({ effort: null })).body.svg).not.toContain(`>${w}<`)
+    expect(agentSpec(mk({ kind: 'shell', model: '' }))).toBe('')
+  })
+
+  test('the chip says how fast the agent answers, once that is measured', () => {
+    expect(agentSpec(mk({ model: 'claude-haiku-5-5', effort: 'low', tps: 82.4 }))).toBe('Haiku 5.5 · low · 82 tok/s')
+    expect(agentSpec(mk({ model: 'claude-haiku-5-5', effort: 'low', tps: 6.25 }))).toBe('Haiku 5.5 · low · 6.3 tok/s')
+    expect(agentChipParts(mk({ model: 'claude-haiku-5-5', tps: 82 })).body.svg).toContain('>82 TOK/S<')
+    for (const tps of [null, undefined, 0, NaN]) expect(agentChipParts(mk({ tps })).body.svg).not.toContain('TOK/S')
+  })
+
+  test('a long name stops short of the model and effort', () => {
+    const svg = agentChipParts(mk({ name: 'Research competitor launches & write up', model: 'claude-haiku-5-5', effort: 'medium' })).body.svg
+    const texts = [...svg.matchAll(/<text x="([\d.]+)"[^>]*textLength="([\d.]+)"[^>]*>([^<]*)</g)].map(m => ({ x: Number(m[1]), w: Number(m[2]), t: m[3] ?? '' }))
+    const name = texts.find(t => t.t.startsWith('RESEARCH'))!
+    const model = texts.find(t => t.t === 'HAIKU 5.5')!
+    expect(name.x + name.w).toBeLessThan(model.x)
+    expect(Math.max(...texts.map(t => t.x + t.w))).toBeLessThanOrEqual(AGENT_CHIP.W - AGENT_CHIP.markW)
   })
 })
 

@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AGENT_CHIP, agentChipParts, prettyModel } from '../hooks/agents'
 import { HUE, fmtClock, fmtElapsed } from '../hooks/chat'
-import { HUD_CONTEXT, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from '../hooks/hud'
+import { HUD_CONTEXT, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, branchChipSvg, stripeSvg } from '../hooks/hud'
 import { iconSvg } from '../hooks/icons'
 import { SKILLS_VERSION, VERSION } from '../hooks/version'
 import type { Agent } from '../types'
@@ -21,22 +21,31 @@ const nest = (art: string | { svg: string }, x: number, y: number) =>
 
 const now = 1_000_000
 const agents: Agent[] = [
-  { id: 'a1', name: 'code-reviewer', type: 'general-purpose', model: 'claude-sonnet-5-5', effort: 'high', background: true, status: 'running', startedAt: now - 84_000, endedAt: null, tools: 12, input: 1200, output: 5400, cacheRead: 310000, cacheWrite: 22000 },
-  { id: 'a2', name: 'test-runner', type: 'general-purpose', model: 'claude-haiku-5-5', effort: 'low', background: true, status: 'done', startedAt: now - 52_000, endedAt: now - 1_000, tools: 5, input: 800, output: 2100, cacheRead: 90000, cacheWrite: 9000 },
+  { id: 'a1', name: 'code-reviewer', type: 'general-purpose', model: 'claude-sonnet-5-5', effort: 'high', tps: 64, background: true, status: 'running', startedAt: now - 84_000, endedAt: null, tools: 12, input: 1200, output: 5400, cacheRead: 310000, cacheWrite: 22000 },
+  { id: 'a2', name: 'test-runner', type: 'general-purpose', model: 'claude-haiku-5-5', effort: 'low', tps: 142, background: true, status: 'done', startedAt: now - 52_000, endedAt: now - 1_000, tools: 5, input: 800, output: 2100, cacheRead: 90000, cacheWrite: 9000 },
   { id: 'b1', name: 'bun run build', type: 'shell', kind: 'shell', model: '', effort: null, background: true, status: 'running', startedAt: now - 20_000, endedAt: null, tools: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 ]
 
 const GAP = 4 // px between two cells, as the band's spacer picture
 const SKY = HUE.sky
 // Agent strip, then the band: the top line, the context cell, two lines of stat cells.
-const top = 24 + AGENT_CHIP.H + 14
 const lineH = 34
 const parts: string[] = []
-// agent strip, above the band as in a session
-agents.forEach((a, i) => {
+// agent strip, above the band as in a session: chips wrap to a new row as the strip does
+const STRIP_MAX = 700
+let stripX = 28
+let stripY = 24
+agents.forEach(a => {
   const art = agentChipParts(a, {})
-  parts.push(nest(art.body, 28 + i * (AGENT_CHIP.W + 8), 24), nest(art.mark, 28 + i * (AGENT_CHIP.W + 8) + art.body.width, 24))
+  const w = art.body.width + art.mark.width
+  if (stripX > 28 && stripX + w > STRIP_MAX) {
+    stripX = 28
+    stripY += AGENT_CHIP.H + 6
+  }
+  parts.push(nest(art.body, stripX, stripY), nest(art.mark, stripX + art.body.width, stripY))
+  stripX += w + 8
 })
+const top = stripY + AGENT_CHIP.H + 14
 // The stats, built first: the grid's width is the band's width, and every row ends on it.
 // Each cell is drawn at its column's width and its line's height, as the band draws its grid.
 type Draw = (width?: number, height?: number) => ReturnType<typeof hudCellSvg>
@@ -66,7 +75,8 @@ const ty = y0 + (lineH - 24) / 2
 const slab = slabSvg('spa')
 parts.push(nest(slab, X0, ty + 1))
 const branchX = X0 + slab.width + 10
-parts.push(`<text x="${branchX}" y="${ty + 17}" ${font} font-size="13" fill="#a3a3ab">// main</text>`)
+const branch = branchChipSvg('main')
+parts.push(nest(branch, branchX, ty + 2))
 const chips = [
   hudChipSvg({ color: SKY, label: 'working', fill: true }),
   hudChipSvg({ color: '', label: 'tools', value: '8', minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural }),
@@ -75,7 +85,7 @@ const chips = [
 const chipsW = chips.reduce((w, c) => w + c.width, 0) + 6 * (chips.length - 1)
 let chipX = R - chipsW
 const timeX = chipX - 84
-const barX = branchX + 58
+const barX = branchX + branch.width + 10
 parts.push(`<svg x="${barX}" y="${ty + 7}" width="${timeX - barX - 12}" height="10" overflow="hidden">${stripeSvg(timeX - barX - 12, 10, HUE.hazard, { live: true })}</svg>`)
 parts.push(nest(iconSvg('clock', '#a3a3ab', 14), timeX, ty + 5))
 parts.push(`<text x="${timeX + 20}" y="${ty + 17}" ${font} font-size="14" fill="#a3a3ab">${fmtElapsed(134)}</text>`)
