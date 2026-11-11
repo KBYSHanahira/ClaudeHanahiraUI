@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { arrivals, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, speakerOf, tone, top } from './register'
+import { chargeHolder, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -323,32 +323,16 @@ describe('sameLimits', () => {
   })
 })
 
-describe('speakerOf', () => {
-  test('names the person, a task, another party, and anything automatic', () => {
-    expect(speakerOf('composer', false, false).label).toBe('you')
-    expect(speakerOf('unclassified', false, false).label).toBe('you')
-    expect(speakerOf('task-notification', true, false).label).toBe('task')
-    expect(speakerOf('unclassified', false, true).label).toBe('message')
-    expect(speakerOf('scheduled-task', false, false).label).toBe('auto')
-    // One word, nothing after it.
-    expect(Object.keys(speakerOf('composer', false, false))).toEqual(['label', 'color'])
-  })
-})
-
-describe('arrivals', () => {
-  test('rows there from the start have no age; a later one ages from its first drawing', () => {
-    const a = arrivals(1500)
-    expect(a.age('old', 1000)).toBe(null)
-    expect(a.age('old2', 2000)).toBe(null)
-    expect(a.age('new', 3000)).toBe(0)
-    expect(a.age('new', 3400)).toBe(400)
-    expect(a.age('old', 9000)).toBe(null)
-  })
-  test('forgets the oldest past its room', () => {
-    const a = arrivals(0, 2)
-    a.age('a', 10)
-    a.age('b', 20)
-    a.age('c', 30)
-    expect(a.age('a', 40)).toBe(0)
+describe('chargeHolder', () => {
+  test('a new level is taken once the speed has stayed at it; from none and to none at once', () => {
+    const held = chargeHolder(2500)
+    expect(held(1, 0)).toBe(1)
+    expect(held(2, 1000)).toBe(1)
+    expect(held(1, 1500)).toBe(1)
+    expect(held(2, 2000)).toBe(1)
+    expect(held(2, 4400)).toBe(1)
+    expect(held(2, 4500)).toBe(2)
+    expect(held(0, 4600)).toBe(0)
+    expect(held(3, 4700)).toBe(3)
   })
 })

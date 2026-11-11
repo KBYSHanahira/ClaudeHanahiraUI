@@ -21,7 +21,6 @@ import {
   glideHolder,
   glideStyle,
   reelHolder,
-  MOTION,
   pillSvg,
   ROW,
   liveSpeed,
@@ -32,7 +31,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { CHARGE_COLOR, ROW_TAG, SEAM, SPEAKER, TOOL_KIND, TOOL_TAG, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, speakerSvg, stripeSvg, groupTag, toolKind, toolTagSvg } from './hud'
+import { CHARGE_COLOR, SEAM, chargeLevel, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -236,31 +235,26 @@ const glides = glideHolder()
 const reels = reelHolder()
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
-const chatRest = atom({ plugin: 'hanahira-claude-ui', key: 'chatRest' } as const, 0)
 
 /**
- * When each transcript row was first drawn, so its header comes in once and a redraw goes on
- * from where it was. The rows already there when the module loads (a reload, a resumed session)
- * are all drawn in its first moments: those come in at rest, not all at once.
+ * The charge level the speed cell shows: a new level is taken once the speed has stayed at it
+ * for `holdMs`, so a speed hovering at a threshold does not swap the arcs' pictures (each swap
+ * loads them anew) several times a second. From none, and to none, at once.
  */
-export const arrivals = (graceMs = 1500, max = 400) => {
-  const seen = new Map<string, number>()
-  let since: number | null = null
-  return {
-    /** The row's age in ms, or null for one that was there from the start. */
-    age: (id: string, nowMs: number) => {
-      since ??= nowMs
-      let at = seen.get(id)
-      if (at === undefined) {
-        at = nowMs - since < graceMs ? -1 : nowMs
-        seen.set(id, at)
-        if (seen.size > max) seen.delete(seen.keys().next().value as string)
-      }
-      return at < 0 ? null : nowMs - at
-    },
+export const chargeHolder = (holdMs = 2500) => {
+  let shown = 0
+  let want = 0
+  let since = 0
+  return (level: number, nowMs: number) => {
+    if (level !== want) {
+      want = level
+      since = nowMs
+    }
+    if (shown === 0 || level === 0 || nowMs - since >= holdMs) shown = level
+    return shown
   }
 }
-const arrived = arrivals()
+const chargeHeld = chargeHolder()
 const runMs = atom({ plugin: 'hanahira-claude-ui', key: 'runMs' } as const, 0)
 const seconds = atom({ plugin: 'hanahira-claude-ui', key: 'seconds' } as const, null)
 const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
@@ -299,26 +293,7 @@ const THEME = {
   keepFinishedMs: 3000, // a finished agent's card stays this long (to show the check), then goes
   stripGap: 8, // room under the agent strip, in px: keeps it off the band's frame
   // Icons in front of each label: swap for any glyph or emoji.
-  // The transcript in the band's look: a header over the person's messages and over each
-  // reply, and a tag before each tool row. Any of the three set false leaves those rows as
-  // the app draws them. `motion` false draws them still.
-  // `results`: a tag on what a tool call gave back; `groups`: on a folded run of calls; `commands`: on a slash command's output.
-  chat: { user: true, reply: true, tools: true, results: true, groups: true, commands: true, motion: true, replyName: 'Claude' },
 }
-
-/**
- * One plain word, and no caption after it: a header only says who is speaking, in words the app
- * already uses, so nothing in the transcript needs learning.
- */
-/** Who a user-role row is from, as its header names it: the person, a background task, another agent or session. */
-export const speakerOf = (kind: string, hasTask: boolean, hasFrom: boolean) =>
-  hasTask || kind === 'task-notification'
-    ? { label: 'task', color: HUE.hazard }
-    : hasFrom
-      ? { label: 'message', color: HUE.fur }
-      : kind === 'composer' || kind === 'bridge' || kind === 'sdk' || kind === 'unclassified'
-        ? { label: 'you', color: INK.value }
-        : { label: 'auto', color: INK.label }
 
 type Word = { text: string; quoted: boolean; runs: boolean }
 
@@ -555,6 +530,9 @@ const iconEl = (els: { Text: any; Svg: any }, name: IconName, color: string, siz
 
 // A second beat while an agent runs: it can outlive the turn that started it.
 let agentTicker: { cancel: () => void } | null = null
+// True while a turn's own beat runs: it redraws the band every second already, so the agents'
+// beat then only looks at the engine's list, and the band is not redrawn twice a second.
+let turnBeat = false
 
 // The folder and its branch. Read again after every turn: a turn can switch the branch.
 // One of Hanahira Claude UI's skills loaded: the mode is on, and the part is named. At the top
@@ -616,49 +594,27 @@ const restAgentBeat = async ($: EngineInterface) => {
   agentTicker = null
 }
 
-// The beat while an agent runs: a redraw a second, and every few seconds a look at the
-// engine's list, so an agent that ends while the session is idle still settles its card.
+// The beat while an agent runs: a redraw a second (unless the turn's own beat redraws), and every
+// few seconds a look at the engine's list, so an agent that ends while the session is idle still
+// settles its card.
 const agentBeat = ($: EngineInterface) => {
   if (agentTicker) return
   let beats = 0
   agentTicker = $.clock.every(1000, () => {
     beats += 1
     if (beats % 5 === 0) void reconcileAgents($).catch(() => undefined)
-    void update($, tick, n => (n ?? 0) + 1)
+    if (!turnBeat) void update($, tick, n => (n ?? 0) + 1)
   })
 }
-
-/** Every tool tag is as wide as the widest, so the rows after them line up. */
-const TAG_WIDTH = Math.max(...[...Object.values(TOOL_KIND), ...Object.values(ROW_TAG)].map(k => toolTagSvg(k.label, k.color).natural))
-
-/**
- * How long ago the row `id` came, in ms, while its coming-in (`ms` long) still plays; else null.
- * While it plays the row reads `chatRest`, which is bumped as the motion ends: the row is then
- * drawn once more, at rest, so a later repaint of its picture has no motion left to start over.
- */
-const entering = async ($: EngineInterface, id: string, ms: number) => {
-  if (!THEME.chat.motion) return null
-  const nowMs = await $.clock.now()
-  const age = arrived.age(id, nowMs)
-  if (age === null || age >= ms) return null
-  await read($, chatRest)
-  if (nowMs + ms - age > chatRestDue) {
-    chatRestDue = nowMs + ms - age
-    $.clock.after(ms - age + 30, () => void update($, chatRest, n => (n ?? 0) + 1))
-  }
-  return age
-}
-let chatRestDue = 0
 
 export const register: Register = on => {
   let startedAt = 0
   let ticker: { cancel: () => void } | null = null
-  // What the running turn's clocks and tool count show: set on each beat alone, so each moves
-  // once a second, in step, whenever else the band redraws.
+  // What the running turn's clock shows: set on each beat alone, so it moves once a second
+  // whenever else the band redraws. Every other figure shows its value as it comes, on its own.
   let beatSecs = 0
   // When the running turn last re-read the engine's figures (refreshUsage), in ms.
   let usageAt = 0
-  let beatTools = 0
   // One redraw as the last motion under way ends, so the band rests on its plain pictures even
   // with nothing else to redraw it (a turn just ended): a surface that stopped painting a
   // picture mid-motion (a window out of focus) then shows where it rests, not a frame of it.
@@ -757,13 +713,12 @@ export const register: Register = on => {
     ticker?.cancel()
     const turnStart = startedAt
     beatSecs = 0
-    beatTools = 0
+    turnBeat = true
     ticker = $.clock.every(1000, () => {
       void (async () => {
         // Seconds by the clock, not by counting beats: a timer held back (a window out of
         // focus) then still reads true, and a long turn's clock never stops short.
         beatSecs = Math.max(0, Math.floor(((await $.clock.now()) - turnStart) / 1000))
-        beatTools = (await read($, stats))?.tools ?? 0
         await update($, tick, n => (n ?? 0) + 1)
         // The limits, context and spend, re-read as the turn goes: not on every beat.
         const now = await $.clock.now()
@@ -1004,6 +959,7 @@ export const register: Register = on => {
     }
     ticker?.cancel()
     ticker = null
+    turnBeat = false
     const reason = (e as unknown as { reason?: string }).reason
     await update($, outcome, () => (reason === 'error' || reason === 'refusal' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done'))
     // The turn's length as the engine reports it; failing that, from the start this module heard
@@ -1067,7 +1023,7 @@ export const register: Register = on => {
     // Time spent running: the finished turns, and the running one as it goes.
     const runShown = (run ?? 0) + liveMs
     const shownSecs = live ? beatSecs : secs
-    const shownTools = live ? beatTools : st.tools
+    const shownTools = st.tools
     const elapsedArt =
       shownSecs === null ? null : tickerSvg(fmtElapsed(shownSecs), { from: reel('elapsed', fmtElapsed(shownSecs)), minText: '59m 59s' })
     const { Box, Text } = $.ui.resolve(e)
@@ -1118,7 +1074,13 @@ export const register: Register = on => {
     const statusW = Math.max(...Object.values(STATUS).map(o => hudChipSvg({ ...o, motion: false }).natural))
     // The bar rests green unless the turn went wrong.
     const barRest = status === 'done' ? THEME.done : INK.track
+    // The turn's clock, framed like the count: as wide as '59m 59s' from the start, so the
+    // chips after it do not step right as it grows. Each second rolls in on the beat.
+    const timeW = hudChipSvg({ color: INK.label, label: '', icon: 'clock', pad: 6, value: '59m 59s' }).natural
     const chips = [
+      ...(shownSecs !== null
+        ? [{ key: 'time', alt: fmtElapsed(shownSecs), art: hudChipSvg({ color: INK.label, label: '', icon: 'clock', pad: 6, value: fmtElapsed(shownSecs), reel: reel('elapsed', fmtElapsed(shownSecs)), minWidth: timeW }) }]
+        : []),
       { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: hudChipSvg({ ...STATUS[status], minWidth: statusW }) },
       { key: 'tools', alt: `${shownTools} tool calls`, art: hudChipSvg({
         color: INK.label,
@@ -1127,7 +1089,7 @@ export const register: Register = on => {
         reel: reel('tools', String(shownTools)),
         minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural,
       }) },
-      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION} // ${SKILLS_FROM}`, plain: true }) },
+      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION} // ${SKILLS_FROM}` }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -1140,9 +1102,11 @@ export const register: Register = on => {
     // own, whole, instead of running past the frame; the bar goes where there is room for it.
     const leftPx = slabSvg(title).width + (branch ? gapPx + textPx(`// ${branch}`) : 0) + 3 * gapPx
     const rightPx =
+      // The clock counts for what it took before it had a frame (an icon and its figures), so
+      // the frame's few px more never move the bar or the chips to another line.
       (14 + gapPx + textPx('59m 59s')) +
       (THEME.compact
-        ? chips.reduce((w, c) => w + c.art.width, 0) + gapPx * chips.length
+        ? chips.filter(c => c.key !== 'time').reduce((w, c) => w + c.art.width + gapPx, 0)
         : pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width + countArt.width + 2 * gapPx) +
       gapPx
     // The frame's and the line card's padding and border, and slack for font differences.
@@ -1167,7 +1131,7 @@ export const register: Register = on => {
       .map(l => ({ ...l, models: l.kind === 'seven_day' ? use.limits.filter(m => weeklyModel(m.kind)) : [] }))
     // Stat tiles: a ring when the figure is a percentage, else the icon.
     const speedPct = sp.tps === null ? 0 : Math.min(100, (sp.tps / speedScale(sp.peak ?? 0)) * 100)
-    const charge = e.props.isWorking ? chargeLevel(sp.tps) : 0
+    const charge = e.props.isWorking ? chargeHeld(chargeLevel(sp.tps), nowMs) : chargeHeld(0, nowMs)
     const tiles: Tile[] = [
       {
         key: 'context',
@@ -1278,7 +1242,7 @@ export const register: Register = on => {
           ...(t.bars ? { bars: t.bars } : {}),
           ...(mode !== 'bare' && sub ? { sub } : {}),
           ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
-          ...(t.charge ? { charge: { level: t.charge, motion: true, at: nowMs } } : {}),
+          ...(t.charge ? { charge: { level: t.charge, motion: true } } : {}),
         },
       ]
     }
@@ -1384,20 +1348,38 @@ export const register: Register = on => {
     // one that starts that wide and gives way first where the line is short of room: with room,
     // every cell of a line comes out the same width (and its faint number at the same place);
     // without, each still shows whole.
-    const stretch = (key: string, art: Parts, alt: string, props: { isInteractive?: boolean } = {}) => !Svg ? [] : [
-      <Svg key={key} source={art.left.svg} alt={alt} width={art.left.width} height={art.height} {...props} />,
-      ...('even' in art && art.even
-        ? [
-            <Box key={`${key}-even`} flexGrow={0} flexShrink={1} minWidth={0} overflow="hidden">
-              <Svg source={art.even.svg} alt={alt} width={art.even.width} height={art.height} {...props} />
-            </Box>,
-          ]
-        : []),
-      <Box key={`${key}-fill`} width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-        <Svg source={art.fill.svg} alt={alt} width={art.fill.width} height={art.height} {...props} />
-      </Box>,
-      <Svg key={`${key}-end`} source={art.right.svg} alt={alt} width={art.right.width} height={art.height} {...props} />,
-    ]
+    const stretch = (key: string, art: Parts, alt: string, props: { isInteractive?: boolean } = {}) => {
+      if (!Svg) return []
+      type Piece = { svg: string; width: number }
+      // A cell in strips (a charged one): each of its pictures is its strips one under another,
+      // the charge's own in the surface's frame while Claude works, where they run on.
+      const rows = 'rows' in art && art.rows ? art.rows : null
+      const pic = (k: string, of: (r: { left: Piece; fill: Piece; right: Piece; even: Piece | null }) => Piece | null) =>
+        rows ? (
+          <Box key={k} flexDirection="column" flexShrink={0}>
+            {rows.map(r => {
+              const p = of(r)!
+              return <Svg key={`${k}-${r.id}`} source={p.svg} alt={alt} width={p.width} height={r.height} {...(r.live ? loop : {})} />
+            })}
+          </Box>
+        ) : (
+          <Svg key={k} source={of(art as never)!.svg} alt={alt} width={of(art as never)!.width} height={art.height} {...props} />
+        )
+      return [
+        pic(key, r => r.left),
+        ...('even' in art && art.even
+          ? [
+              <Box key={`${key}-even`} flexGrow={0} flexShrink={1} minWidth={0} overflow="hidden">
+                {pic(`${key}-even-p`, r => r.even)}
+              </Box>,
+            ]
+          : []),
+        <Box key={`${key}-fill`} width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+          {pic(`${key}-fill-p`, r => r.fill)}
+        </Box>,
+        pic(`${key}-end`, r => r.right),
+      ]
+    }
     // Every cell of a line is as tall as its tallest, so the line reads as one row.
     const lineH = chosen.lines.map(line => Math.max(0, ...line.map((c, j) => c.draw(chosen.colW[j], chosen.mode).height)))
     // The top line fits the same width: past it, its second group takes a line of its own.
@@ -1474,7 +1456,7 @@ export const register: Register = on => {
             ) : null}
           </Box>
           <Box gap={1} alignItems="center" flexShrink={0}>
-            {shownSecs !== null ? (
+            {shownSecs !== null && !(THEME.compact && Svg) ? (
               // As wide as '59m 59s' from the start, so the pill does not step right as it grows.
               <Box gap={1} alignItems="center" minWidth={9}>
                 {iconEl({ Text, Svg }, 'clock', '#a3a3ab', 14, '⏱')}
@@ -1567,7 +1549,7 @@ export const register: Register = on => {
                       </Text>
                     )
                   // Each cell in three pictures, stretched to its share of the line; a charged one
-                  // stays plain and its loops carry the clock (hudCellSvg).
+                  // in strips, its arcs in pictures of their own (hudCellParts `rows`).
                   const cell = stretch(c.key, c.parts(chosen.colW[j], chosen.mode, lineH[r], Math.max(...chosen.colW) - SEAM), c.alt, c.live ? loop : {})
                   return j === 0 ? cell : [<Svg key={`gap-${c.key}`} source={GAP_ART} alt="gap" width={GRID_GAP} height={1} />, ...cell]
                 })}
@@ -1621,127 +1603,6 @@ export const register: Register = on => {
         </Box>
         )}
       </Box>
-      </Box>
-    )
-  })
-
-  // The transcript in the band's look. Each hook keeps the engine's own row (`next(e)`) and
-  // only adds to it, and only where the surface draws pictures: elsewhere the row is as it was.
-  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
-    const row = await next(e)
-    const table = $.ui.resolve(e)
-    // A row folded to one dim line (a sender's name) stays that one line.
-    if (!THEME.chat.user || !('Svg' in table) || !e.props.isExpanded) return row
-    const { Box, Svg } = table
-    const who = speakerOf(e.props.origin.kind, e.props.task !== undefined, e.props.from !== undefined)
-    const enter = await entering($, `u:${e.requestId}`, SPEAKER.inMs)
-    const art = speakerSvg(who.label, who.color, { enter })
-    return (
-      <Box flexDirection="column" rowGap={1}>
-        <Svg source={art.svg} alt={who.label} width={art.width} height={art.height} />
-        {row}
-      </Box>
-    )
-  })
-
-  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    const row = await next(e)
-    const table = $.ui.resolve(e)
-    // One header a reply, on the block that opens it; a summary of text is not the reply.
-    if (!THEME.chat.reply || !('Svg' in table) || !e.props.isFirstOfReply || e.props.isSummary) return row
-    const { Box, Svg } = table
-    const enter = await entering($, `a:${e.requestId}`, SPEAKER.inMs)
-    const art = speakerSvg(THEME.chat.replyName, THEME.accent, { enter })
-    return (
-      <Box flexDirection="column" rowGap={1}>
-        <Svg source={art.svg} alt={THEME.chat.replyName} width={art.width} height={art.height} />
-        {row}
-      </Box>
-    )
-  })
-
-  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-    const row = await next(e)
-    const table = $.ui.resolve(e)
-    if (!THEME.chat.tools || !('Svg' in table)) return row
-    const { Box, Svg } = table
-    const kind = TOOL_KIND[toolKind(e.props.tool)]
-    // A call that failed shows it on its tag; one cut short goes quiet.
-    const color = e.props.isErrored ? HUE.rose : e.props.isInterrupted ? INK.detail : kind.color
-    const enter = await entering($, `t:${e.requestId}`, TOOL_TAG.inMs)
-    // A plain picture even while its square blinks: a plain picture plays its own CSS, a row is
-    // redrawn only as its call starts and ends, and a frame for each running call is heavy.
-    const art = toolTagSvg(kind.label, color, { minWidth: TAG_WIDTH, enter, running: e.props.isRunning })
-    return (
-      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
-        <Box flexShrink={0}>
-          <Svg source={art.svg} alt={kind.label} width={art.width} height={art.height} />
-        </Box>
-        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          {row}
-        </Box>
-      </Box>
-    )
-  })
-
-  // What a call gave back, under its row: the same tag column, `output`, or `error` in rose.
-  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
-    const row = await next(e)
-    const table = $.ui.resolve(e)
-    if (!THEME.chat.results || !row || !('Svg' in table)) return row
-    const { Box, Svg } = table
-    const tag = e.props.isErrored ? ROW_TAG.error : ROW_TAG.result
-    const art = toolTagSvg(tag.label, tag.color, { minWidth: TAG_WIDTH })
-    return (
-      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
-        <Box flexShrink={0}>
-          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} />
-        </Box>
-        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          {row}
-        </Box>
-      </Box>
-    )
-  })
-
-  // A run of calls folded into one count line: one tag for the run, its calls' kind where they
-  // share one. Unfolded, each call is a ToolUse row with its own tag, so the run gets none.
-  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
-    const row = await next(e)
-    const table = $.ui.resolve(e)
-    if (!THEME.chat.groups || !row || e.props.isExpanded || !('Svg' in table)) return row
-    const { Box, Svg } = table
-    const tag = groupTag(e.props.calls.map(c => c.tool))
-    const running = e.props.isActive && e.props.calls.some(c => c.isRunning)
-    const art = toolTagSvg(tag.label, tag.color, { minWidth: TAG_WIDTH, running })
-    return (
-      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
-        <Box flexShrink={0}>
-          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} />
-        </Box>
-        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          {row}
-        </Box>
-      </Box>
-    )
-  })
-
-  // What a slash command printed: `command`, or `error` where the run threw.
-  on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
-    const row = await next(e)
-    const table = $.ui.resolve(e)
-    if (!THEME.chat.commands || !row || !('Svg' in table)) return row
-    const { Box, Svg } = table
-    const tag = e.props.isErrored ? ROW_TAG.error : ROW_TAG.command
-    const art = toolTagSvg(tag.label, tag.color, { minWidth: TAG_WIDTH })
-    return (
-      <Box flexDirection="row" columnGap={1} alignItems="flex-start">
-        <Box flexShrink={0}>
-          <Svg source={art.svg} alt={tag.label} width={art.width} height={art.height} />
-        </Box>
-        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          {row}
-        </Box>
       </Box>
     )
   })

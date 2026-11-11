@@ -4,6 +4,8 @@
 
 import { EASE, HUE, INK, MASCOT, MOTION, glideStyle, labelWidth, mascotSvg, motionStyle, reelText, themeStyle } from './chat'
 import type { Since } from './chat'
+import { iconGroup } from './icons'
+import type { IconName } from './icons'
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -122,7 +124,7 @@ const arcPath = (width: number, y: number, amp: number, seed: number) => {
       const [x, py] = at(k)
       const up = py < y ? -1 : 1
       const r = (i: number, lo: number, hi: number) => lo + jitter(seed, 950 + j * 4 + i) * (hi - lo)
-      forks += `M${x.toFixed(1)} ${py.toFixed(1)}l${r(0, 2.5, 4.5).toFixed(1)} ${(up * r(1, 1.5, 3)).toFixed(1)}l${r(2, 1.5, 3.5).toFixed(1)} ${(up * r(3, 0.5, 2.5)).toFixed(1)}`
+      forks += `M${x.toFixed(1)} ${py.toFixed(1)}l${r(0, 2.5, 4.5).toFixed(1)} ${(up * r(1, 0.8, 1.5)).toFixed(1)}l${r(2, 1.5, 3.5).toFixed(1)} ${(up * r(3, 0.3, 1.25)).toFixed(1)}`
     }
   }
   return { line, forks }
@@ -133,58 +135,52 @@ const bolt = (x: number, y: number, size: number, color: string, cls = '') =>
   `<path d="M7 0L1 7h4l-2 5 6-7.5H5z" transform="translate(${x} ${y}) scale(${(size / 12).toFixed(3)})" fill="${color}"${cls ? ` class="${cls}"` : ''}/>`
 
 /**
- * A charged cell's bands: the arcs run between `arcs` (under the figure) and `bars` (above the
+ * A charged cell's bands: the arcs run between `arcs` (just under the figure) and `bars` (the top of the
  * meter). `drop` is how far a charged cell's meters sit lower than a plain one's, which is the
  * room the arcs run in, clear of the figure.
  */
-export const CHARGE_CUT = { head: 14, arcs: 40, bars: 49, foot: 3, drop: 4 }
+export const CHARGE_CUT = { head: 14, arcs: CELL.valueY + 1, bars: CELL.barsY + 11, foot: 3, drop: 11 }
 
 /**
  * The electric charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`,
  * in layers:
- * - `still`: at 2, a lit frame and sparks at the corners. Nothing in it moves.
- * - `head`: a bolt in the corner (two at 3) that flickers, and at 3 an arc along the top edge.
- * - `arcs`: an arc running just above the meter; at 2 a second, finer one against it; at 3 a third.
+ * - `still`: at 2, a lit frame and a spark in the corner.
+ * - `head`: a bolt under the corner mark (two at 3).
+ * - `arcs`: at 3 an arc along the top edge; an arc just above the meter; at 2 a second, finer one against it; at 3 a third.
  * - `foot`: at 3, an arc along the bottom edge.
  * With `motion` every arc slides along its line for good (a loop, each at its own pace, faster
- * the higher the level) and the bolts flicker. The cell is one plain picture, redrawn as its
- * figure changes, and a redrawn picture starts its CSS over; so each loop starts `at` ms into
- * itself (a negative animation-delay), and a redraw goes on from where the last one was.
+ * the higher the level). Nothing in it follows the clock or the cell's figure, so its picture
+ * stays the same for as long as the level and the size do: set in a strip of its own
+ * (hudCellParts `rows`) and drawn in the surface's frame, like the loading bar, it runs on
+ * whatever else is redrawn.
  */
-const chargeLayers = (level: number, width: number, height: number, motion: boolean, at = 0) => {
+const chargeLayers = (level: number, width: number, height: number, motion: boolean) => {
   if (level < 1) return { still: '', head: '', arcs: '', foot: '', lines: '' }
   const color = CHARGE_COLOR[level]!
-  const C = CELL
   const pace = [0, 1500, 1050, 760][level]!
   let n = 0
-  const into = (ms: number) => `;animation-delay:-${Math.round(((at % ms) + ms) % ms)}ms`
-  // One arc, sliding one width a loop; `back` slides it the other way. Drawn as lightning: a
-  // soft glow in two widths under the line, the line with its branches (which flickers, each
-  // arc at its own beat), and a hot white thread down its middle.
+  // One arc, drawn as lightning: a soft glow in two widths under the line, the line with its
+  // branches, and a hot white thread down its middle. It slides one width a loop (`back`: the
+  // other way), and the line repeats every width, so the loop shows no seam.
   const arc = (y: number, amp: number, seed: number, w: number, ms: number, back = false) => {
-    const cls = `a${n++}`
     const a = arcPath(width, y, amp, seed)
-    const beat = 420 + ((seed * 131) % 5) * 90
+    const cls = `a${n++}`
     return (
-      `<g${motion ? ` class="${cls}"` : ''} fill="none" stroke="${color}" stroke-linejoin="round" stroke-linecap="round">` +
+      `<g class="${cls}" fill="none" stroke="${color}" stroke-linejoin="round" stroke-linecap="round">` +
       // Each stroke carries the line itself: a `use` of one shared path would be shorter, but a
       // surface that scrubs the markup may drop it, and the arcs with it.
       `<path d="${a.line}" stroke-width="${w + 5}" stroke-opacity="0.09"/>` +
       `<path d="${a.line}" stroke-width="${w + 2}" stroke-opacity="0.24"/>` +
-      `<g${motion ? ` class="${cls}f"` : ''}><path d="${a.line}${a.forks}" stroke-width="${w}" stroke-linejoin="bevel"/>` +
-      `<path d="${a.line}" stroke="#ffffff" stroke-width="${(w * 0.38).toFixed(2)}" stroke-opacity="0.8"/></g>` +
+      `<path d="${a.line}${a.forks}" stroke-width="${w}" stroke-linejoin="bevel"/>` +
+      `<path d="${a.line}" stroke="#ffffff" stroke-width="${(w * 0.38).toFixed(2)}" stroke-opacity="0.8"/>` +
       `</g>` +
-      (motion
-        ? motionStyle(
-            `@keyframes ${cls}{to{transform:translateX(${back ? -width : width}px)}}.${cls}{${back ? `transform:translateX(${width}px);` : ''}animation:${cls} ${ms}ms linear infinite${into(ms)}}` +
-              `@keyframes ${cls}f{0%,100%{opacity:1}7%{opacity:.45}10%{opacity:1}48%{opacity:.7}52%{opacity:1}81%{opacity:.3}84%{opacity:1}}.${cls}f{animation:${cls}f ${beat}ms linear infinite${into(beat)}}`,
-          )
-        : '')
+      (motion ? motionStyle(`@keyframes ${cls}{from{transform:translateX(${back ? width : 0}px)}to{transform:translateX(${back ? 0 : width}px)}}.${cls}{animation:${cls} ${ms}ms linear infinite}`) : '')
     )
   }
-  const flicker = motion ? motionStyle(`@keyframes zf{0%,100%{opacity:1}42%{opacity:.35}47%{opacity:1}71%{opacity:.55}}.zf{animation:zf ${900 - level * 170}ms linear infinite${into(900 - level * 170)}}`) : ''
   const spark = (x: number, y: number, dx: number, dy: number) => `<path d="M${x} ${y}l${dx * 5} ${dy * 3}l${-dx * 2} ${dy * 2}l${dx * 5} ${dy * 4}" fill="none" stroke="${color}" stroke-width="1.1"/>`
-  const arcY = (CHARGE_CUT.arcs + CHARGE_CUT.bars) / 2
+  // Midway between the figure and the meter, leaving the glow (3.2 px) room above: an arc reaches
+  // 3.6 px and its branches 2.75 more to either side.
+  const arcY = (CHARGE_CUT.arcs + 3.2 + CHARGE_CUT.bars - 0.5) / 2
   // Drawn in this order, so each arc keeps its class name.
   const top = level >= 3 ? arc(1.6, 1.3, 51, 1.4, pace) : ''
   const arcs =
@@ -196,14 +192,14 @@ const chargeLayers = (level: number, width: number, height: number, motion: bool
     still:
       level >= 2
         ? `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="none" stroke="${color}" stroke-opacity="0.65"/>` +
-          spark(width - SEAM - 1, height - 16, -1, 1) +
-          spark(width - SEAM - 1, C.tabH + 6, -1, 1) +
-          spark(width - 46, height - 15, 1, 1)
+          // In the last SEAM px, so a widened band (hudCellParts) keeps it in the corner.
+          spark(width - 2, height - 16, -1, 1)
         : '',
-    head: bolt(width - 23, 2, 10, color, motion ? 'zf' : '') + (level >= 3 ? bolt(width - 35, 2, 10, color, motion ? 'zf' : '') : '') + top + flicker,
-    arcs,
+    // Under the corner mark, in the last SEAM px, like the spark.
+    head: bolt(width - 9, 12, 10, color) + (level >= 3 ? bolt(width - 9, 24, 10, color) : ''),
+    arcs: top + arcs,
     foot,
-    // Every arc, and nothing else: each repeats every `width` px, so copies set `width` apart run on as one line.
+    // Every arc, and nothing else: each is two widths long, so copies set two widths apart run on as one line.
     lines: top + arcs + foot,
   }
 }
@@ -227,8 +223,8 @@ export type CellOpts = {
   tone?: string
   reel?: Since<string> | string | null
   toggle?: { on: boolean; enter?: number | null; motion?: boolean }
-  /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops), `at` ms (the clock) into them. */
-  charge?: { level: number; motion?: boolean; at?: number }
+  /** Electric charge over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
+  charge?: { level: number; motion?: boolean }
 }
 
 /** A cell's measures and its drawing in layers, for hudCellSvg. */
@@ -248,7 +244,9 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, slab.width + 22, x + subW + SEAM, C.pad + nameW + 60 + pctW + C.pad)))
   const width = Math.max(natural, Math.round(opts.width ?? 0))
   const pitch = labelled ? C.namedPitch : C.barPitch
-  const height = Math.max(cellHeight(bars.length, opts.sub !== undefined, opts.rule !== undefined, labelled), Math.round(opts.height ?? 0))
+  const level = Math.round(opts.charge?.level ?? 0)
+  // A charged cell's meters sit `drop` lower (the arcs run in the room), so it is that much taller.
+  const height = Math.max(cellHeight(bars.length, opts.sub !== undefined, opts.rule !== undefined, labelled) + (level > 0 ? CHARGE_CUT.drop : 0), Math.round(opts.height ?? 0))
   const id = `b${opts.index ?? ''}`
   const barX = C.pad + nameW
   const barW = width - 2 * C.pad - nameW - pctW
@@ -263,8 +261,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
     })
     .join('')
   const subY = (opts.toggle ? C.valueY - 4 : C.barsY + bars.length * pitch) + (bars.length ? 10 : 13)
-  const level = Math.round(opts.charge?.level ?? 0)
-  const charge = chargeLayers(level, width, height, opts.charge?.motion === true, opts.charge?.at ?? 0)
+  const charge = chargeLayers(level, width, height, opts.charge?.motion === true)
   // The cell in layers: what never changes while its name, size and charge hold; the figure;
   // the meters and the line under them.
   const indexArt = opts.index
@@ -312,8 +309,8 @@ export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) =>
  * `slice`: a surface that fits a picture into a narrower box keeps its height and crops its
  * right end, where the default would shrink the whole drawing into the box (stripeSvg too).
  */
-const slice = (x: number, w: number, h: number, inner: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="xMinYMid slice">${x ? `<g transform="translate(${-x} 0)">${inner}</g>` : inner}${themeStyle()}</svg>`
+const slice = (x: number, w: number, h: number, inner: string, y = 0) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="xMinYMid slice">${x || y ? `<g transform="translate(${-x} ${-y})">${inner}</g>` : inner}${themeStyle()}</svg>`
 
 /** A drawing `width` wide cut at `seam`, with `fill` (drawn from x = 0, `fillW` wide) to set in the cut. */
 const stretchParts = (inner: string, fill: string, fillW: number, width: number, height: number, seam: number) => ({
@@ -334,21 +331,58 @@ const stretchParts = (inner: string, fill: string, fillW: number, width: number,
 export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) => {
   const c = cellLayers(label, value, opts)
   const seam = c.width - SEAM
-  const run =
-    c.level > 0
-      ? (c.level >= 2 ? `<path d="M-40 0.5H${FILL.cell + 40}M-40 ${c.height - 0.5}H${FILL.cell + 40}" fill="none" stroke="${CHARGE_COLOR[c.level]}" stroke-opacity="0.65"/>` : '') +
-        Array.from({ length: Math.ceil((FILL.cell + seam) / c.width) }, (_, i) => `<g transform="translate(${i * c.width - seam} 0)">${c.charge.lines}</g>`).join('')
-      : ''
-  const fill = glass(-40, FILL.cell + 80, c.height) + run
   // What the cell is short of `indexEnd`: the frame running on from the seam, with the rest of
   // the faint number, so the number sits at one place in every cell of an evened line.
   const short = Math.min(FILL.cell, Math.round(opts.indexEnd ?? 0) - seam)
-  const rest = c.figure + c.meters + c.charge.head + c.charge.arcs + c.charge.foot
+  // The frame running on from `lead` px past the seam. Each arc is two widths long (arcPath), so
+  // its copies sit two widths apart: closer, they would lie on each other and glow twice as bright.
+  // Drawn `w` wide: only the copies that width shows, and their CSS once.
+  const fillFrom = (lead: number, w: number, lines = true) =>
+    glass(-40, w + 80, c.height) +
+    (c.level > 0
+      ? (c.level >= 2 ? `<path d="M-40 0.5H${w + 40}M-40 ${c.height - 0.5}H${w + 40}" fill="none" stroke="${CHARGE_COLOR[c.level]}" stroke-opacity="0.65"/>` : '') +
+        (lines ? Array.from({ length: Math.max(1, Math.ceil((w + seam + lead - c.width) / (2 * c.width)) + 1) }, (_, i) => `<g transform="translate(${i * 2 * c.width - seam - lead} 0)">${c.charge.lines}</g>`).join('') : '')
+      : '')
+  const rest = c.figure + c.meters + c.charge.head
+  const arcs = c.charge.arcs + c.charge.foot
+  const bare = c.indexArt ? c.base.replace(c.indexArt, '') : c.base
+  const index = `<g transform="translate(${-seam} 0)">${c.indexArt}</g>`
+  // The four pictures of the cell, or of the strip of it `h` px tall from `y`. `lit`: the arcs
+  // and nothing that changes (a strip of the charge alone); else everything but the arcs.
+  // Whole (`lit` not given), both.
+  const pieces = (y: number, h: number, lit?: boolean) => {
+    const inner = lit === undefined ? rest + arcs : lit ? c.charge.head + arcs : rest
+    return {
+      left: { svg: slice(0, seam, h, c.base + inner, y), width: seam },
+      // The filler after `even` goes on from where `even` ends, so its arcs run on unbroken.
+      fill: { svg: slice(0, FILL.cell, h, fillFrom(Math.max(0, short), FILL.cell, lit !== false), y), width: FILL.cell },
+      // The right end without the number (one that runs past the seam goes on in `even`) and
+      // without the arcs: it follows a filler cut at any width, where no arc could meet its own.
+      right: { svg: slice(seam, SEAM, h, bare + (lit ? c.charge.head : rest), y), width: SEAM },
+      even: short > 0 ? { svg: slice(0, short, h, fillFrom(0, short, lit !== false) + index, y), width: short } : null,
+    }
+  }
+  // A charged cell in strips, one under another: the arcs in strips of their own (`live`), whose
+  // pictures hold while the figure and the meters change in the strips between them. A picture
+  // that changes is swapped, which starts its motion over; one that holds runs on.
+  const K = CHARGE_CUT
+  const foot = c.level >= 3 ? K.foot : 0
+  const cuts: [number, number, boolean][] =
+    c.level < 1
+      ? []
+      : [
+          ...(c.level >= 3 ? ([[0, K.head, true], [K.head, K.arcs - K.head, false]] as [number, number, boolean][]) : ([[0, K.arcs, false]] as [number, number, boolean][])),
+          [K.arcs, K.bars - K.arcs, true],
+          [K.bars, c.height - K.bars - foot, false],
+          ...(foot ? ([[c.height - foot, foot, true]] as [number, number, boolean][]) : []),
+        ]
   return {
-    ...stretchParts(c.base + rest, fill, FILL.cell, c.width, c.height, seam),
-    // The right end without the number: one that runs past the seam goes on in `even`, not here.
-    right: { svg: slice(seam, SEAM, c.height, (c.indexArt ? c.base.replace(c.indexArt, '') : c.base) + rest), width: SEAM },
-    even: short > 0 ? { svg: slice(0, short, c.height, fill + `<g transform="translate(${-seam} 0)">${c.indexArt}</g>`), width: short } : null,
+    ...pieces(0, c.height),
+    // `id`: a strip of arcs is named by all its picture is drawn from, so a new level or size is
+    // a new picture set in its place, never the old one's source swapped under a running loop.
+    rows: cuts.length ? cuts.map(([y, h, live]) => ({ ...pieces(y, h, live), height: h, live, id: live ? `arc${c.level}-${y}-${c.width}x${c.height}-${Math.max(0, short)}` : `row${y}` })) : null,
+    width: c.width,
+    height: c.height,
     natural: c.natural,
   }
 }
@@ -411,19 +445,24 @@ export const HUD_CHIP = { height: 20, fs: 11, lean: 5, pad: 9, baseline: 14 }
 
 /**
  * A chip for the top line, a parallelogram: `fill` paints it solid in `color` with dark text
- * (a state: working, success, error); otherwise an outline, or with `plain` no shape at all
- * (the version). `value` follows the label in ink and rolls to each new one. `minWidth` holds
+ * (a state: working, success, error); otherwise an outline, or with `plain` no shape at all.
+ * `icon` stands before the label, or in its place where the label is empty (the clock).
+ * `value` follows the label in ink and rolls to each new one. `pad` sets the room inside its
+ * ends (HUD_CHIP.pad unless given). `minWidth` holds
  * it as wide as another state's. With `motion` it comes in once and its mark blinks (a loop).
  */
-export const hudChipSvg = (opts: { label: string; color: string; value?: string; fill?: boolean; plain?: boolean; minWidth?: number; motion?: boolean; reel?: Since<string> | string | null }) => {
+export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName; pad?: number; value?: string; fill?: boolean; plain?: boolean; minWidth?: number; motion?: boolean; reel?: Since<string> | string | null }) => {
   const H = HUD_CHIP
   const h = H.height
+  const pad = opts.pad ?? H.pad
   const label = opts.label.toUpperCase()
-  const labelW = capWidth(label, H.fs, 1.2)
   const mark = opts.fill ? 9 : 0
-  const x = H.lean + H.pad + mark
+  const iconX = H.lean + pad + mark
+  const iconW = opts.icon ? 12 + (label ? 5 : 0) : 0
+  const x = iconX + iconW
+  const labelW = label ? capWidth(label, H.fs, 1.2) : 0
   const valueW = opts.value ? 5 + labelWidth(opts.value, H.fs + 1) : 0
-  const natural = Math.ceil(x + labelW + valueW + H.pad + H.lean)
+  const natural = Math.ceil(x + labelW + valueW + pad + H.lean)
   const width = Math.max(natural, Math.round(opts.minWidth ?? 0))
   const ink = opts.fill ? HUE.card : opts.plain ? INK.detail : INK.label
   const shape = opts.plain
@@ -434,8 +473,9 @@ export const hudChipSvg = (opts: { label: string; color: string; value?: string;
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
     (opts.motion ? '<g class="chip">' : '') +
     shape +
-    (mark ? `<rect x="${H.lean + H.pad - 1}" y="${h / 2 - 2.5}" width="5" height="5" fill="${HUE.card}"${opts.motion ? ' class="mk"' : ''}/>` : '') +
-    cap(x, H.baseline, label, H.fs, ink, { ls: 1.2, bold: opts.fill === true }) +
+    (mark ? `<rect x="${H.lean + pad - 1}" y="${h / 2 - 2.5}" width="5" height="5" fill="${HUE.card}"${opts.motion ? ' class="mk"' : ''}/>` : '') +
+    (opts.icon ? iconGroup(opts.icon, ink, iconX, h / 2 - 6, 12) : '') +
+    (label ? cap(x, H.baseline, label, H.fs, ink, { ls: 1.2, bold: opts.fill === true }) : '') +
     (opts.value ? reelText(x + labelW + 5, H.baseline + 0.3, H.fs + 1, `${FACE} font-size="${H.fs + 1}" font-weight="700" fill="${INK.value}"`, opts.value, opts.reel) : '') +
     (opts.motion ? '</g>' : '') +
     (opts.motion
@@ -487,142 +527,4 @@ export const stripeSvg = (width: number, height: number, color: string, opts: { 
     (moving ? motionStyle(`@keyframes run{to{transform:translateX(${pitch}px)}}.run{animation:run ${STRIPE.ms}ms linear infinite}`) : '') +
     `</svg>`
   )
-}
-
-/** A transcript header's measures: its height, the slab's text, the rail it sits on. */
-export const SPEAKER = { height: 20, fs: 11, lean: 6, pad: 8, capFs: 10, width: 420, minRail: 60, inMs: 900 }
-
-/**
- * A transcript header, the line over a message: who speaks on a solid slab in `color` (its text
- * knocked out dark, its end cut on a slant), `caption` after it in dim capitals, and a rail that
- * runs on under both to three leaning blocks and a `+`. Every header is `SPEAKER.width` wide, so
- * their rails end in one line down the transcript; `width` sets another, never under its own.
- * With `enter` (how long ago the message came, in ms, under `SPEAKER.inMs`) it comes in once: the
- * slab wipes in from the left, its words follow, the rail runs out and the blocks light one by
- * one. The motion starts `enter` ms into itself, so a redraw goes on from where it was, and it
- * ends on the still look.
- */
-export const speakerSvg = (label: string, color: string, opts: { caption?: string; width?: number; enter?: number | null } = {}) => {
-  const S = SPEAKER
-  const h = S.height
-  const name = label.toUpperCase()
-  const nameW = capWidth(name, S.fs, 1.4)
-  const slabW = S.pad + nameW + S.pad + S.lean
-  const words = opts.caption ? `// ${opts.caption}` : ''
-  const wordsW = words ? capWidth(words.toUpperCase(), S.capFs, 1.2) : 0
-  const railX = slabW + (words ? 8 + wordsW : 0) + 8
-  const natural = Math.ceil(railX + S.minRail)
-  const width = Math.max(natural, Math.round(opts.width ?? S.width))
-  const end = width - 9
-  // Three leaning blocks closing the rail, dim to bright, then the corner mark.
-  const age = typeof opts.enter === 'number' && Number.isFinite(opts.enter) && opts.enter >= 0 && opts.enter < S.inMs ? Math.round(opts.enter) : null
-  const cls = (name: string) => (age === null ? '' : ` class="${name}"`)
-  const blocks = [0, 1, 2].map(k => `<path d="M${end - 34 + k * 7} ${h - 7}h4l-2.5 5h-4z" fill="${color}" fill-opacity="${(0.3 + k * 0.3).toFixed(1)}"${cls(`sb sb${k}`)}/>`).join('')
-  // Each part's start, in ms from the message's coming, less its age: the slab, its words, the
-  // rail, the blocks in turn (each flickering on), the corner mark.
-  const run = (name: string, keys: string, ms: number, at: number, ease = EASE.out) => `.${name}{animation:${keys} ${ms}ms ${ease} ${at - (age ?? 0)}ms both}`
-  const motion =
-    age === null
-      ? ''
-      : motionStyle(
-          `@keyframes sp-wipe{from{transform:scaleX(0)}}@keyframes sp-in{from{opacity:0;transform:translateX(-6px)}}@keyframes sp-on{0%{opacity:0}40%{opacity:1}60%{opacity:.2}}` +
-            `.ss,.sr{transform-origin:0 0}` +
-            run('ss', 'sp-wipe', 260, 0) +
-            run('sn', 'sp-in', 220, 140) +
-            run('sc', 'sp-in', 240, 220) +
-            run('sr', 'sp-wipe', 520, 120) +
-            [0, 1, 2].map(k => run(`sb${k}`, 'sp-on', 220, 520 + k * 70, 'linear')).join('') +
-            run('sx', 'sp-on', 220, 680, 'linear'),
-        )
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
-    `<path d="M0 ${h - 0.5}H${end - 40}" stroke="${INK.detail}" stroke-opacity="0.45" fill="none"${cls('sr')}/>` +
-    `<path d="M0 0H${slabW}L${slabW - S.lean} ${h}H0z" fill="${color}"${cls('ss')}/>` +
-    cap(S.pad, h / 2 + 4, name, S.fs, HUE.card, { ls: 1.4, bold: true, extra: cls('sn') }) +
-    (words ? cap(slabW + 8, h / 2 + 3.6, words, S.capFs, INK.detail, { ls: 1.2, extra: cls('sc') }) : '') +
-    blocks +
-    `<path d="M${end - 5} ${h - 4.5}h5M${end - 2.5} ${h - 7}v5" stroke="${INK.detail}" stroke-opacity="0.7" fill="none"${cls('sx')}/>` +
-    motion +
-    themeStyle() +
-    `</svg>`
-  return { svg, width, height: h, natural }
-}
-
-/** A tool row's tag: its height, its text and how far its ends lean. */
-export const TOOL_TAG = { height: 16, fs: 9, lean: 4, pad: 6, inMs: 260 }
-
-/**
- * A tool row's tag: an outlined parallelogram holding a solid square in `color` and the kind
- * of work in capitals (RUN, READ, EDIT). `minWidth` holds every tag as wide as the widest, so
- * the rows after them line up. With `enter` (the row's age in ms, under `TOOL_TAG.inMs`) it comes in
- * once, from that far in; with `running` its square blinks for as long as the call runs (a loop).
- */
-export const toolTagSvg = (label: string, color: string, opts: { minWidth?: number; enter?: number | null; running?: boolean } = {}) => {
-  const G = TOOL_TAG
-  const h = G.height
-  const text = label.toUpperCase()
-  const x = G.lean + G.pad + 8
-  const natural = Math.ceil(x + capWidth(text, G.fs, 1.2) + G.pad + G.lean)
-  const width = Math.max(natural, Math.round(opts.minWidth ?? 0))
-  const age = typeof opts.enter === 'number' && Number.isFinite(opts.enter) && opts.enter >= 0 && opts.enter < G.inMs ? Math.round(opts.enter) : null
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
-    (age === null ? '' : '<g class="tg">') +
-    `<path d="M${G.lean + 0.5} 0.5H${width - 0.5}L${width - G.lean - 0.5} ${h - 0.5}H0.5z" fill="none" stroke="${INK.detail}" stroke-opacity="0.6"/>` +
-    `<rect x="${G.lean + G.pad - 1}" y="${h / 2 - 2}" width="4" height="4" fill="${color}"${opts.running ? ' class="tk"' : ''}/>` +
-    cap(x, h / 2 + 3.2, text, G.fs, INK.label, { ls: 1.2, bold: true }) +
-    (age === null ? '' : '</g>') +
-    (age === null && !opts.running
-      ? ''
-      : motionStyle(
-          (age === null ? '' : `@keyframes tg{from{opacity:0;transform:translateX(-8px)}}.tg{animation:tg ${G.inMs}ms ${EASE.out} ${-age}ms both}`) +
-            (opts.running ? `@keyframes tk{50%{opacity:.2}}.tk{animation:tk ${MOTION.dotsMs}ms ${EASE.inOut} infinite}` : ''),
-        )) +
-    themeStyle() +
-    `</svg>`
-  return { svg, width, height: h, natural }
-}
-
-/**
- * The kinds of work a tool row is tagged with, and each one's colour. The words are the plain
- * ones the app itself uses (run, read, edit, search), so a tag never needs explaining.
- */
-export const TOOL_KIND = {
-  exec: { label: 'run', color: HUE.hazard },
-  read: { label: 'read', color: HUE.sky },
-  edit: { label: 'edit', color: HUE.mint },
-  scan: { label: 'search', color: HUE.sky },
-  net: { label: 'web', color: HUE.lilac },
-  unit: { label: 'agent', color: HUE.peach },
-  link: { label: 'mcp', color: HUE.fur },
-  tool: { label: 'tool', color: INK.label },
-}
-
-/** Which kind of work a tool does, by its name: a shell is exec, an MCP tool link, an unknown one tool. */
-export const toolKind = (tool: string): keyof typeof TOOL_KIND => {
-  if (/^mcp__/.test(tool)) return 'link'
-  if (/^(Bash|BashOutput|KillShell|Monitor)$/.test(tool)) return 'exec'
-  if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
-  if (/^(Edit|MultiEdit|Write|NotebookEdit)$/.test(tool)) return 'edit'
-  if (/^(Grep|Glob|LS|ToolSearch)$/.test(tool)) return 'scan'
-  if (/^Web(Fetch|Search)$/.test(tool)) return 'net'
-  if (/^(Agent|Task|SendMessage)$/.test(tool)) return 'unit'
-  return 'tool'
-}
-
-/**
- * The tags of the rows around a tool call, in the tool tags' look: what a call gave back (or its
- * error), a run of calls the transcript folds into one line, and what a slash command printed.
- */
-export const ROW_TAG = {
-  result: { label: 'output', color: INK.detail },
-  error: { label: 'error', color: HUE.rose },
-  group: { label: 'tools', color: INK.label },
-  command: { label: 'command', color: HUE.fur },
-}
-
-/** A folded run's tag: its calls' own kind where they are all of one, else the plain `tools`. */
-export const groupTag = (tools: readonly string[]) => {
-  const kinds = [...new Set(tools.map(toolKind))]
-  return kinds.length === 1 ? TOOL_KIND[kinds[0]!] : ROW_TAG.group
 }

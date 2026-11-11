@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, SPEAKER, speakerSvg, stripeSvg, TOOL_KIND, TOOL_TAG, groupTag, ROW_TAG, toolKind, toolTagSvg } from './hud'
+import { CELL, CHARGE_COLOR, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
 
 describe('hudCellSvg', () => {
   test('sets the name on a slab and the figure in capitals', () => {
@@ -96,6 +96,14 @@ describe('hudChipSvg', () => {
     expect(count.height).toBe(HUD_CHIP.height)
     expect(hudChipSvg({ color: '', label: 'v1.0.0', plain: true }).svg).not.toContain('<path')
   })
+  test('an icon stands in for the label: the clock, framed like the count', () => {
+    const time = hudChipSvg({ color: '', label: '', icon: 'clock', value: '1m 54s' })
+    expect(time.svg).toContain('fill="none" stroke=')
+    expect(time.svg).toContain('>1m 54s</text>')
+    expect(time.svg).not.toContain('NaN')
+    expect(hudChipSvg({ color: '', label: '', icon: 'clock', value: '1s', minWidth: 90 }).width).toBe(90)
+    expect(time.natural).toBeLessThan(hudChipSvg({ color: '', label: 'time', icon: 'clock', value: '1m 54s' }).natural)
+  })
   test('holds another state’s width, and moves only when asked', () => {
     const wide = hudChipSvg({ color: HUE.sky, label: 'working', fill: true }).natural
     expect(hudChipSvg({ color: '', label: 'idle', minWidth: wide }).width).toBe(wide)
@@ -135,13 +143,31 @@ describe('charge', () => {
     expect(at(3)).toContain(`fill="${HUE.hazard}">120</text>`)
     expect(at(2)).not.toContain(`fill="${HUE.hazard}">120</text>`)
   })
-  test('crackles only with motion, and draws the same picture twice', () => {
-    const still = hudCellSvg('tok/s', '120', { charge: { level: 2 } }).svg
-    const moving = hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg
-    expect(still).not.toContain('@keyframes')
-    expect(moving).toContain('@keyframes a0')
-    expect(moving).toBe(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg)
-    expect(moving).not.toContain('NaN')
+  test('with motion its arcs run on by themselves, and nothing in the picture follows the clock', () => {
+    const run = hudCellSvg('tok/s', '120', { charge: { level: 3, motion: true } }).svg
+    // Every arc slides one width for good; the loop is 760 ms at level 3.
+    expect(run).toContain('animation:a0 760ms linear infinite}')
+    expect(run).not.toContain('animation-delay')
+    expect(run).not.toContain('NaN')
+    // Held still, nothing in it moves.
+    expect(hudCellSvg('tok/s', '120', { charge: { level: 3 } }).svg).not.toMatch(/@keyframes|animation/)
+  })
+  test('a charged cell comes in strips: the arcs in pictures that hold while the figure changes', () => {
+    const at = (value: string, level = 1) => hudCellParts('tok/s', value, { width: 160, bars: [{ percent: 40, color: HUE.sky }], charge: { level, motion: true } })
+    const a = at('76'), b = at('91')
+    expect(hudCellParts('tok/s', '76', { width: 160 }).rows).toBe(null)
+    expect(a.rows!.map(r => r.live)).toEqual([false, true, false])
+    expect(a.rows!.reduce((h, r) => h + r.height, 0)).toBe(a.height)
+    // The strip of arcs is the same picture whatever the figure reads; the others are not.
+    for (const k of ['left', 'fill', 'right'] as const) expect(a.rows![1]![k].svg).toBe(b.rows![1]![k].svg)
+    expect(a.rows![0]!.left.svg).not.toBe(b.rows![0]!.left.svg)
+    // Only the arcs' strip moves.
+    expect(a.rows![1]!.left.svg).toContain('linear infinite')
+    for (const n of [0, 2]) for (const k of ['left', 'fill', 'right'] as const) expect(a.rows![n]![k].svg).not.toContain('@keyframes')
+    // At 3 the arcs along the top and bottom edges get strips of their own too.
+    const c = at('250', 3)
+    expect(c.rows!.map(r => r.live)).toEqual([true, false, true, false, true])
+    expect(c.rows!.reduce((h, r) => h + r.height, 0)).toBe(c.height)
   })
   test('the lit frame never flickers', () => {
     expect(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg).toMatch(/<rect [^>]*stroke-opacity="0.65"\/>/)
@@ -149,88 +175,29 @@ describe('charge', () => {
 })
 
 describe('charge in one picture', () => {
-  test('the arcs and bolts carry their place in the loop from `at`, so a redraw goes on from there', () => {
-    const at = (ms: number) => hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true, at: ms } }).svg
-    // Level 2: the first arc loops in 1050 ms, the flicker in 560 ms.
-    expect(at(500)).toContain('.a0{animation:a0 1050ms linear infinite;animation-delay:-500ms}')
-    expect(at(1550)).toContain('.a0{animation:a0 1050ms linear infinite;animation-delay:-500ms}')
-    expect(at(600)).toContain('.zf{animation:zf 560ms linear infinite;animation-delay:-40ms}')
-    expect(at(0)).not.toBe(at(500))
-  })
   test('the charged cell is one svg, its arcs between the figure and the meters', () => {
-    const svg = hudCellSvg('tok/s', '76', { width: 160, bars: [{ percent: 40, color: HUE.sky }], charge: { level: 3, motion: true, at: 0 } }).svg
+    const svg = hudCellSvg('tok/s', '76', { width: 160, bars: [{ percent: 40, color: HUE.sky }], charge: { level: 3, motion: true } }).svg
     expect(svg.match(/<svg /g)!.length).toBe(1)
     expect(svg).toContain(`<g transform="translate(0 ${CHARGE_CUT.drop})">`)
   })
-})
-
-describe('speakerSvg', () => {
-  test('sets the speaker on a solid slab and the caption after it, in capitals', () => {
-    const s = speakerSvg('you', INK.value, { caption: 'input' })
-    expect(s.svg).toContain('>YOU</text>')
-    expect(s.svg).toContain('>// INPUT</text>')
-    expect(s.svg).toContain(`fill="${INK.value}"`)
-    expect(s.svg).not.toContain(' rx=')
-  })
-  test('only ever grows, and never past what it was given room for', () => {
-    const s = speakerSvg('Hanahira', HUE.sky, { caption: 'response' })
-    expect(speakerSvg('Hanahira', HUE.sky, { caption: 'response', width: 10 }).width).toBe(s.natural)
-    expect(speakerSvg('Hanahira', HUE.sky, { caption: 'response', width: 900 }).width).toBe(900)
-    expect(s.width).toBe(SPEAKER.width)
-    expect(speakerSvg('you', INK.value).width).toBe(SPEAKER.width)
-  })
-  test('escapes what it is given', () => {
-    expect(speakerSvg('a<b', HUE.sky).svg).toContain('A&lt;B')
-  })
-})
-
-describe('tool tags', () => {
-  test('name the kind of work by the tool', () => {
-    expect(toolKind('Bash')).toBe('exec')
-    expect(toolKind('Read')).toBe('read')
-    expect(toolKind('Write')).toBe('edit')
-    expect(toolKind('Grep')).toBe('scan')
-    expect(toolKind('WebSearch')).toBe('net')
-    expect(toolKind('Agent')).toBe('unit')
-    expect(toolKind('mcp__github__Read')).toBe('link')
-    expect(toolKind('SomethingNew')).toBe('tool')
-  })
-  test('draw the kind in capitals with its colour, held to a width', () => {
-    const t = toolTagSvg(TOOL_KIND.exec.label, TOOL_KIND.exec.color)
-    expect(t.svg).toContain('>RUN</text>')
-    // Plain words only: the ones the app itself uses for these tools.
-    expect(Object.values(TOOL_KIND).map(k => k.label)).toEqual(['run', 'read', 'edit', 'search', 'web', 'agent', 'mcp', 'tool'])
-    expect(t.svg).toContain(`fill="${HUE.hazard}"`)
-    expect(toolTagSvg('net', HUE.lilac, { minWidth: t.width + 20 }).width).toBe(t.width + 20)
-  })
-})
-
-describe('transcript motion', () => {
-  test('a header comes in once, from its age, and rests still', () => {
-    const still = speakerSvg('you', INK.value, { caption: 'input' })
-    expect(still.svg).not.toContain('animation')
-    const fresh = speakerSvg('you', INK.value, { caption: 'input', enter: 0 })
-    expect(fresh.svg).toContain('class="ss"')
-    expect(fresh.svg).toContain('260ms cubic-bezier(0.22, 1, 0.36, 1) 0ms both')
-    expect(speakerSvg('you', INK.value, { caption: 'input', enter: 200 }).svg).toContain(' -200ms both')
-    expect(speakerSvg('you', INK.value, { caption: 'input', enter: SPEAKER.inMs }).svg).toBe(still.svg)
-    expect(speakerSvg('you', INK.value, { caption: 'input', enter: null }).svg).toBe(still.svg)
-    expect(fresh).toMatchObject({ width: still.width, height: still.height })
-  })
-  test('every part of a header is at rest by the end of its coming-in', () => {
-    const css = speakerSvg('you', INK.value, { caption: 'input', enter: 0 }).svg
-    const ends = [...css.matchAll(/ (\d+)ms [a-z-]+(?:\([^)]*\))? (-?\d+)ms both/g)].map(m => Number(m[1]) + Number(m[2]))
-    expect(ends.length).toBeGreaterThan(6)
-    expect(Math.max(...ends)).toBeLessThanOrEqual(SPEAKER.inMs)
-  })
-  test('a tag comes in once and blinks only while its call runs', () => {
-    const still = toolTagSvg('exec', HUE.hazard)
-    expect(still.svg).not.toContain('animation')
-    expect(toolTagSvg('exec', HUE.hazard, { enter: 100 }).svg).toContain('-100ms both')
-    expect(toolTagSvg('exec', HUE.hazard, { enter: TOOL_TAG.inMs }).svg).toBe(still.svg)
-    const run = toolTagSvg('exec', HUE.hazard, { running: true }).svg
-    expect(run).toContain('infinite')
-    expect(run).toContain('prefers-reduced-motion')
+  test('the arcs, their branches and glow stay clear of the figure and the meter', () => {
+    const c = hudCellSvg('tok/s', '42', { width: 160, sub: 'peak 80', bars: [{ percent: 40, color: HUE.sky }], charge: { level: 3, motion: true } })
+    // Level 3: a0 runs along the top, a1 to a3 between the figure and the meter, a4 along the foot.
+    for (const k of [1, 2, 3]) {
+      const g = c.svg.split(`<g class="a${k}"`)[1]!.split('</g>')[0]!
+      const ys = [...g.matchAll(/d="([^"]+)"/g)].flatMap(m => {
+        // Absolute points (M/L x y) and the branches' relative steps (l dx dy) from them.
+        const out: number[] = []
+        let y = 0
+        for (const [, op, a, b] of m[1]!.matchAll(/([MLl])(-?[\d.]+) (-?[\d.]+)/g)) out.push((y = op === 'l' ? y + Number(b) : Number(b)))
+        return out
+      })
+      const glow = 3.2
+      expect(Math.min(...ys) - glow).toBeGreaterThanOrEqual(CELL.valueY + 1)
+      expect(Math.max(...ys)).toBeLessThanOrEqual(CELL.barsY + CHARGE_CUT.drop - 0.5)
+    }
+    // The meter and the line under it moved down, so the cell grew to keep them inside.
+    expect(c.height).toBe(cellHeight(1, true) + CHARGE_CUT.drop)
   })
 })
 
@@ -249,26 +216,44 @@ describe('stretch parts', () => {
     expect(p.fill.svg).toContain('translate(-110 0)')
     expect(hudCellParts('tok/s', '77', { width: 120 }).fill.svg).not.toContain('translate(')
   })
+  test('each arc is drawn two widths long, so its copies in the filler sit two widths apart and never lie on each other', () => {
+    const offsets = [...hudCellParts('tok/s', '77', { width: 120, charge: { level: 3 } }).fill.svg.matchAll(/<g transform="translate\((-?\d+) 0\)">/g)].map(m => Number(m[1]))
+    expect(offsets[0]).toBe(-110)
+    for (let i = 1; i < offsets.length; i++) expect(offsets[i]! - offsets[i - 1]!).toBe(240)
+    expect(offsets.at(-1)! + 120).toBeGreaterThanOrEqual(FILL.cell)
+  })
+  test('the filler after `even` picks the arcs up where `even` leaves them', () => {
+    const p = hudCellParts('tok/s', '77', { index: '03', width: 120, indexEnd: 140, charge: { level: 3 } })
+    expect(p.even!.width).toBe(30)
+    expect(p.even!.svg).toContain('translate(-110 0)')
+    expect(p.fill.svg).toContain('translate(-140 0)')
+  })
+  test('a filler carries only the arcs its own width shows', () => {
+    const p = hudCellParts('tok/s', '77', { index: '03', width: 120, indexEnd: 140, charge: { level: 3, motion: true } })
+    const copies = (svg: string) => (svg.match(/<g transform="translate\(-?\d+ 0\)"><g class="a0"/g) ?? []).length
+    // `even` is 30 px: two copies cover it at every point of the slide, where the whole width took three.
+    expect(copies(p.even!.svg)).toBe(2)
+    expect(copies(p.fill.svg)).toBe(3)
+    // The fillers slide with the cell, from the same place in the loop.
+    for (const svg of [p.even!.svg, p.fill.svg]) expect(svg).toContain('animation:a0 760ms linear infinite}')
+  })
+  test('the right end, set after a filler cut anywhere, carries no arc; its bolts and spark sit in it', () => {
+    const p = hudCellParts('tok/s', '77', { width: 120, charge: { level: 3, motion: true } })
+    expect(p.right.svg).not.toMatch(/class="a\d/)
+    // Every bolt and spark lies right of the seam, so a widened band keeps them in its corner.
+    const whole = hudCellSvg('tok/s', '77', { width: 120, charge: { level: 3 } }).svg
+    const bolts = [...whole.matchAll(/translate\(([\d.]+) [\d.]+\) scale/g)].map(m => Number(m[1]))
+    expect(bolts.length).toBe(2)
+    for (const x of bolts) expect(x).toBeGreaterThanOrEqual(120 - SEAM)
+    const sparks = [...whole.matchAll(/<path d="M([\d.]+) [\d.]+l(-?\d+) /g)].map(m => [Number(m[1]), Number(m[1]) + 1.6 * Number(m[2])])
+    expect(sparks.length).toBeGreaterThan(0)
+    for (const xs of sparks) for (const x of xs) expect(x).toBeGreaterThanOrEqual(120 - SEAM)
+  })
   test('the context line is cut before its words; stacked, after them', () => {
     const line = hudContextParts(6, HUE.sky, { left: '944K left', window: '1M window', width: 700 })
     const whole = hudContextSvg(6, HUE.sky, { left: '944K left', window: '1M window', width: 700 })
     expect(line.left.width + line.right.width).toBe(whole.width)
     expect(line.right.width).toBeGreaterThan(100)
     expect(hudContextParts(6, HUE.sky, { left: '944K left', stack: true, width: 300 }).right.width).toBe(16)
-  })
-})
-
-describe('row tags', () => {
-  test('a folded run takes its calls\' kind where they share one, else the plain tools', () => {
-    expect(groupTag(['Read', 'Read'])).toBe(TOOL_KIND.read)
-    expect(groupTag(['Grep', 'Glob'])).toBe(TOOL_KIND.scan)
-    expect(groupTag(['Read', 'Bash'])).toBe(ROW_TAG.group)
-    expect(groupTag([])).toBe(ROW_TAG.group)
-  })
-  test('each row tag is one word and draws as a tool tag', () => {
-    for (const t of Object.values(ROW_TAG)) {
-      expect(t.label).toMatch(/^[a-z]+$/)
-      expect(toolTagSvg(t.label, t.color).svg).toContain(t.label.toUpperCase())
-    }
   })
 })
