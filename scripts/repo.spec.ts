@@ -32,7 +32,7 @@ test('the preview shows this version, and the PNG was drawn from that SVG', () =
 // change, the copy loses its marks without a word, so they are pinned here.
 test('the texts install-ssh.sh rewrites in the SSH copy are still there', () => {
   const core = file('skills/hanahira-claude-ui/SKILL.md').toString()
-  expect(core).toMatch(/^\+ ╭─ \(\( \^w\^ \)\) Hanahira Claude UI V\d+ · ● ACTIVE$/m)
+  expect(core).toMatch(/^\+ ╭─ -\(O\)- Hanahira Claude UI V\d+ · ● ACTIVE$/m)
   expect(core.match(/┃ Version \d+ · SKILL  /g)?.length).toBe(2)
   expect(file('hooks/version.ts').toString()).toMatch(/^export const SKILLS_FROM\b.*= 'Account'$/m)
 })

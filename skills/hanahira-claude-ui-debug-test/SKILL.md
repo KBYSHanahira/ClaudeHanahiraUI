@@ -38,6 +38,6 @@ Stale build or cache, or the running code is not the edited code · wrong enviro
 
 - Observe with the session's tools before reasoning: a browser tool for console and network errors, a log or monitoring connector for the failing request, the database connector for the row that broke.
 - When two or three causes still stand after reproducing, a read-only helper for each, told to prove or kill its own, is faster than testing them in turn (`references/agents.md` in the core). The fix and its proof stay with me.
-- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for a query or migration, `hanahira-claude-ui-security` for auth, TLS or a dropping connection, `hanahira-claude-ui-design` for a layout bug.
+- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for a query or migration, `hanahira-claude-ui-security` for auth, TLS or a dropping connection, `hanahira-claude-ui-design` for a layout bug, `hanahira-claude-ui-perf` when the bug is slowness, `hanahira-claude-ui-api` for a failing integration, `hanahira-claude-ui-devops` for a red pipeline or a bad deploy.
 
 Hard cases (heisenbugs, memory, performance, production-only, concurrency): `references/hard-bugs.md`. Choosing what to test and at which level, fixtures, mocks: `references/testing.md`. Open them only when the plain method above has stalled.

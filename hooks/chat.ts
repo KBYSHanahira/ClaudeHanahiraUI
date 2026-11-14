@@ -227,8 +227,6 @@ export const MOTION = {
   twinkleMs: 700, // the Hanahira sparkle turning in as the mode switches on
   sparkMs: 2400, // its breath while the mode is on and Claude works
   spinMs: 1100, // a running agent card's ring, once round
-  earMs: 4200, // the mascot's ears twitch once a period
-  blinkMs: 3600, // and its open eye blinks once a period
   agentBarMs: 1600, // a running agent card's lit stretch, one way along its bar
   checkMs: 420, // a finished agent card's check, drawn in
   agentFillMs: 600, // a finished agent card's bar filling from its stretch to the end, once
@@ -845,44 +843,70 @@ export const cardSvg = (label: string, value: string, opts: { icon?: IconName; i
 /** The mascot's box, in its own units: a cat-eared rabbit's head, a little wider than tall. */
 export const MASCOT = { w: 30, h: 28 }
 
+/** How far the planet's bands drift before their waves repeat, in px of the 30-wide drawing, and how long that takes; the ring's dashes run one dash a `dashMs`. */
+const DRIFT = { period: 8, ms: 4000, dash: 4, dashMs: 900 }
+
 /**
- * The band's mascot, the cat-eared rabbit of the Hanahira banner, as a nested picture at (`x`, `y`)
- * `width` wide. Awake (`on`): one eye winks, the other is open, pink cheeks and a `w` mouth.
- * Asleep: both eyes closed and a small z. With `enter` (how long ago it woke, in ms) it hops once
- * on a spring, anchored to that age like a glide, so a redraw mid-hop goes on from where it is.
- * With `motion` (awake, while Claude works) its ears twitch and its open eye blinks now and then
- * (loops: drawn in the surface's frame, see MOTION). Every part rests on its still look.
+ * The band's mascot, a ringed gas giant drawn as line art (the Jupiter Series), as a nested
+ * picture at (`x`, `y`) `width` wide: a dark disc with an outline, wavy bands across it, and a
+ * tilted ring whose back half passes behind the disc and whose front half crosses it, a dashed
+ * line along the ring's middle. Awake (`on`): the outline in ink, the bands in signal orange and
+ * amber, the ring's dashes in amber. Asleep: all of it in a quiet grey. With `enter` (how long
+ * ago it woke, in ms) it hops once on a spring, anchored to that age like a glide, so a redraw
+ * mid-hop goes on from where it is. With `motion` (awake, while Claude works) the bands drift
+ * across the disc and the ring's dashes run round it (loops: drawn in the surface's frame, see
+ * MOTION). Every part rests on its still look.
  */
 export const mascotSvg = (on: boolean, x: number, y: number, width: number, opts: { enter?: number | null; motion?: boolean } = {}) => {
   const M = MASCOT
   const height = +((width * M.h) / M.w).toFixed(2)
   const moving = on && opts.motion === true
   const hop = on && typeof opts.enter === 'number' && opts.enter < MOTION.twinkleMs ? Math.round(opts.enter) : null
-  const ear = (side: 'l' | 'r') =>
-    side === 'l'
-      ? `<g${moving ? ' class="ear-l"' : ''}><path d="M4 12L6 2l8 7z" fill="${HUE.snow}" stroke="${MASCOT_LINE}" stroke-width="0.8" stroke-linejoin="round"/><path d="M6.2 9.5L7 4.5l4 3.6z" fill="${HUE.petal}"/></g>`
-      : `<g${moving ? ' class="ear-r"' : ''}><path d="M26 12L24 2l-8 7z" fill="${HUE.snow}" stroke="${MASCOT_LINE}" stroke-width="0.8" stroke-linejoin="round"/><path d="M23.8 9.5L23 4.5l-4 3.6z" fill="${HUE.petal}"/></g>`
-  const head = `<ellipse cx="15" cy="17" rx="13" ry="9.5" fill="${HUE.snow}" stroke="${MASCOT_LINE}" stroke-width="0.8"/>`
-  const lid = (cx: number) => `<path d="M${cx - 2} ${on ? 15.5 : 15.2}q2 ${on ? -2 : 1.6} 4 0" fill="none" stroke="${HUE.night}" stroke-width="1.4" stroke-linecap="round"/>`
-  const face = on
-    ? lid(10.5) +
-      `<ellipse cx="19.5" cy="15.2" rx="1.6" ry="1.8" fill="${HUE.night}"${moving ? ' class="eye"' : ''}/>` +
-      `<ellipse cx="7.5" cy="19.5" rx="2.2" ry="1.3" fill="${HUE.petal}" fill-opacity="0.85"/>` +
-      `<ellipse cx="22.5" cy="19.5" rx="2.2" ry="1.3" fill="${HUE.petal}" fill-opacity="0.85"/>`
-    : lid(10.5) + lid(19.5) + `<text x="25" y="6.5" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="7" font-weight="700" fill="${INK.detail}">z</text>`
-  const mouth = `<path d="M12.6 19.2q1.2 1.4 2.4 0q1.2 1.4 2.4 0" fill="none" stroke="${HUE.night}" stroke-width="1.2" stroke-linecap="round"/>`
+  const line = on ? INK.value : INK.detail
+  const bandA = on ? HUE.signal : INK.detail
+  const bandB = on ? HUE.amber : INK.detail
+  const cx = 15
+  const cy = 14
+  const r = 9
+  // The ring: tilted, its outer and inner edges, the front half drawn over the disc.
+  const tilt = -22
+  const ro = { x: 14.8, y: 5.4 }
+  const ri = { x: 11, y: 3.1 }
+  const rm = { x: 12.9, y: 4.25 }
+  const half = (e: { x: number; y: number }, front: boolean) => `M${cx - e.x} ${cy}A${e.x} ${e.y} 0 0 ${front ? 0 : 1} ${cx + e.x} ${cy}`
+  const ringBand = (front: boolean) =>
+    `M${cx - ro.x} ${cy}A${ro.x} ${ro.y} 0 0 ${front ? 0 : 1} ${cx + ro.x} ${cy}L${cx + ri.x} ${cy}A${ri.x} ${ri.y} 0 0 ${front ? 1 : 0} ${cx - ri.x} ${cy}Z`
+  const ring = (front: boolean) =>
+    `<g transform="rotate(${tilt} ${cx} ${cy})">` +
+    `<path d="${ringBand(front)}" fill="${HUE.card}" stroke="${line}" stroke-width="1" stroke-linejoin="round"/>` +
+    `<path d="${half(rm, front)}" fill="none" stroke="${bandB}" stroke-width="0.7" stroke-linecap="round" stroke-dasharray="1.6 ${DRIFT.dash - 1.6}"${moving ? ` class="dash"` : ''}/>` +
+    `</g>`
+  // Wavy bands, three wave periods wider than the disc on each side, so a slide of one period shows no seam.
+  const P = DRIFT.period
+  const wave = (y0: number, amp: number) => {
+    let d = `M${cx - r - 3 * P} ${y0}`
+    for (let k = 0; k < Math.ceil((2 * r + 6 * P) / P); k++) d += `q${P / 4} ${-amp} ${P / 2} 0t${P / 2} 0`
+    return d
+  }
+  const bands =
+    `<path d="${wave(8.2, 1.1)}" fill="none" stroke="${bandB}" stroke-width="0.8" stroke-linecap="round"/>` +
+    `<path d="${wave(11.4, 1.4)}" fill="none" stroke="${bandA}" stroke-width="1.2" stroke-linecap="round"/>` +
+    `<path d="${wave(15.6, 1.2)}" fill="none" stroke="${bandB}" stroke-width="0.8" stroke-linecap="round"/>` +
+    `<path d="${wave(19.4, 1)}" fill="none" stroke="${bandA}" stroke-width="1.1" stroke-linecap="round"/>`
+  const disc =
+    `<defs><clipPath id="pl-c"><circle cx="${cx}" cy="${cy}" r="${r - 0.5}"/></clipPath></defs>` +
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${HUE.card}"/>` +
+    `<g clip-path="url(#pl-c)"><g${moving ? ' class="drift"' : ''}>${bands}</g></g>` +
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${line}" stroke-width="1.1"/>`
   const style =
     (hop !== null ? `@keyframes hop{0%{transform:translateY(0)}35%{transform:translateY(-2px)}70%{transform:translateY(0.4px)}100%{transform:translateY(0)}}.hop{animation:hop ${MOTION.twinkleMs}ms ${EASE.spring} -${hop}ms both}` : '') +
     (moving
-      ? `@keyframes ear{0%,86%,100%{transform:rotate(0)}90%{transform:rotate(-12deg)}94%{transform:rotate(6deg)}}` +
-        `.ear-l{transform-origin:8px 10px;animation:ear ${MOTION.earMs}ms ${EASE.inOut} infinite}` +
-        `.ear-r{transform-origin:22px 10px;animation:ear ${MOTION.earMs}ms ${EASE.inOut} ${Math.round(MOTION.earMs / 2)}ms infinite}` +
-        `@keyframes blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(0.1)}}` +
-        `.eye{transform-origin:19.5px 15.2px;animation:blink ${MOTION.blinkMs}ms linear infinite}`
+      ? `@keyframes drift{to{transform:translateX(${P}px)}}.drift{animation:drift ${DRIFT.ms}ms linear infinite}` +
+        `@keyframes dash{to{stroke-dashoffset:${-DRIFT.dash}}}.dash{animation:dash ${DRIFT.dashMs}ms linear infinite}`
       : '')
   return (
     `<svg x="${x}" y="${y}" width="${width}" height="${height}" viewBox="0 0 ${M.w} ${M.h}" overflow="visible">` +
-    `<g${hop !== null ? ' class="hop"' : ''}>${ear('l')}${ear('r')}${head}${face}${mouth}</g>` +
+    `<g${hop !== null ? ' class="hop"' : ''}>${ring(false)}${disc}${ring(true)}</g>` +
     (style ? motionStyle(style) : '') +
     `</svg>`
   )

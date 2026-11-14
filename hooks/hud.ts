@@ -67,6 +67,8 @@ export const CELL = { pad: 10, tabH: 14, tabFs: 10, fs: 22, valueY: 38, barsY: 4
  * (hudCellParts).
  */
 export const SEAM = CELL.pad
+/** The series line under a mode's name: its size, tracking, baseline below the name's, and the room it adds. */
+export const SERIES = { fs: 9, ls: 1.8, y: 12, line: 11 }
 /** The widest a filler is drawn, in px: a cell's, and a whole line's. The surface clips it to the room. */
 export const FILL = { cell: 320, line: 2400 }
 
@@ -340,6 +342,8 @@ export type CellOpts = {
   tone?: string
   reel?: Since<string> | string | null
   toggle?: { on: boolean; enter?: number | null; motion?: boolean }
+  /** With `toggle`: a small line of capitals under the name, over `sub` (the mascot's series). */
+  series?: { text: string; color: string }
   /** A power conduit over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
   charge?: { level: number; motion?: boolean }
 }
@@ -360,11 +364,13 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const nameW = labelled ? Math.max(...bars.map(b => capWidth((b.label ?? '').toUpperCase(), 9, 1))) + 6 : 0
   const pctW = labelled ? capWidth('100%', 10) + 6 : 0
   const subW = opts.sub ? capWidth(opts.sub.toUpperCase(), C.subFs, 0.8) : 0
-  const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, head.width + 6 + SEAM, x + subW + SEAM, C.pad + nameW + 60 + pctW + C.pad)))
+  const series = opts.toggle && opts.series ? opts.series : null
+  const seriesW = series ? capWidth(series.text.toUpperCase(), SERIES.fs, SERIES.ls) : 0
+  const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, head.width + 6 + SEAM, x + subW + SEAM, x + seriesW + SEAM, C.pad + nameW + 60 + pctW + C.pad)))
   const width = Math.max(natural, Math.round(opts.width ?? 0))
   const pitch = labelled ? C.namedPitch : C.barPitch
   // A charged cell's meters sit `drop` lower (the arcs run in the room), so it is that much taller.
-  const height = Math.max(cellHeight(bars.length, opts.sub !== undefined, opts.rule !== undefined, labelled) + (level > 0 ? CHARGE_CUT.drop : 0), Math.round(opts.height ?? 0))
+  const height = Math.max(cellHeight(bars.length, opts.sub !== undefined, opts.rule !== undefined, labelled) + (level > 0 ? CHARGE_CUT.drop : 0) + (series ? SERIES.line : 0), Math.round(opts.height ?? 0))
   const id = `b${opts.index ?? ''}`
   const barX = C.pad + nameW
   const barW = width - 2 * C.pad - nameW - pctW
@@ -379,7 +385,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
       )
     })
     .join('')
-  const subY = (opts.toggle ? C.valueY - 4 : C.barsY + bars.length * pitch) + (bars.length ? 10 : 13)
+  const subY = (opts.toggle ? C.valueY - 4 : C.barsY + bars.length * pitch) + (bars.length ? 10 : 13) + (series ? SERIES.line : 0)
   const charge = chargeLayers(level, width, height, opts.charge?.motion === true)
   // The cell in layers: what never changes while its name, size and charge hold; the figure;
   // the meters and the line under them.
@@ -409,6 +415,7 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
     (lower ? `<g transform="translate(0 ${lower})">` : '') +
     barArt +
     ruleArt +
+    (series ? cap(x, C.valueY - 4 + SERIES.y, series.text, SERIES.fs, series.color, { ls: SERIES.ls, bold: true }) : '') +
     (opts.sub ? cap(x, subY, opts.sub, C.subFs, opts.tone ?? INK.detail, { ls: 0.8 }) : '') +
     (lower ? '</g>' : '')
   return { width, height, natural, level, base, figure, meters, charge, indexArt }
@@ -652,30 +659,23 @@ export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName
 }
 
 /** The session plate's measures: its height, text, the chamfer of its right end, its padding and its hazard tail. */
-export const SLAB = { height: 22, fs: 13, lean: 6, pad: 10, mark: 7, tailGap: 3, tail: 26, pitch: 6 }
+export const SLAB = { height: 22, fs: 13, lean: 6, pad: 10, mark: 7 }
 
 /**
  * The session's name on a solid signal plate, its text knocked out dark after a ◆, the plate's
- * right end chamfered; a short amber hazard-stripe tail after it. The top line's first word.
+ * right end chamfered. The top line's first word.
  */
 export const slabSvg = (text: string) => {
   const S = SLAB
   const w = capWidth(text.toUpperCase(), S.fs, 1)
   const plate = S.pad + S.mark + 6 + w + S.pad + S.lean
-  const tx = plate + S.tailGap
-  const width = tx + S.tail
+  const width = plate
   const h = S.height
-  const lean = +(h * 0.6).toFixed(1)
-  const stripes = Array.from({ length: Math.ceil(S.tail / S.pitch) + 3 }, (_, k) => `M${tx + (k - 1) * S.pitch + lean} 0h${S.pitch / 2}l${-lean} ${h}h${-S.pitch / 2}z`).join('')
-  const tailShape = `M${tx} 0H${width - S.lean}L${width} ${S.lean}V${h}H${tx}Z`
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
     `<path d="M0 0H${plate - S.lean}L${plate} ${S.lean}V${h}H0z" fill="${HUE.signal}"/>` +
     diamond(S.pad + S.mark / 2, h / 2, S.mark, HUE.card) +
     cap(S.pad + S.mark + 6, 15.6, text, S.fs, HUE.card, { ls: 1, bold: true }) +
-    `<clipPath id="tail"><path d="${tailShape}"/></clipPath>` +
-    `<path d="${tailShape}" fill="${HUE.card}"/>` +
-    `<path d="${stripes}" fill="${HUE.amber}" clip-path="url(#tail)"/>` +
     `</svg>`
   return { svg, width, height: h }
 }

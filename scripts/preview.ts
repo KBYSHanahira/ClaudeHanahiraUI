@@ -53,7 +53,7 @@ const gauges: Draw[] = [
   (width, height) => hudCellSvg('5h limit', '4%', { index: '01', width, height, sub: '96% left · resets 3h 59m', bars: [{ percent: 4, color: SKY }] }),
   (width, height) => hudCellSvg('7d limit', '22%', { index: '02', width, height, sub: '78% left · resets 2d 8h', bars: [{ label: 'all', percent: 22, color: SKY }, { label: 'fable', percent: 41, color: HUE.steel }] }),
   (width, height) => hudCellSvg('tok/s', '58', { index: '03', width, height, sub: 'peak 81', bars: [{ percent: (58 / 100) * 100, color: HUE.ember }] }),
-  (width, height) => hudCellSvg('mode', 'Hanahira', { index: '04', width, height, sub: `Active · V${SKILLS_VERSION} · design`, tone: HUE.signal, toggle: { on: true } }),
+  (width, height) => hudCellSvg('mode', 'Hanahira', { index: '04', width, height, sub: `Active · V${SKILLS_VERSION} · design`, tone: HUE.signal, series: { text: 'Jupiter Series', color: HUE.amber }, toggle: { on: true } }),
 ]
 const figures: Draw[] = ([['cost', '≈$46.22'], ['tokens', '172M'], ['run time', fmtClock(2_730_000)], ['model', prettyModel('claude-fable-5-2')]] as const).map(
   ([label, value], i) => (width?: number, height?: number) => hudCellSvg(label, value, { index: `0${i + 5}`, width, height, rule: SKY }),
@@ -80,7 +80,8 @@ parts.push(nest(branch, branchX, ty + 2))
 const chips = [
   hudChipSvg({ color: SKY, label: 'working', fill: true }),
   hudChipSvg({ color: '', label: 'tools', value: '8', minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural }),
-  hudChipSvg({ color: '', label: `v${VERSION} // SSH`, tint: HUE.hazard }),
+  hudChipSvg({ color: '', label: `v${VERSION}` }),
+  hudChipSvg({ color: '', label: 'SSH', tint: HUE.hazard }),
 ]
 const chipsW = chips.reduce((w, c) => w + c.width, 0) + 6 * (chips.length - 1)
 let chipX = R - chipsW

@@ -35,6 +35,13 @@ Ask what will be decided with the answer, and how precise it needs to be for tha
 - **Separate three things** visibly: what the sources say, what I infer from them, and what remains unknown.
 - When sources disagree, say so and say which is more credible and why. Do not average them into a claim neither made.
 
+## Explaining code or a system
+
+- **Trace the real path.** Follow the call from the entry point the user named through the code that actually runs (the branch taken, the config read, the version installed), not the path the names suggest.
+- **Cite each step** as `file:line` or the command and its output, so the reader can check it.
+- **Read, inferred, unknown.** Say which part I read, which I inferred from it, and which nothing here shows. An unknown that one more read would settle is read before answering.
+- **Test the explanation** where it is cheap: a one-line run, a log line, a failing input. An explanation that predicts nothing has not been checked.
+
 ## Comparing options
 
 1. Fix the criteria *before* scoring, with the user's priorities — what they must have, what they would trade.

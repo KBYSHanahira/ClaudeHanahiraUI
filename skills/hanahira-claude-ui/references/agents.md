@@ -41,7 +41,7 @@ Stop       what counts as finished, and when to give up and say so
 
 ## 3. Running them
 
-- **Low effort by default.** Every helper is started with `effort: "low"` where the tool takes an effort, and a brief exact enough for it (section 2). Low thinks least and follows the brief to the letter, so a precise brief gets the same result in less time and fewer tokens. A higher effort only when the user asks for one, or for a fresh reviewer of auth, payments, stored data or a deploy, where the helper's own judgment is the point.
+- **Low effort, always.** Every helper is started with `effort: "low"`, on every call that starts one, and with a brief exact enough for it (section 2). Never medium, high or more, and never left out: a helper started without an effort runs at its default, which is higher. This is the user's standing choice and holds for reviewers of auth, payments, stored data or a deploy too; where a helper's own judgment would matter, write the brief tighter (the files, the risks to check, what a finding must cite) instead of raising the effort. Low thinks least and follows the brief to the letter, so a precise brief gets the same result in less time and fewer tokens.
 - Start independent helpers in one message so they run together. A cheaper model suits mechanical and read-only pieces where the session lets me pick one.
 - Pick the agent type the session lists for the job (a search agent for searching, a planner for a design, a general one otherwise) rather than a general one for everything.
 - Two writers never touch the same files. Parallel edits get separate files, or separate worktrees when the session offers them.

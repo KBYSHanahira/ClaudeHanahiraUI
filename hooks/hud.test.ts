@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg, telemetrySvg, TELEMETRY } from './hud'
+import { CELL, SERIES, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg, telemetrySvg, TELEMETRY } from './hud'
 
 describe('hudCellSvg', () => {
   test('heads the cell `NN / NAME` and sets the figure in capitals', () => {
@@ -53,8 +53,17 @@ describe('hudCellSvg', () => {
   })
   test('the mode cell holds the mascot and takes its tone', () => {
     const c = hudCellSvg('mode', 'Hanahira', { sub: 'Active · V28', tone: HUE.petal, toggle: { on: true } }).svg
-    expect(c).toContain('<ellipse')
+    expect(c).toContain('clip-path="url(#pl-c)"')
     expect(c).toContain(`fill="${HUE.petal}" textLength`)
+  })
+  test('the mode cell sets its series under the name and moves its sub down', () => {
+    const plain = hudCellSvg('mode', 'Hanahira', { sub: 'Active · V31', tone: HUE.signal, toggle: { on: true } })
+    const series = hudCellSvg('mode', 'Hanahira', { sub: 'Active · V31', tone: HUE.signal, toggle: { on: true }, series: { text: 'Jupiter Series', color: HUE.amber } })
+    expect(series.svg).toContain(`fill="${HUE.amber}" textLength`)
+    expect(series.svg).toContain('>JUPITER SERIES</text>')
+    expect(series.height).toBe(plain.height + SERIES.line)
+    // Only with a mascot: a plain cell ignores it.
+    expect(hudCellSvg('cost', '$1', { series: { text: 'Jupiter Series', color: HUE.amber } }).svg).not.toContain('JUPITER')
   })
   test('is still when nothing changed', () => {
     expect(hudCellSvg('5h limit', '4%', { bars: [{ percent: 4, color: HUE.sky }] }).svg).not.toContain('@keyframes')
@@ -180,10 +189,10 @@ describe('slabSvg and stripeSvg', () => {
   test('the slab fits its name', () => {
     expect(slabSvg('a longer name').width).toBeGreaterThan(slabSvg('spa').width)
     expect(slabSvg('spa').svg).toContain('>SPA</text>')
-    // A signal plate, its name knocked out dark, and an amber hazard tail.
+    // A signal plate, its name knocked out dark, and nothing after it (no hazard tail).
     expect(slabSvg('spa').svg).toContain(`fill="${HUE.signal}"`)
     expect(slabSvg('spa').svg).toContain(`fill="${HUE.card}" textLength`)
-    expect(slabSvg('spa').svg).toContain(`fill="${HUE.amber}" clip-path="url(#tail)"`)
+    expect(slabSvg('spa').svg).not.toContain(HUE.amber)
     expect(capWidth('WWW', 10)).toBeGreaterThan(capWidth('III', 10))
   })
   test('stripes are lit while live, at rest otherwise, and run only with motion', () => {

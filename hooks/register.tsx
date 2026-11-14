@@ -1170,7 +1170,9 @@ export const register: Register = on => {
         reel: reel('tools', String(shownTools)),
         minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural,
       }) },
-      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION} // ${SKILLS_FROM}`, tint: SKILLS_FROM === 'SSH' ? HUE.hazard : HUE.ember }) },
+      // The version, then which copy it is in a chip of its own: yellow for SSH, red for the account.
+      { key: 'version', alt: `UI v${VERSION}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION}` }) },
+      { key: 'source', alt: `${SKILLS_FROM} copy`, art: hudChipSvg({ color: INK.detail, label: SKILLS_FROM, tint: SKILLS_FROM === 'SSH' ? HUE.hazard : HUE.ember }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the
@@ -1322,7 +1324,7 @@ export const register: Register = on => {
           reel: t.reel,
           ...(t.bars ? { bars: t.bars } : {}),
           ...(mode !== 'bare' && sub ? { sub } : {}),
-          ...(t.toggle ? { toggle: t.toggle, tone: t.tone } : {}),
+          ...(t.toggle ? { toggle: t.toggle, tone: t.tone, series: { text: 'Jupiter Series', color: t.toggle.on ? HUE.amber : INK.detail } } : {}),
         },
       ]
     }
@@ -1545,7 +1547,7 @@ export const register: Register = on => {
             ) : null}
             {THEME.compact && Svg ? (
               chips
-                .filter(c => showVersion || c.key !== 'version')
+                .filter(c => showVersion || (c.key !== 'version' && c.key !== 'source'))
                 .map(c => <Svg key={`chip-${c.key}`} source={themed(c.art.svg)} alt={c.alt} width={c.art.width} height={c.art.height} {...(c.key === 'status' ? loop : {})} />)
             ) : (
               <Box gap={1} alignItems="center">

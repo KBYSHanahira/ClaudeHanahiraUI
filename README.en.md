@@ -23,7 +23,7 @@
 One plugin, two parts:
 
 - **🖥️ The interface** — a status band above the prompt (context, usage limits, cost, tokens, speed, agents) Always on, nothing to configure.
-- **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Five companions add rules for data, design, security, debugging and new projects.
+- **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Fifteen companions add rules for data, design, security, debugging, performance, APIs, DevOps, remote machines, networking, Windows, automation, AI, mobile, the browser and remote Claude.
 
 ## 🚀 Quick start
 
@@ -50,9 +50,9 @@ Other ways to install, SSH hosts included: [📦 Installation](#-installation).
 | ▬ | **Gauge cells** | 5-hour limit, 7-day limit and model speed (tok/s), each a block meter under its figure. The limits say when they reset (`resets 3h 20m`) and appear only when the account reports rate limits. When the account also reports a week counted for one model (`seven_day_fable`), the 7-day cell shows it as a second meter. |
 | 💰 | **Totals** | Cost (`≈`, as the engine reports it), tokens, time spent working, model. |
 | 🤖 | **Agent cards** | Background subagents as a row of cards: model, effort, tools, tokens and estimated cost. A finished card shows its check for about three seconds, then leaves. |
-| 🔘 | **Mode cell** | The mascot awake and a pink label while Hanahira Claude UI mode is on, asleep and grey otherwise. |
+| 🔘 | **Mode cell** | The Jupiter Series mascot, a ringed planet: lit orange (its bands drifting while Claude works) while Hanahira Claude UI mode is on, grey otherwise. |
 
-The version chip also says which copy of the skills is in use: `V1.14.5 // ACCOUNT` (synced from your claude.ai account) or `V1.14.5 // SSH` (installed on an SSH host by `install-ssh.sh`).
+Beside the version chip, a second chip says which copy of the skills is in use: a red `ACCOUNT` (synced from your claude.ai account) or a yellow `SSH` (installed on an SSH host by `install-ssh.sh`).
 
 > **Honesty rule:** every word on an agent card is a real value. The model is what the API reported, the effort is what the engine sent; anything unknown is left out or reads `model pending`, never guessed. A per-agent cost is an **estimate** from the price table in `hooks/agents.ts`, marked `≈`.
 
@@ -96,6 +96,17 @@ The mode is **opt-in**: it never switches itself on because of the task, a file,
 | **Design** | Visual direction, palette, type (Thai typography included), responsive layout from phone to TV, accessibility, design tokens, CSS, render checks |
 | **Security** | TLS and certificates, firewall and ports, SSH, auth and sessions, secrets, headers, unstable or slow connections |
 | **Debug-Test** | Reproducing bugs, proving root causes, logs and traces, writing tests, flaky tests, proving a fix |
+| **Perf** | Measuring before changing, CPU and memory profiling, Core Web Vitals, slow endpoints and queries, caching, load tests |
+| **API** | REST and GraphQL design, status codes, pagination, versioning, idempotency, retries, webhooks, third-party APIs and SDKs |
+| **DevOps** | CI/CD, Docker and Compose, Kubernetes and Helm, Terraform, deploys and rollbacks, logs, metrics and alerts |
+| **Remote** | Commands on servers over SSH, checking the host first, long jobs in tmux, rsync, tunnels and jump hosts, Ansible, Windows hosts |
+| **Network** | DNS, addressing and routing, NAT, reverse proxies and load balancers, VPNs, container networking, dig/mtr/ss/tcpdump |
+| **Windows** | PowerShell, services and scheduled tasks, IIS, event logs, registry, ACLs, Windows networking, WSL |
+| **Automation** | Unattended scripts, cron and systemd timers, Task Scheduler, idempotent jobs, locking, alerts, backups and cleanup |
+| **AI** | The Claude API and other model APIs, prompts, tool use and agents, structured output, RAG, evals, caching, cost |
+| **Mobile** | React Native and Expo, Flutter, iOS and Android, builds and signing, push, deep links, store releases |
+| **Browser** | Claude in Chrome and the built-in browser: reading pages, forms, checking a web app, console and network, approvals, a browser on another machine |
+| **Claude Remote** | Remote Control, cloud sessions and teleport, Desktop SSH sessions, Claude Code in tmux, headless `claude -p`, permissions and sandbox |
 
 ---
 
@@ -122,7 +133,7 @@ scripts/install-ssh.sh
 Then open a **new session** in Desktop.
 
 - **Skills come from this clone** (named `hanahira-claude-ui-ssh:`), so SSH sessions run the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) on this host only, so every skill is listed once; sessions on your local machine keep the account's copy.
-- **You can tell which copy is in use** — the band's version chip reads `V1.14.5 // SSH`, and the skill's banner reads `V30 · SSH`.
+- **You can tell which copy is in use** — the band shows `V1.14.5` with a yellow `SSH` chip, and the skill's banner reads `V31 · SSH`.
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** goes back to hooks only here, with the skills from your account.
 
 On your local machine none of this is needed; Option 1 works as is.
@@ -199,9 +210,17 @@ hooks/
 skills/
   hanahira-claude-ui/                 the core mode and its references/
   hanahira-claude-ui-data/            companions: data, design, security,
-  hanahira-claude-ui-design/          debug-test
+  hanahira-claude-ui-design/          debug-test, perf, api, devops,
+                                      remote, network, windows,
+                                      automation, ai, mobile
   hanahira-claude-ui-security/
   hanahira-claude-ui-debug-test/
+  hanahira-claude-ui-perf/
+  hanahira-claude-ui-api/
+  hanahira-claude-ui-devops/
+  hanahira-claude-ui-remote/   …-network/  …-windows/
+  hanahira-claude-ui-automation/  …-ai/  …-mobile/
+  hanahira-claude-ui-browser/  …-claude-remote/
 scripts/
   install-ssh.sh    install on an SSH host
   update.sh         one-command update

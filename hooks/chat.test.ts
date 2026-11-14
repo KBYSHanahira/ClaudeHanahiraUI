@@ -694,30 +694,34 @@ describe('motion', () => {
 describe('mascot', () => {
   const art = (on: boolean, opts: { enter?: number | null; motion?: boolean } = {}) => mascotSvg(on, 0, 0, 30, opts)
 
-  test('awake: one eye winks, the other is open, pink cheeks; asleep: eyes closed and a z', () => {
+  test('a ringed planet in line art, no face: lit bands awake, all grey asleep', () => {
     const awake = art(true)
-    expect(awake).toContain(`<ellipse cx="19.5" cy="15.2" rx="1.6" ry="1.8" fill="${HUE.night}"`)
-    expect(awake.match(new RegExp(`fill="${HUE.petal}" fill-opacity="0.85"`, 'g'))!.length).toBe(2)
-    expect(awake).not.toContain('>z</text>')
+    expect(awake).toContain('clip-path="url(#pl-c)"')
+    expect(awake).toContain(`stroke="${HUE.signal}"`)
+    expect(awake).toContain(`stroke="${HUE.amber}"`)
+    expect(awake).toContain('rotate(-22 ')
+    // No face: no eyes, cheeks or z.
+    expect(awake).not.toContain(HUE.night)
+    expect(awake).not.toContain(HUE.petal)
+    expect(awake).not.toContain('</text>')
     const asleep = art(false)
-    expect(asleep).toContain('>z</text>')
-    expect(asleep).not.toContain('fill-opacity="0.85"')
-    expect(asleep).not.toContain('cx="19.5" cy="15.2"')
+    expect(asleep).not.toContain(HUE.signal)
+    expect(asleep).not.toContain(HUE.amber)
+    expect(asleep).toContain(`stroke="${INK.detail}"`)
   })
 
   test('it keeps its shape at any width: the box scales by its own aspect', () => {
     expect(mascotSvg(true, 3, 4, 15)).toContain(`<svg x="3" y="4" width="15" height="${(15 * MASCOT.h) / MASCOT.w}" viewBox="0 0 ${MASCOT.w} ${MASCOT.h}"`)
   })
 
-  test('ears and blink move only awake with motion; the hop plays only on waking', () => {
+  test('the bands drift and the ring runs only awake with motion; the hop plays only on waking', () => {
     const moving = art(true, { motion: true })
-    expect(moving).toContain('class="ear-l"')
-    expect(moving).toContain('class="eye"')
-    expect(moving).toContain(`animation:ear ${MOTION.earMs}ms`)
-    expect(moving).toContain(`animation:blink ${MOTION.blinkMs}ms`)
+    expect(moving).toContain('class="drift"')
+    expect(moving).toContain('class="dash"')
+    expect(moving).toMatch(/\.drift\{animation:drift \d+ms linear infinite\}/)
+    expect(moving).toMatch(/\.dash\{animation:dash \d+ms linear infinite\}/)
     expect(art(false, { motion: true })).not.toContain('@keyframes')
     expect(art(true)).not.toContain('@keyframes')
-    // The hop is anchored to when the mode woke, and is over once its time has passed.
     expect(art(true, { enter: 120 })).toContain(`animation:hop ${MOTION.twinkleMs}ms`)
     expect(art(true, { enter: 120 })).toContain('-120ms both')
     expect(art(true, { enter: MOTION.twinkleMs })).not.toContain('hop')
@@ -725,10 +729,15 @@ describe('mascot', () => {
     expect(art(false, { enter: 120 })).not.toContain('hop')
   })
 
+  test('the drift slides one wave a loop, under half a px a frame', () => {
+    const svg = art(true, { motion: true })
+    const [, px, ms] = /translateX\((\d+)px\)\}\}\.drift\{animation:drift (\d+)ms/.exec(svg)!
+    expect(Number(px) / (Number(ms) / 1000) / 60).toBeLessThan(0.5)
+  })
+
   test('motion holds no time and rests on the still mascot', () => {
     expect(art(true, { motion: true })).toBe(art(true, { motion: true }))
-    // Its style and the classes that run it taken out, the moving mascot is the still one.
-    const strip = (svg: string) => svg.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/ class="(hop|ear-l|ear-r|eye)"/g, '')
+    const strip = (svg: string) => svg.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/ class="(hop|drift|dash)"/g, '')
     expect(strip(art(true, { motion: true, enter: 50 }))).toBe(art(true))
   })
 

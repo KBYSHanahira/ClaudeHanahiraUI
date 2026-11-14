@@ -23,7 +23,7 @@
 ひとつのプラグインに 2 つの部分があります。
 
 - **🖥️ インターフェース** — プロンプトの上のステータスバンド（コンテキスト、利用制限、費用、トークン、速度、エージェント）。常にオンで、設定は不要です。
-- **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・セキュリティ・デバッグ・新規プロジェクト向けの 5 つのコンパニオンがルールを加えます。
+- **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・セキュリティ・デバッグ・パフォーマンス・API・DevOps・リモート・ネットワーク・Windows・自動化・AI・モバイル・ブラウザ・リモート Claude 向けの 15 のコンパニオンがルールを加えます。
 
 ## 🚀 クイックスタート
 
@@ -50,9 +50,9 @@ SSH 接続先を含むほかの入れ方：[📦 インストール](#-インス
 | ▬ | **ゲージセル** | 5 時間制限、7 日制限、モデル速度（tok/s）。それぞれ数字の下にブロックメーターが付きます。制限にはリセットまでの時間（`resets 3h 20m`）が出ます。アカウントがレート制限を報告する場合だけ表示されます。特定モデルだけの週間制限（`seven_day_fable`）も報告される場合は、7 日セルに 2 本目のメーターとして表示されます。 |
 | 💰 | **合計** | 費用（エンジンの報告値、`≈` つき）、トークン、作業時間、モデル。 |
 | 🤖 | **エージェントカード** | バックグラウンドのサブエージェントを横並びのカードで表示：モデル、effort、ツール数、トークン、概算費用。完了したカードは約 3 秒チェックを見せて消えます。 |
-| 🔘 | **モードセル** | Hanahira Claude UI モードがオンの間はマスコットが起きてラベルがピンク、それ以外は眠ってグレー。 |
+| 🔘 | **モードセル** | Jupiter Series のマスコット（環のある惑星）。Hanahira Claude UI モードがオンの間はオレンジに光り（Claude の作業中は縞が流れる）、それ以外はグレー。 |
 
-バージョン表示は、どのスキルのコピーを使っているかも示します：`V1.14.5 // ACCOUNT`（claude.ai のアカウントから同期）または `V1.14.5 // SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
+バージョン表示の隣のチップが、どのスキルのコピーを使っているかを示します：赤の `ACCOUNT`（claude.ai のアカウントから同期）または黄色の `SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
 
 > **正直さの原則：** エージェントカードの表示はすべて実際の値です。モデル名は API が返したもの、effort はエンジンが送った値だけで、不明なものは推測せず省略するか `model pending` と表示します。エージェントごとの費用は `hooks/agents.ts` の価格表からの **概算** で、`≈` を付けています。
 
@@ -96,6 +96,17 @@ Compose のボリュームを削除する Bash コマンド（`docker compose do
 | **Design** | 見た目の方向性、配色、書体（タイ語の組版を含む）、レスポンシブレイアウト、デザイントークン、CSS、描画の確認 |
 | **Security** | TLS と証明書、ファイアウォールとポート、認証とセッション、シークレット、ヘッダー、不安定な接続 |
 | **Debug-Test** | バグの再現、根本原因、ログとトレース、不安定なテスト、修正の証明 |
+| **Perf** | 変更前の計測、CPU とメモリのプロファイル、Core Web Vitals、遅いエンドポイントとクエリ、キャッシュ、負荷テスト |
+| **API** | REST と GraphQL の設計、ステータスコード、ページング、バージョニング、冪等性、リトライ、Webhook、外部 API と SDK |
+| **DevOps** | CI/CD、Docker と Compose、Kubernetes と Helm、Terraform、デプロイとロールバック、ログ・メトリクス・アラート |
+| **Remote** | SSH でのサーバー操作、作業前のホスト確認、tmux での長時間ジョブ、rsync、トンネルと踏み台、Ansible、Windows ホスト |
+| **Network** | DNS、アドレスとルーティング、NAT、リバースプロキシとロードバランサー、VPN、コンテナのネットワーク、dig/mtr/ss/tcpdump |
+| **Windows** | PowerShell、サービスとタスク スケジューラ、IIS、イベントログ、レジストリ、ACL、Windows のネットワーク、WSL |
+| **Automation** | 無人で動くスクリプト、cron と systemd タイマー、タスク スケジューラ、冪等なジョブ、ロック、アラート、バックアップと整理 |
+| **AI** | Claude API などのモデル API、プロンプト、ツール使用とエージェント、構造化出力、RAG、評価、キャッシュ、コスト |
+| **Mobile** | React Native と Expo、Flutter、iOS と Android、ビルドと署名、プッシュ通知、ディープリンク、ストア公開 |
+| **Browser** | Claude in Chrome と内蔵ブラウザ：ページの読み取り、フォーム、Web アプリの確認、コンソールとネットワーク、承認、別のマシンのブラウザ |
+| **Claude Remote** | Remote Control、クラウドセッションと teleport、Desktop の SSH セッション、tmux での Claude Code、`claude -p`、権限とサンドボックス |
 
 ---
 
@@ -122,7 +133,7 @@ scripts/install-ssh.sh
 その後、Desktop で **新しいセッション** を開きます。
 
 - **スキルはこのクローンのもの**（`hanahira-claude-ui-ssh:` の名前）になり、SSH セッションでは開発中のバージョンが動きます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストでだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシンのセッションでは、これまでどおりアカウントのコピーが使われます。
-- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `V1.14.5 // SSH`、スキルのバナーは `V30 · SSH` になります。
+- **どのコピーかはひと目でわかります** — バンドには `V1.14.5` と黄色の `SSH` チップが並び、スキルのバナーは `V31 · SSH` になります。
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 手元のマシンで使う場合はこの手順は不要で、方法 1 のままで動きます。
@@ -199,9 +210,17 @@ hooks/
 skills/
   hanahira-claude-ui/                 モード本体とその references/
   hanahira-claude-ui-data/            コンパニオン：データ、デザイン、
-  hanahira-claude-ui-design/          セキュリティ、デバッグ・テスト
-  hanahira-claude-ui-security/
+  hanahira-claude-ui-design/          セキュリティ、デバッグ・テスト、
+  hanahira-claude-ui-security/        パフォーマンス、API、DevOps、
+                                      リモート、ネットワーク、Windows、
+                                      自動化、AI、モバイル
   hanahira-claude-ui-debug-test/
+  hanahira-claude-ui-perf/
+  hanahira-claude-ui-api/
+  hanahira-claude-ui-devops/
+  hanahira-claude-ui-remote/   …-network/  …-windows/
+  hanahira-claude-ui-automation/  …-ai/  …-mobile/
+  hanahira-claude-ui-browser/  …-claude-remote/
 scripts/
   install-ssh.sh    SSH 接続先へのインストール
   update.sh         1 コマンドでアップデート
