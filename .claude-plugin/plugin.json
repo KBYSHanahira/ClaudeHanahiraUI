@@ -1,6 +1,6 @@
 {
   "name": "hanahira-claude-ui",
-  "version": "1.14.4",
+  "version": "1.14.5",
   "description": "Hanahira UI: a status band above the prompt (context, limits, spend, tokens per second, agents)",
   "author": {
     "name": "Hanahira"

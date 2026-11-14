@@ -8,7 +8,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.14.4-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.14.5-34c38f?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-Version_30-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
@@ -52,7 +52,7 @@ SSH 接続先を含むほかの入れ方：[📦 インストール](#-インス
 | 🤖 | **エージェントカード** | バックグラウンドのサブエージェントを横並びのカードで表示：モデル、effort、ツール数、トークン、概算費用。完了したカードは約 3 秒チェックを見せて消えます。 |
 | 🔘 | **モードセル** | Hanahira Claude UI モードがオンの間はマスコットが起きてラベルがピンク、それ以外は眠ってグレー。 |
 
-バージョン表示は、どのスキルのコピーを使っているかも示します：`V1.14.4 // ACCOUNT`（claude.ai のアカウントから同期）または `V1.14.4 // SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
+バージョン表示は、どのスキルのコピーを使っているかも示します：`V1.14.5 // ACCOUNT`（claude.ai のアカウントから同期）または `V1.14.5 // SSH`（`install-ssh.sh` で SSH 接続先に入れたもの）。
 
 > **正直さの原則：** エージェントカードの表示はすべて実際の値です。モデル名は API が返したもの、effort はエンジンが送った値だけで、不明なものは推測せず省略するか `model pending` と表示します。エージェントごとの費用は `hooks/agents.ts` の価格表からの **概算** で、`≈` を付けています。
 
@@ -122,7 +122,7 @@ scripts/install-ssh.sh
 その後、Desktop で **新しいセッション** を開きます。
 
 - **スキルはこのクローンのもの**（`hanahira-claude-ui-ssh:` の名前）になり、SSH セッションでは開発中のバージョンが動きます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストでだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシンのセッションでは、これまでどおりアカウントのコピーが使われます。
-- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `V1.14.4 // SSH`、スキルのバナーは `V30 · SSH` になります。
+- **どのコピーかはひと目でわかります** — バンドのバージョン表示は `V1.14.5 // SSH`、スキルのバナーは `V30 · SSH` になります。
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 手元のマシンで使う場合はこの手順は不要で、方法 1 のままで動きます。
