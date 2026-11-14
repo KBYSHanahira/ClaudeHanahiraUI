@@ -1170,7 +1170,7 @@ export const register: Register = on => {
         reel: reel('tools', String(shownTools)),
         minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural,
       }) },
-      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION} // ${SKILLS_FROM}` }) },
+      { key: 'version', alt: `UI v${VERSION} ${SKILLS_FROM}`, art: hudChipSvg({ color: INK.detail, label: `v${VERSION} // ${SKILLS_FROM}`, tint: SKILLS_FROM === 'SSH' ? HUE.hazard : HUE.ember }) },
     ]
 
     // Pixel width of the loading bar: what the row leaves after everything else on it, so the

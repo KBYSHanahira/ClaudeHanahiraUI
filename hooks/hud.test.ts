@@ -151,6 +151,17 @@ describe('hudChipSvg', () => {
   })
 })
 
+describe('version chip', () => {
+  test('a tint colours an outline chip whole: yellow for the SSH copy, red for the account', () => {
+    for (const tint of [HUE.hazard, HUE.ember]) {
+      const svg = hudChipSvg({ color: INK.detail, label: 'v1.14.5 // SSH', tint }).svg
+      expect(svg).toContain(`stroke="${tint}" stroke-opacity="0.75"`)
+      expect(svg).toContain(`fill="${tint}"`)
+      expect(svg).not.toContain(`stroke="${INK.detail}"`)
+    }
+  })
+})
+
 describe('branch chip', () => {
   test('the branch is an outline chip: BR, amber slashes, the name in ink in its own case, escaped', () => {
     const a = branchChipSvg('main')

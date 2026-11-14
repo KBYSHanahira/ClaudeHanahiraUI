@@ -613,7 +613,7 @@ export const branchChipSvg = (branch: string) => {
  * wide as another state's. With `motion` it comes in once and its mark blinks (a loop: its
  * source holds while it works).
  */
-export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName; pad?: number; value?: string; fill?: boolean; plain?: boolean; minWidth?: number; motion?: boolean; reel?: Since<string> | string | null }) => {
+export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName; pad?: number; value?: string; fill?: boolean; plain?: boolean; minWidth?: number; motion?: boolean; reel?: Since<string> | string | null; tint?: string }) => {
   const H = HUD_CHIP
   const h = H.height
   const pad = opts.pad ?? H.pad
@@ -626,11 +626,12 @@ export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName
   const valueW = opts.value ? 5 + labelWidth(opts.value, H.fs + 1) : 0
   const natural = Math.ceil(x + labelW + valueW + pad + H.lean)
   const width = Math.max(natural, Math.round(opts.minWidth ?? 0))
-  const ink = opts.fill ? HUE.card : opts.plain ? INK.detail : INK.label
+  // `tint` colours an outline chip whole (its edge, corner ticks and words): the version chip says which copy it is.
+  const ink = opts.fill ? HUE.card : opts.tint ?? (opts.plain ? INK.detail : INK.label)
   const shape = opts.plain
     ? ''
     : `<path d="${chipShape(width, h)}" ` +
-      (opts.fill ? `fill="${opts.color}"/>` : `fill="none" stroke="${INK.detail}" stroke-opacity="0.75"/>` + cornerTicks(width, h, INK.label))
+      (opts.fill ? `fill="${opts.color}"/>` : `fill="none" stroke="${opts.tint ?? INK.detail}" stroke-opacity="0.75"/>` + cornerTicks(width, h, opts.tint ?? INK.label))
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
     (opts.motion ? '<g class="chip">' : '') +

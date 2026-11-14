@@ -80,7 +80,7 @@ parts.push(nest(branch, branchX, ty + 2))
 const chips = [
   hudChipSvg({ color: SKY, label: 'working', fill: true }),
   hudChipSvg({ color: '', label: 'tools', value: '8', minWidth: hudChipSvg({ color: '', label: 'tools', value: '999' }).natural }),
-  hudChipSvg({ color: '', label: `v${VERSION}`, plain: true }),
+  hudChipSvg({ color: '', label: `v${VERSION} // SSH`, tint: HUE.hazard }),
 ]
 const chipsW = chips.reduce((w, c) => w + c.width, 0) + 6 * (chips.length - 1)
 let chipX = R - chipsW
