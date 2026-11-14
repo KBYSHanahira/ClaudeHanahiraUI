@@ -70,7 +70,7 @@ const noise = (x: number, y: number) => {
 }
 
 /** The surface every card and chart sits on: a soft top-lit gradient and a hairline edge. */
-export const PANEL = { top: '#1c1c1f', bottom: '#141416', edge: '#2a2a2f', glow: '#ffffff' }
+export const PANEL = { top: '#1c1c1f', bottom: '#141416', edge: '#2c2925', glow: '#ffffff' }
 
 /**
  * The band's hues, all from its mascot, a white cat-eared rabbit: `petal` the pink inside its ears
@@ -87,7 +87,7 @@ export const HUE = {
   rose: '#f2879a',
   peach: '#f6b896',
   lilac: '#c3b5f7',
-  card: '#161618',
+  card: '#121110',
   snow: '#f4f1fb',
   night: '#0c0c0d',
   // The HUD band's two signal colours: `sky` the one accent of every gauge and the working
@@ -98,13 +98,22 @@ export const HUE = {
   red: '#ff4d5a',
   // The loading bar's stripes and frame.
   gold: '#e6b422',
+  // FOUNDRY, the band's industrial look (orange on warm black): `signal` the one accent of every
+  // gauge, the working state and the session plate; `amber` the hazard stripes, the branch and a
+  // meter's lit head; `ember` hot (the top speed charge, a limit near its end); `bone` a done turn,
+  // a warm off-white; `steel` the cool second meter (a model's own week) beside the orange.
+  signal: '#ff7a1a',
+  amber: '#ffb020',
+  ember: '#ff3b2f',
+  bone: '#ece6da',
+  steel: '#8f99a3',
 }
 
 /** The mascot's outline: dark enough to edge its white coat, swapped lighter on a white card (LIGHT). */
 export const MASCOT_LINE = '#4a4a52'
 
 /** The band's text and line colours: ink for values, label and detail for words (each at least 4.5:1 on the band), quiet for lines and muted icons. */
-export const INK = { value: '#ededf0', label: '#a3a3ab', detail: '#86868f', line: '#2a2a2f', track: '#2c2c31' }
+export const INK = { value: '#f2eee8', label: '#aaa49b', detail: '#8c867d', line: '#2c2925', track: '#2e2a26' }
 
 /**
  * The band follows the app's theme from inside each picture: pictures are drawn in their dark
@@ -113,11 +122,11 @@ export const INK = { value: '#ededf0', label: '#a3a3ab', detail: '#86868f', line
  * Light is the glass of a smart-home panel: ink #2b2f36 on white cards, cool grey tracks.
  */
 export const LIGHT: Record<string, string> = {
-  [INK.value]: '#2b2f36',
-  [INK.label]: '#6b7280',
-  [INK.detail]: '#8a909a',
-  [INK.line]: '#dfe3e9',
-  [INK.track]: '#e6e9ee', // every track: rings, speedometer, slider, bar, agent marks
+  [INK.value]: '#24211d',
+  [INK.label]: '#6b655c',
+  [INK.detail]: '#857e73',
+  [INK.line]: '#e4ded4',
+  [INK.track]: '#e9e4db', // every track: rings, speedometer, slider, bar, agent marks
   // An agent card's ground; its edge, name and words are INK's.
   [HUE.card]: '#ffffff',
   // The mascot keeps its coat (its own outline shows it on white); its eyes and the pastel hues
@@ -134,19 +143,33 @@ export const LIGHT: Record<string, string> = {
   [HUE.hazard]: '#b88a14',
   [HUE.red]: '#d42a3a',
   [HUE.gold]: '#a87a00',
+  [HUE.signal]: '#d0560a',
+  [HUE.amber]: '#a86a00',
+  [HUE.ember]: '#c92a1f',
+  [HUE.bone]: '#3a342d',
+  [HUE.steel]: '#5d6873',
   [MASCOT_LINE]: '#8a909a', // the mascot's outline, so its white coat shows on white
 }
 
 /** The light swap as a picture's own `<style>`, and the glass cards' light look (a soft shadow). */
-export const themeStyle = () =>
-  `<style>@media (prefers-color-scheme: light){` +
-  Object.entries(LIGHT)
-    .map(([dark, light]) => `[fill="${dark}"]{fill:${light}}[stroke="${dark}"]{stroke:${light}}[stop-color="${dark}"]{stop-color:${light}}`)
-    .join('') +
-  `.glass{fill:#ffffff;fill-opacity:1;stroke:#0f172a;stroke-opacity:.08;filter:url(#glass-shadow)}.glass-hi{stroke-opacity:0}}</style>`
+export const themeStyle = (body?: string) => {
+  // With `body`, only the colours it draws with (and the glass look only where it has glass):
+  // the full list is about 2.7 KB, and the band sends some forty pictures on every redraw.
+  const uses = (c: string) => body === undefined || body.includes(`"${c}"`)
+  const glass = body === undefined || body.includes('class="glass')
+  const rules = Object.entries(LIGHT)
+    .filter(([dark]) => uses(dark))
+    .map(([dark, light]) => {
+      const sel = (a: string) => (body === undefined || body.includes(`${a}="${dark}"`) ? `[${a}="${dark}"]{${a}:${light}}` : '')
+      return sel('fill') + sel('stroke') + sel('stop-color')
+    })
+    .join('')
+  const glassCss = glass ? `.glass{fill:#ffffff;fill-opacity:1;stroke:#0f172a;stroke-opacity:.08;filter:url(#glass-shadow)}.glass-hi{stroke-opacity:0}` : ''
+  return rules || glassCss ? `<style>@media (prefers-color-scheme: light){${rules}${glassCss}}</style>` : ''
+}
 
 /** A picture that follows the app's theme (`themeStyle`), however it was drawn. */
-export const themed = (svg: string) => svg.replace(/<\/svg>$/, `${themeStyle()}</svg>`)
+export const themed = (svg: string) => svg.replace(/<\/svg>$/, `${themeStyle(svg)}</svg>`)
 
 /**
  * The glass cards: `pad` inside the card round what it holds, `margin` outside it for the light
@@ -170,7 +193,7 @@ export const inCard = <A extends { svg: string; width: number; height: number; n
     // A faint sheen along the top edge, so the near-black card still reads as raised.
     `<path class="glass-hi" d="M${m + rx} ${m + 1}H${m + W - rx}" stroke="#ffffff" stroke-opacity="0.05"/>` +
     inner +
-    themeStyle() +
+    themeStyle(inner + 'class="glass"') +
     `</svg>`
   return { ...art, svg, width, height, ...(art.natural !== undefined ? { natural: art.natural + GLASS.extra } : {}) }
 }
@@ -491,11 +514,11 @@ export const speedoSvg = (fraction: number, color: string, size: number, from?: 
   const turn = (v: number) => `rotate(${(-135 + v * 270).toFixed(1)}deg)`
   const needle =
     `<g transform="translate(22 22)"><g transform="rotate(${(-135 + f * 270).toFixed(1)})" class="spd-needle">` +
-    `<path d="M0 0 L0 -13" stroke="#ededf0" stroke-width="2.6" stroke-linecap="round"/></g></g>` +
+    `<path d="M0 0 L0 -13" stroke="#f2eee8" stroke-width="2.6" stroke-linecap="round"/></g></g>` +
     glideStyle('spd-needle', 'transform', turn, was, f)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">` +
-    `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2c2c31" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
+    `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2e2a26" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
     arc +
     needle +
     `<circle cx="22" cy="22" r="3.2" fill="${color}"/>` +
@@ -690,7 +713,7 @@ export const sliderSvg = (percent: number | null, from?: Since<number> | number 
     `<defs><linearGradient id="heat" gradientUnits="userSpaceOnUse" x1="0" x2="${S.width}" y1="0" y2="0">` +
     S.heat.map((c, i) => `<stop offset="${(i / (S.heat.length - 1)).toFixed(2)}" stop-color="${c}"/>`).join('') +
     `</linearGradient></defs>` +
-    `<rect x="0" y="${y}" width="${S.width}" height="${S.track}" rx="${S.track / 2}" fill="#2c2c31"/>` +
+    `<rect x="0" y="${y}" width="${S.width}" height="${S.track}" rx="${S.track / 2}" fill="#2e2a26"/>` +
     `<rect x="0" y="${y}" width="${at(percent)}" height="${S.track}" rx="${S.track / 2}" fill="url(#heat)" class="sl-fill"/>` +
     `<g transform="translate(${at(percent)} 0)" class="sl-knob">` +
     `<circle cx="0" cy="${height / 2}" r="${r - 1}" fill="#ffffff" stroke="${HUE.petal}" stroke-width="2"/></g>` +
@@ -794,7 +817,7 @@ export const CARD = { height: 52, tile: 36, icon: 22, textX: 54, pad: 16 }
 /** A stat card as SVG: a tinted icon tile on the left, the label over the value beside it. */
 export const cardSvg = (label: string, value: string, opts: { icon?: IconName; iconColor?: string } = {}) => {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const iconColor = opts.iconColor ?? '#86868f'
+  const iconColor = opts.iconColor ?? '#8c867d'
   const textX = opts.icon ? CARD.textX : 14
   const fs = 17
   const textW = Math.max(labelWidth(value, fs), labelWidth(label, 11.5))
@@ -806,14 +829,14 @@ export const cardSvg = (label: string, value: string, opts: { icon?: IconName; i
     ? `<rect x="${t}" y="${t}" width="${CARD.tile}" height="${CARD.tile}" rx="10" fill="${iconColor}" fill-opacity="0.14" stroke="${iconColor}" stroke-opacity="0.3"/>` +
       iconGroup(opts.icon, iconColor, io, io, CARD.icon, 2)
     : ''
-  const valueFont = `font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#ededf0"`
+  const valueFont = `font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="${fs}" font-weight="700" fill="#f2eee8"`
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
     panelSvg('cardg', width, height, 12) +
     // The halftone gathers in the top-right corner and starts past the label, so no dot sits on text.
     halftone(Math.max(Math.round(width * 0.45), Math.ceil(textX + labelWidth(label, 11.5) + 6)), 6, width - 7, 27, { color: iconColor, opacity: 0.22 }) +
     tile +
-    `<text x="${textX}" y="21" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#a3a3ab">${esc(label)}</text>` +
+    `<text x="${textX}" y="21" font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" font-size="11.5" fill="#aaa49b">${esc(label)}</text>` +
     `<text x="${textX}" y="40" ${valueFont}>${esc(value)}</text>` +
     `</svg>`
   return { svg, width, height }
@@ -918,7 +941,7 @@ export const statSvg = (
 ) => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const S = STAT
-  const color = opts.color ?? '#86868f'
+  const color = opts.color ?? '#8c867d'
   const spark = opts.icon && !opts.plain && !opts.ring && (opts.spark?.pulse || opts.spark?.enterFrom) ? opts.spark : undefined
   const under = opts.stack ?? []
   const stacked = opts.stack !== undefined
@@ -944,17 +967,17 @@ export const statSvg = (
         (spark ? '</g>' : '')
       : ''
   const font = FIGURE_FONT
-  const valueFont = `${DISPLAY_FONT} font-size="${S.fs}" font-weight="700" fill="#ededf0"`
+  const valueFont = `${DISPLAY_FONT} font-size="${S.fs}" font-weight="700" fill="#f2eee8"`
   // An invisible copy of the value, in its own face, holds its place, so the label follows it as the renderer sets it.
   const holder = `<tspan font-family="${DISPLAY_FAMILY}" font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
   const tail =
-    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#a3a3ab">${holder}` +
+    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#aaa49b">${holder}` +
     (label ? `<tspan dx="5"${opts.tone ? ` fill="${opts.tone}" font-weight="600"` : ''}>${esc(label)}</tspan>` : '') +
-    (opts.detail && !stacked ? `<tspan fill="#86868f"> · ${esc(opts.detail)}</tspan>` : '') +
+    (opts.detail && !stacked ? `<tspan fill="#8c867d"> · ${esc(opts.detail)}</tspan>` : '') +
     `</text>` +
     under
       .map((line, i) => {
-        const ink = i === 0 && opts.tone ? `fill="${opts.tone}" font-weight="600"${spark?.enterFrom ? ' class="rise"' : ''}` : 'fill="#86868f"'
+        const ink = i === 0 && opts.tone ? `fill="${opts.tone}" font-weight="600"${spark?.enterFrom ? ' class="rise"' : ''}` : 'fill="#8c867d"'
         return `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" ${ink}>${esc(line)}</text>`
       })
       .join('')
@@ -1042,7 +1065,7 @@ export const chipSvg = (opts: {
   const x = C.lead + glyphW + (glyphW ? 6 : 0)
   const y = C.baseline
   const font = FIGURE_FONT
-  const valueFont = `${DISPLAY_FONT} font-size="${C.fs}" font-weight="700" fill="#ededf0"`
+  const valueFont = `${DISPLAY_FONT} font-size="${C.fs}" font-weight="700" fill="#f2eee8"`
   // Still, the dots brighten left to right; moving, that brightness steps one dot on each third.
   const levels = [0, 1, 2].map(i => (0.3 + i * 0.35).toFixed(2))
   const glyph = opts.dots

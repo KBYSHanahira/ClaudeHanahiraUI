@@ -1,5 +1,6 @@
-// The band's HUD look: sharp cells with a slab label, a large figure and block meters, in white
-// on near-black with one accent. Pure builders like chat.ts (no engine calls), drawn from its
+// The band's HUD look, FOUNDRY: an industrial field terminal in orange on warm black. Chamfered
+// panels with a signal header line, a left rail, segmented meters over a ruler, outlined index
+// numerals and corner brackets. Pure builders like chat.ts (no engine calls), drawn from its
 // colours so every picture still follows the app's theme (`themeStyle`).
 
 import { EASE, HUE, INK, MASCOT, MOTION, glideStyle, labelWidth, mascotSvg, motionStyle, reelText, themeStyle } from './chat'
@@ -12,6 +13,8 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 /** The HUD's face: a condensed sans where the system has one, any sans where it has none. */
 export const HUD_FAMILY = "Bahnschrift,'DIN Condensed','Roboto Condensed','Barlow Condensed','Arial Narrow',ui-sans-serif,system-ui,sans-serif"
 const FACE = `font-family="${HUD_FAMILY}" style="font-stretch:condensed;font-variant-numeric:tabular-nums lining-nums"`
+/** The microtext's face: technical captions, a monospace. */
+const MONO = "ui-monospace,'JetBrains Mono','SF Mono',Consolas,monospace"
 
 /**
  * A caption's width in px, as a condensed face sets it in capitals with `ls` px of tracking.
@@ -27,46 +30,126 @@ export const capWidth = (text: string, fs: number, ls = 0) =>
   )
 
 /** A caption: capitals, tracked, pinned to `capWidth`. `anchor` 'end' sets it to end at `x`. */
-const cap = (x: number, y: number, text: string, fs: number, fill: string, opts: { ls?: number; bold?: boolean; anchor?: 'end'; extra?: string } = {}) => {
+export const cap = (x: number, y: number, text: string, fs: number, fill: string, opts: { ls?: number; bold?: boolean; anchor?: 'end'; extra?: string } = {}) => {
   const t = text.toUpperCase()
   const w = capWidth(t, fs, opts.ls ?? 0)
   return `<text x="${opts.anchor === 'end' ? x - w : x}" y="${y}" ${FACE} font-size="${fs}"${opts.bold ? ' font-weight="700"' : ''} fill="${fill}" textLength="${w}" lengthAdjust="spacingAndGlyphs"${opts.extra ?? ''}>${esc(t)}</text>`
 }
 
+/** Microtext's width in px: a monospace at `fs` with `ls` px of tracking. */
+const microWidth = (text: string, fs = 7, ls = 1) => +([...text].length * (fs * 0.6 + ls)).toFixed(1)
+/** Microtext: a tiny technical caption in a monospace, tracked and pinned to `microWidth`. */
+const micro = (x: number, y: number, text: string, fill: string, opts: { fs?: number; ls?: number; anchor?: 'end' | 'middle'; extra?: string } = {}) => {
+  const fs = opts.fs ?? 7
+  const w = microWidth(text, fs, opts.ls ?? 1)
+  const at = opts.anchor === 'end' ? x - w : opts.anchor === 'middle' ? x - w / 2 : x
+  return `<text x="${+at.toFixed(1)}" y="${y}" font-family="${MONO}" font-size="${fs}" fill="${fill}" textLength="${w}" lengthAdjust="spacingAndGlyphs"${opts.extra ?? ''}>${esc(text)}</text>`
+}
+
+/** The brand mark: a diamond (a square on its point), `size` px across, centred on (`cx`, `cy`). */
+const diamond = (cx: number, cy: number, size: number, fill: string) => {
+  const r = size / 2
+  return `<path d="M${cx} ${cy - r}L${cx + r} ${cy}L${cx} ${cy + r}L${cx - r} ${cy}Z" fill="${fill}"/>`
+}
+
 // A figure is not pinned to a width (it rolls, digit by digit), so its room is reckoned for a
-// wide bold face: a system with no condensed one must not run it past its cell.
-/** A cell's measures: its padding, the slab label, the figure, the meters and the line under them. */
-export const CELL = { pad: 10, tabH: 14, tabFs: 10, fs: 22, valueY: 38, barsY: 45, barH: 4, barPitch: 9, namedPitch: 13, segs: 10, segGap: 2, subFs: 10, subLine: 14, ruleH: 8, bottom: 7, minWidth: 96 }
+// wide bold face: a system with no condensed face must not run it past its cell.
+/**
+ * A cell's measures: its padding, the header line (`tabH` tall, its caption `tabFs`), the figure,
+ * the meters and the ruler under them, the line under those, and `cut`, the chamfer of its
+ * top-right corner.
+ */
+export const CELL = { pad: 10, tabH: 14, tabFs: 10, fs: 22, valueY: 38, barsY: 45, barH: 5, barPitch: 10, namedPitch: 13, segs: 10, segGap: 2, subFs: 10, subLine: 14, ruleH: 8, bottom: 7, minWidth: 96, cut: 7 }
 /**
  * A cell may be cut `SEAM` px from its right edge: nothing but the frame's lines crosses there
- * (the meters, their shares and the faint number end on it; the corner mark is past it), so a
- * filler set in the cut widens the cell without redrawing it (hudCellParts).
+ * (the meters, their shares and the faint number end on it; the chamfer, the status squares and
+ * the charge marks are past it), so a filler set in the cut widens the cell without redrawing it
+ * (hudCellParts).
  */
 export const SEAM = CELL.pad
 /** The widest a filler is drawn, in px: a cell's, and a whole line's. The surface clips it to the room. */
 export const FILL = { cell: 320, line: 2400 }
 
-/** The cell's ground: a sharp near-black card with a hairline, and a `+` in two corners. */
+/** A panel's ground: a near-black card with a hairline, as a rectangle (a filler's, running on). */
 const glass = (x: number, width: number, height: number) =>
   `<defs><filter id="glass-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.10"/></filter></defs>` +
   `<rect class="glass" x="${x + 0.5}" y="0.5" width="${width - 1}" height="${height - 1}" fill="#000000" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.12"/>`
-const frame = (width: number, height: number, low = true) =>
-  glass(0, width, height) +
-  `<path d="M${width - 10} 6.5h5M${width - 7.5} 4v5${low ? `M5 ${height - 6.5}h5M7.5 ${height - 9}v5` : ''}" stroke="${INK.detail}" stroke-opacity="0.7" fill="none"/>`
 
-/** A slab label at the cell's top-left corner: solid, its text knocked out dark, its end cut on a slant. */
-const tab = (label: string, fill: string, h: number = CELL.tabH, y = 0) => {
-  const w = capWidth(label.toUpperCase(), CELL.tabFs, 1.4)
-  const tw = 6 + w + 11
-  return { width: tw, svg: `<path d="M0 ${y}H${tw}L${tw - 6} ${y + h}H0z" fill="${fill}"/>` + cap(6, y + h / 2 + 3.6, label, CELL.tabFs, HUE.card, { ls: 1.4, bold: true }) }
+/** A panel's outline with its top-right corner cut `cut` px at 45°, on the half pixel. */
+const chamfer = (width: number, height: number, cut: number = CELL.cut) => `M0.5 0.5H${width - cut - 0.5}L${width - 0.5} ${cut + 0.5}V${height - 0.5}H0.5Z`
+
+/**
+ * A panel's frame, FOUNDRY: the chamfered card; along its top-left a 2 px `accent` bar and down
+ * its left edge the rail (`rail` px tall); the chamfer's own edge lit; three status squares under
+ * it, in the last SEAM px; an L bracket in the bottom-left corner.
+ */
+const frame = (width: number, height: number, accent: string, rail: number = CELL.tabH) =>
+  `<defs><filter id="glass-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.10"/></filter></defs>` +
+  `<path class="glass" d="${chamfer(width, height)}" fill="#000000" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.12"/>` +
+  `<rect x="0" y="0" width="22" height="2" fill="${accent}"/>` +
+  `<rect x="0" y="0" width="2" height="${Math.min(rail, height)}" fill="${accent}"/>` +
+  `<path d="M${width - CELL.cut - 0.5} 0.5L${width - 0.5} ${CELL.cut + 0.5}" stroke="${accent}" stroke-width="1.4"/>` +
+  [0, 1, 2].map(k => `<rect x="${width - 5.5}" y="${9 + k * 3.5}" width="2.5" height="2.5" fill="${k === 0 ? accent : INK.detail}"${k === 0 ? '' : ` fill-opacity="${k === 1 ? 0.7 : 0.4}"`}/>`).join('') +
+  `<path d="M4.5 ${height - 10}V${height - 4.5}H10" fill="none" stroke="${INK.detail}" stroke-opacity="0.7"/>`
+
+/**
+ * A panel's header line: its index in `accent` and a slash, then its name in ink, both in tracked
+ * condensed capitals, `NN / NAME`. The figure that was a white slab tab.
+ */
+const header = (label: string, accent: string, index?: string, x: number = CELL.pad, y = 11.5, fs: number = CELL.tabFs) => {
+  const idx = index ? `${index} /` : ''
+  const iw = idx ? capWidth(idx, fs, 1.2) + 5 : 0
+  const lw = capWidth(label.toUpperCase(), fs, 1.2)
+  return {
+    width: x + iw + lw,
+    svg: (idx ? cap(x, y, idx, fs, accent, { ls: 1.2, bold: true }) : '') + cap(x + iw, y, label, fs, INK.value, { ls: 1.2, bold: true }),
+  }
 }
 
 /**
- * A block meter: `n` blocks across `w` px, lit from the left to `percent` in `color` (a block
- * can be part lit, so the reading is exact), the rest the track. `slant` leans the blocks.
- * With `from` the lit stretch glides there from that reading. `id` names its clip in the picture.
+ * A ruler: a hairline `w` px long at `y`, a minor tick at each of `n` steps along it and a major
+ * one every `major` (and at both ends), hanging down. Drawn in the dim inks.
  */
-export const blocksSvg = (id: string, x: number, y: number, w: number, h: number, percent: number | null, color: string, opts: { n?: number; gap?: number; slant?: number; from?: Since<number> | number | null } = {}) => {
+const ruler = (x: number, y: number, w: number, n: number, major = 5, opts: { minor?: number; long?: number } = {}) => {
+  const f = (v: number) => +v.toFixed(2)
+  const minorL = opts.minor ?? 1.6
+  const longL = opts.long ?? 3.2
+  let short = ''
+  let long = ''
+  for (let k = 0; k <= n; k++) {
+    const tx = f(x + (k * w) / n)
+    if (k % major === 0 || k === n) long += `M${tx} ${y}V${f(y + longL)}`
+    else short += `M${tx} ${y}V${f(y + minorL)}`
+  }
+  return (
+    `<path d="M${x} ${y}H${f(x + w)}" stroke="${INK.detail}" stroke-opacity="0.45" stroke-width="0.6"/>` +
+    (short ? `<path d="${short}" stroke="${INK.detail}" stroke-opacity="0.55" stroke-width="0.6"/>` : '') +
+    `<path d="${long}" stroke="${INK.label}" stroke-opacity="0.85" stroke-width="0.8"/>`
+  )
+}
+
+/** A reading as a share of 0 to 1: nothing for no reading. */
+const share = (p: number | null) => (p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100)
+/** How much of `w` px a reading lights: any use at all shows, so a session that has begun never reads as empty. */
+const litOf = (p: number | null, w: number) => +(share(p) > 0 ? Math.max(1.5, share(p) * w) : 0).toFixed(1)
+
+/**
+ * A segmented meter: `n` segments across `w` px, lit from the left to `percent` in `color` (a
+ * segment can be part lit, so the reading is exact), the rest the track; the lit stretch's head,
+ * about a segment, in `head` (amber unless given; `null` for none). `slant` leans the segments.
+ * With `ruler` a tick ruler hangs under it, a minor tick a segment and a major one every five.
+ * With `from` the lit stretch and its head glide there from that reading. `id` names its clips.
+ */
+export const blocksSvg = (
+  id: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  percent: number | null,
+  color: string,
+  opts: { n?: number; gap?: number; slant?: number; from?: Since<number> | number | null; head?: string | null; ruler?: boolean } = {},
+) => {
   const gap = opts.gap ?? CELL.segGap
   const s = opts.slant ?? 0
   const n = Math.max(1, opts.n ?? CELL.segs)
@@ -75,23 +158,31 @@ export const blocksSvg = (id: string, x: number, y: number, w: number, h: number
     const bx = +(x + k * (bw + gap)).toFixed(2)
     return `M${bx + s} ${y}h${bw.toFixed(2)}l${-s} ${h}h${(-bw).toFixed(2)}z`
   }).join('')
-  const share = (p: number | null) => (p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100)
-  // Any use at all shows: a session that has begun never reads as empty.
-  const lit = (p: number | null) => +(share(p) > 0 ? Math.max(1.5, share(p) * w) : 0).toFixed(1)
+  const lit = (p: number | null) => litOf(p, w)
+  const head = opts.head === undefined ? HUE.amber : opts.head
+  const hw = +(bw + gap / 2).toFixed(2)
   return (
     `<clipPath id="${id}"><rect x="${x}" y="${y}" width="${lit(percent)}" height="${h}" class="${id}"/></clipPath>` +
     `<path d="${d}" fill="${INK.track}"/>` +
     `<path d="${d}" fill="${color}" clip-path="url(#${id})"/>` +
+    // The head: a segment's width ending where the lit stretch ends, slid there (so it glides with it).
+    (head && share(percent) > 0
+      ? `<clipPath id="${id}h"><rect x="${+(x - hw).toFixed(2)}" y="${y}" width="${hw}" height="${h}" transform="translate(${lit(percent)} 0)" class="${id}h"/></clipPath>` +
+        `<path d="${d}" fill="${head}" clip-path="url(#${id}h)"/>` +
+        glideStyle(`${id}h`, 'transform', p => `translateX(${lit(p)}px)`, opts.from, percent ?? 0)
+      : '') +
+    // Half a px short of the meter's end: a tick on it would bleed past a seam set there.
+    (opts.ruler ? ruler(x, y + h + 1.5, w - s - 0.5, n, 5) : '') +
     glideStyle(id, 'width', p => `${lit(p)}px`, opts.from, percent ?? 0)
   )
 }
 
-/** The speed at which each charge level starts, in tokens a second: blue from the first token, then purple, then red. */
+/** The speed at which each charge level starts, in tokens a second: signal from the first token, then amber, then ember. */
 export const CHARGE_AT = [0, 100, 200]
 /** A speed's charge level, 0 (none: no reading, or no speed) to 3: one more for each of CHARGE_AT it has reached. */
 export const chargeLevel = (tps: number | null) => (tps === null || !Number.isFinite(tps) || tps <= 0 ? 0 : CHARGE_AT.filter(at => tps >= at).length)
-/** Each level's colour: blue up to 100 tok/s, purple up to 200, red from 200. */
-export const CHARGE_COLOR = ['', HUE.sky, HUE.lilac, HUE.red]
+/** Each level's colour, hotter as it climbs: signal up to 100 tok/s, amber up to 200, ember from 200. */
+export const CHARGE_COLOR = ['', HUE.signal, HUE.amber, HUE.ember]
 
 // A cheap deterministic hash in [0, 1): the same arc draws the same every time, so a redraw
 // with nothing changed sends the same picture.
@@ -125,11 +216,11 @@ export const CHARGE_CUT = { head: 14, arcs: CELL.valueY + 1, bars: CELL.barsY + 
 /**
  * The charge a fast cell wears, by `level` (1 to 3), over a cell `width` by `height`: an
  * industrial power conduit, clean and angular, in layers:
- * - `still`: at 2, a lit frame and a corner bracket with hazard ticks.
- * - `head`: a chevron marker under the corner mark (two at 3).
+ * - `still`: at 2, a lit chamfered frame and a corner bracket with hazard slashes.
+ * - `head`: a chevron marker under the status squares (two at 3).
  * - `arcs`: just above the meter, a rail carrying data packets; at 2 a chevron stream running the
- *   other way along it; at 3 a hot scan pulse racing ahead, and a tick rail along the top edge.
- * - `foot`: at 3, a tick rail along the bottom edge.
+ *   other way along it; at 3 a hot scan pulse racing ahead, and a hazard-tick rail along the top edge.
+ * - `foot`: at 3, a hazard-tick rail along the bottom edge.
  * With `motion` every line slides along itself for good (a loop, each at its own pace, faster the
  * higher the level); the band draws it still, as its cell is one picture redrawn with its figure,
  * and a loop in such a picture starts over at every redraw. Every line is drawn two widths long and repeats every width (`spots`).
@@ -165,10 +256,10 @@ const chargeLayers = (level: number, width: number, height: number, motion: bool
       d += `M${f(x)} ${y}L${f(x + len)} ${y}`
     }
     return line(
-      `<path d="${rail(y)}" stroke-width="0.7" stroke-opacity="0.35"/>` +
+      `<path d="${rail(y)}" stroke-width="0.7" stroke-opacity="0.35" stroke-dasharray="1 2"/>` +
         `<path d="${d}" stroke-width="7" stroke-opacity="0.08"/>` +
         `<path d="${d}" stroke-width="2.4"/>` +
-        `<path d="${d}" stroke="#ffffff" stroke-width="0.7" stroke-opacity="0.75"/>`,
+        `<path d="${d}" stroke="#ffffff" stroke-width="0.7" stroke-opacity="0.6"/>`,
       ms,
     )
   }
@@ -192,15 +283,15 @@ const chargeLayers = (level: number, width: number, height: number, motion: bool
       `<path d="${[at - width, at].map(x => `M${f(x + from)} ${y}L${f(x + to)} ${y}`).join('')}" stroke-width="${w}" stroke-opacity="${o}"${white ? ' stroke="#ffffff"' : ''}/>`
     return line(seg(-46, 10, 7, 0.12) + seg(-44, -24, 1.2, 0.25) + seg(-24, -8, 2, 0.6) + seg(-8, 10, 3.2, 1) + seg(-4, 10, 1.6, 1, true), ms)
   }
-  // A measuring rail along an edge: a thin line with ticks, every fourth one long.
+  // A measuring rail along an edge: a thin line with ticks, every fourth one a hazard slash.
   const ticks = (y: number, up: number, ms: number, back = false) => {
     let short = ''
     let long = ''
     for (const [x, j] of spots(width, Math.max(4, Math.round(width / 24) * 4))) {
-      if (j % 4 === 0) long += `M${f(x)} ${y}L${f(x)} ${f(y + up * 1.4)}L${f(x + 5)} ${f(y + up * 1.4)}`
+      if (j % 4 === 0) long += `M${f(x)} ${y}L${f(x + 2.4)} ${f(y + up * 2.4)}M${f(x + 2.4)} ${y}L${f(x + 4.8)} ${f(y + up * 2.4)}`
       else short += `M${f(x)} ${y}L${f(x)} ${f(y + up * 0.9)}`
     }
-    return line(`<path d="${rail(y)}" stroke-width="0.8" stroke-opacity="0.45"/><path d="${short}" stroke-width="0.8" stroke-opacity="0.6"/><path d="${long}" stroke-width="1.2"/>`, ms, back)
+    return line(`<path d="${rail(y)}" stroke-width="0.8" stroke-opacity="0.45"/><path d="${short}" stroke-width="0.8" stroke-opacity="0.6"/><path d="${long}" stroke-width="1.3"/>`, ms, back)
   }
   // Midway between the figure and the meter; from 2 the packets and chevrons sit 2.6 px to either side of it.
   const arcY = f((CHARGE_CUT.arcs + 3.2 + CHARGE_CUT.bars - 0.5) / 2)
@@ -216,13 +307,13 @@ const chargeLayers = (level: number, width: number, height: number, motion: bool
   return {
     still:
       level >= 2
-        ? `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="none" stroke="${color}" stroke-opacity="0.65"/>` +
-          // A corner bracket and two hazard ticks, in the last SEAM px, so a widened band keeps them in its corner.
+        ? `<path d="${chamfer(width, height)}" fill="none" stroke="${color}" stroke-opacity="0.65"/>` +
+          // A corner bracket and three hazard slashes, in the last SEAM px, so a widened band keeps them in its corner.
           `<path d="M${width - 2} ${height - 15}l0 11l-7 0" fill="none" stroke="${color}" stroke-width="1.6"/>` +
-          `<path d="M${width - 2} ${height - 21}L${width - 6} ${height - 17}M${width - 2} ${height - 25}L${width - 6} ${height - 21}" fill="none" stroke="${color}" stroke-width="1.2" stroke-opacity="0.8"/>`
+          `<path d="M${width - 2} ${height - 21}L${width - 6} ${height - 17}M${width - 2} ${height - 25}L${width - 6} ${height - 21}M${width - 2} ${height - 29}L${width - 6} ${height - 25}" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.85"/>`
         : '',
-    // Under the corner mark, in the last SEAM px.
-    head: marker(width - 9.4, 12, 10, color) + (level >= 3 ? marker(width - 9.4, 24, 10, color) : ''),
+    // Under the status squares, in the last SEAM px.
+    head: marker(width - 9.4, 21, 10, color) + (level >= 3 ? marker(width - 9.4, 32, 10, color) : ''),
     arcs: top + arcs,
     foot,
     // Every line, and nothing else: each is two widths long, so copies set two widths apart run on as one.
@@ -262,15 +353,16 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   const x = C.pad + (opts.toggle ? mascotW + 8 : 0)
   // A mode's name is a word, not a figure: a size down, so the cell is no wider than a figure's.
   const fs = opts.toggle ? 17 : C.fs
-  const slab = tab(label, opts.tone ?? INK.value)
+  const level = Math.round(opts.charge?.level ?? 0)
+  const accent = level > 0 ? CHARGE_COLOR[level]! : (opts.tone ?? HUE.signal)
+  const head = header(label, accent, opts.index)
   const labelled = bars.some(b => b.label)
   const nameW = labelled ? Math.max(...bars.map(b => capWidth((b.label ?? '').toUpperCase(), 9, 1))) + 6 : 0
   const pctW = labelled ? capWidth('100%', 10) + 6 : 0
   const subW = opts.sub ? capWidth(opts.sub.toUpperCase(), C.subFs, 0.8) : 0
-  const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, slab.width + 22, x + subW + SEAM, C.pad + nameW + 60 + pctW + C.pad)))
+  const natural = Math.max(C.minWidth, Math.ceil(Math.max(x + Math.ceil(labelWidth(shown, fs) * 1.12) + 14, head.width + 6 + SEAM, x + subW + SEAM, C.pad + nameW + 60 + pctW + C.pad)))
   const width = Math.max(natural, Math.round(opts.width ?? 0))
   const pitch = labelled ? C.namedPitch : C.barPitch
-  const level = Math.round(opts.charge?.level ?? 0)
   // A charged cell's meters sit `drop` lower (the arcs run in the room), so it is that much taller.
   const height = Math.max(cellHeight(bars.length, opts.sub !== undefined, opts.rule !== undefined, labelled) + (level > 0 ? CHARGE_CUT.drop : 0), Math.round(opts.height ?? 0))
   const id = `b${opts.index ?? ''}`
@@ -281,8 +373,9 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
       const y = C.barsY + i * pitch + (labelled ? 3 : 0)
       const pct = b.percent === null || !Number.isFinite(b.percent) ? '—' : `${Math.round(b.percent)}%`
       return (
-        (b.label ? cap(C.pad, y + C.barH + 1.6, b.label, 9, INK.label, { ls: 1 }) + cap(width - C.pad, y + C.barH + 1.8, pct, 10, INK.value, { anchor: 'end' }) : '') +
-        blocksSvg(`${id}-${i}`, barX, y, barW, C.barH, b.percent, b.color, { from: b.from })
+        (b.label ? cap(C.pad, y + C.barH + 0.6, b.label, 9, INK.label, { ls: 1 }) + cap(width - C.pad, y + C.barH + 0.8, pct, 10, INK.value, { anchor: 'end' }) : '') +
+        // The ruler hangs under the last meter only.
+        blocksSvg(`${id}-${i}`, barX, y, barW, C.barH, b.percent, b.color, { from: b.from, ruler: i === bars.length - 1 })
       )
     })
     .join('')
@@ -291,21 +384,31 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
   // The cell in layers: what never changes while its name, size and charge hold; the figure;
   // the meters and the line under them.
   const indexArt = opts.index
-    ? `<text x="${Math.max(width - SEAM, Math.round(opts.indexEnd ?? 0))}" y="${height + 3}" text-anchor="end" ${FACE} font-size="42" font-weight="700" fill="${INK.value}" fill-opacity="0.06">${esc(opts.index)}</text>`
+    ? `<text x="${Math.max(width - SEAM, Math.round(opts.indexEnd ?? 0))}" y="${height + 4}" text-anchor="end" ${FACE} font-size="44" font-weight="700" fill="none" stroke="${INK.value}" stroke-opacity="0.13" stroke-width="0.8">${esc(opts.index)}</text>`
     : ''
   const base =
-    frame(width, height) +
+    frame(width, height, accent, level > 0 ? height : C.tabH) +
     indexArt +
-    slab.svg +
+    head.svg +
     charge.still
   const figure =
     (opts.toggle ? mascotSvg(opts.toggle.on, C.pad, C.valueY - 2 - (mascotW * MASCOT.h) / MASCOT.w / 2 - 4, mascotW, { enter: opts.toggle.enter ?? null, motion: opts.toggle.motion === true }) : '') +
     reelText(x, opts.toggle ? C.valueY - 4 : C.valueY, fs, `${FACE} font-size="${fs}" font-weight="700" letter-spacing="0.4" fill="${level >= 3 ? CHARGE_COLOR[3] : INK.value}"`, shown, opts.reel)
   const lower = level > 0 ? CHARGE_CUT.drop : 0
+  // A figure with no meter: a short bar in its colour, then a dim ruler of ticks to the seam.
+  const ruleArt = opts.rule
+    ? `<rect x="${C.pad}" y="${C.barsY}" width="22" height="2" fill="${opts.rule}"/>` +
+      (() => {
+        const rx = C.pad + 26
+        const rw = width - SEAM - rx - 1
+        const n = Math.max(1, Math.floor(rw / 4))
+        return rw > 8 ? ruler(rx, C.barsY + 1, +((n * 4).toFixed(0)), n, 5, { minor: 1.6, long: 3.6 }) : ''
+      })()
+    : ''
   const meters =
     (lower ? `<g transform="translate(0 ${lower})">` : '') +
     barArt +
-    (opts.rule ? `<path d="M${C.pad} ${C.barsY + 1}h22" stroke="${opts.rule}" stroke-width="2"/>` : '') +
+    ruleArt +
     (opts.sub ? cap(x, subY, opts.sub, C.subFs, opts.tone ?? INK.detail, { ls: 0.8 }) : '') +
     (lower ? '</g>' : '')
   return { width, height, natural, level, base, figure, meters, charge, indexArt }
@@ -313,16 +416,17 @@ const cellLayers = (label: string, value: string, opts: CellOpts) => {
 
 /** The cell's svg document, `h` px tall from `y`. */
 const strip = (width: number, y: number, h: number, inner: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${y} ${width} ${h}" width="${width}" height="${h}">${inner}${themeStyle()}</svg>`
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${y} ${width} ${h}" width="${width}" height="${h}">${inner}${themeStyle(inner)}</svg>`
 
 /**
- * One stat of the band as a HUD cell: its name on a slab at the top-left corner, the figure
- * large under it, then its meters (each a line of blocks; with a `label`, that name before it
- * and its share after), then `sub`, a dim line. `rule` draws a short accent line under a
- * figure that has no meter. `index` is the faint number in the corner. With `toggle` the
- * mascot sits before the figure (the Hanahira mode) and `tone` colours the slab and `sub`.
- * `charge` lays a power conduit over it. `width` and `height` only ever grow the cell, to its
- * column and its line.
+ * One stat of the band as a HUD cell, FOUNDRY: a chamfered panel whose header line reads
+ * `NN / NAME` (its index in signal, after a signal tick bar, over a left rail), the figure large
+ * under it, then its meters (segmented, an amber head, a ruler under the last; with a `label`,
+ * that name before it and its share after), then `sub`, a dim line. `rule` draws a short accent
+ * bar and a dim ruler under a figure that has no meter. `index` is also the outlined number in
+ * the corner. With `toggle` the mascot sits before the figure (the Hanahira mode) and `tone`
+ * colours the header, the rail and `sub`. `charge` lays a power conduit over it. `width` and
+ * `height` only ever grow the cell, to its column and its line.
  */
 export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) => {
   const c = cellLayers(label, value, opts)
@@ -336,7 +440,7 @@ export const hudCellSvg = (label: string, value: string, opts: CellOpts = {}) =>
  * right end, where the default would shrink the whole drawing into the box (stripeSvg too).
  */
 const slice = (x: number, w: number, h: number, inner: string, y = 0) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="xMinYMid slice">${x || y ? `<g transform="translate(${-x} ${-y})">${inner}</g>` : inner}${themeStyle()}</svg>`
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="xMinYMid slice">${x || y ? `<g transform="translate(${-x} ${-y})">${inner}</g>` : inner}${themeStyle(inner)}</svg>`
 
 /** A drawing `width` wide cut at `seam`, with `fill` (drawn from x = 0, `fillW` wide) to set in the cut. */
 const stretchParts = (inner: string, fill: string, fillW: number, width: number, height: number, seam: number) => ({
@@ -381,7 +485,9 @@ export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) 
     fill: { svg: slice(0, FILL.cell, h, fillFrom(Math.max(0, short), FILL.cell)), width: FILL.cell },
     // The right end without the number (one that runs past the seam goes on in `even`) and
     // without the lines: it follows a filler cut at any width, where no line could meet its own.
-    right: { svg: slice(seam, SEAM, h, bare + rest), width: SEAM },
+    // Only what lies in the last SEAM px: the frame, its corner and the charge's marker. The figure
+    // and the meters end before the seam, so a new figure leaves this piece as it was (no reload).
+    right: { svg: slice(seam, SEAM, h, bare + c.charge.head), width: SEAM },
     even: short > 0 ? { svg: slice(0, short, h, fillFrom(0, short) + index), width: short } : null,
     width: c.width,
     height: c.height,
@@ -389,13 +495,19 @@ export const hudCellParts = (label: string, value: string, opts: CellOpts = {}) 
   }
 }
 
-/** The context line's measures: its height, the figure, the leaning blocks and the gaps. */
-export const HUD_CONTEXT = { height: 30, fs: 17, baseline: 21, barH: 10, slant: 4.5, pitch: 9, minBar: 150, gap: 12, stackGap: 6 }
+/**
+ * The context line's measures: its height, the figure (`fs` at `baseline`), the header line
+ * (`headY`), the meter (`barH` tall from `barY`, a segment every `pitch` px, at least `minBar`
+ * long) with its pointer and ruler, the gaps, and a stacked meter's room under the line.
+ */
+export const HUD_CONTEXT = { height: 44, fs: 24, baseline: 38, headY: 11.5, barY: 19, barH: 8, slant: 0, pitch: 6, minBar: 150, gap: 14, stackGap: 6, stackH: 32 }
 
 /**
- * The context line as a HUD cell the band's whole width: the slab, the figure, a row of leaning
- * blocks that takes the room, and what is left. With `stack` the blocks go under, for a band
- * too narrow for one line. The figure takes the meter's colour when `warn`.
+ * The context line as the band's hero gauge, its whole width: the header `CTX / CONTEXT` over the
+ * big figure; a long segmented meter that takes the room, an amber head and a ▼ pointer over it,
+ * a ruler under it (a major tick every 10%, labelled 0 to 100 where there is room); the words at
+ * the right. With `stack` the meter goes under, for a band too narrow for one line. The figure
+ * takes the meter's colour when `warn`.
  */
 const contextLayers = (
   percent: number | null,
@@ -404,27 +516,43 @@ const contextLayers = (
 ) => {
   const X = HUD_CONTEXT
   const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
-  const slab = tab('context', INK.value, 16, (X.height - 16) / 2)
-  const valueX = slab.width + 8
-  const valueW = labelWidth('100%', X.fs)
+  const head = header('context', HUE.signal, 'CTX')
+  const valueW = Math.max(labelWidth('100%', X.fs), head.width - CELL.pad)
   const words = [opts.left, opts.window].filter(Boolean).join(' · ')
   const wordsW = words ? capWidth(words.toUpperCase(), 10, 1) : 0
   const end = CELL.pad + 6
-  const lineNatural = valueX + valueW + X.gap + X.minBar + (words ? X.gap + wordsW : 0) + end
-  const natural = Math.ceil(opts.stack ? Math.max(valueX + valueW + (words ? X.gap + wordsW : 0) + end, CELL.pad + X.minBar + end) : lineNatural)
+  const lineNatural = CELL.pad + valueW + X.gap + X.minBar + (words ? X.gap + wordsW : 0) + end
+  const natural = Math.ceil(opts.stack ? Math.max(CELL.pad + valueW + (words ? X.gap + wordsW : 0) + end, CELL.pad + X.minBar + end) : lineNatural)
   const width = Math.max(natural, Math.round(opts.width ?? 0))
-  const height = opts.stack ? X.height + X.barH + X.stackGap : X.height
-  const barX = opts.stack ? CELL.pad : valueX + valueW + X.gap
-  const barW = opts.stack ? width - CELL.pad - end : width - barX - (words ? X.gap + wordsW : 0) - end
-  const barY = opts.stack ? X.height - 2 : (X.height - X.barH) / 2
-  const inner =
-    frame(width, height, false) +
-    slab.svg +
-    reelText(valueX, X.baseline, X.fs, `${FACE} font-size="${X.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
-    blocksSvg('ctx', barX, barY, barW, X.barH, percent, color, { n: Math.max(8, Math.floor(barW / X.pitch)), gap: 3, slant: X.slant, from: opts.fromPercent }) +
-    (words ? cap(width - end, X.baseline - 1.5, words, 10, INK.detail, { ls: 1, anchor: 'end' }) : '')
-  // Where the line may be cut: after the meter and before the words; stacked, after both.
+  const height = opts.stack ? X.height + X.stackH : X.height
+  // Where the line may be cut: after the meter and before the words; stacked, after both. The
+  // meter, its pointer and its ruler end 4 px short of it.
   const seam = Math.round(opts.stack || !words ? width - end : width - end - wordsW - X.gap / 2)
+  const barX = opts.stack ? CELL.pad : CELL.pad + valueW + X.gap
+  const barW = seam - 4 - barX
+  const barY = opts.stack ? X.height + 4 : X.barY
+  // Segments in tens, so a major tick falls between two of them.
+  const n = Math.max(10, Math.floor(barW / X.pitch / 10) * 10)
+  const lit = litOf(percent, barW)
+  const pointer = opts.warn ? color : HUE.amber
+  const rulerY = barY + X.barH + 1.5
+  const labelled = barW / 10 >= 20
+  const labels = labelled
+    ? Array.from({ length: 11 }, (_, k) => micro(+(barX + (k * barW) / 10).toFixed(1), rulerY + 10, String(k * 10), INK.detail, { fs: 6.5, ls: 0.4, anchor: k === 0 ? undefined : k === 10 ? 'end' : 'middle' })).join('')
+    : ''
+  const inner =
+    frame(width, height, HUE.signal, opts.stack ? X.height : height) +
+    head.svg +
+    reelText(CELL.pad, X.baseline, X.fs, `${FACE} font-size="${X.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
+    blocksSvg('ctx', barX, barY, barW, X.barH, percent, color, { n, gap: 2, slant: X.slant, from: opts.fromPercent }) +
+    ruler(barX, rulerY, barW, 50, 5, { minor: 1.8, long: 3.8 }) +
+    labels +
+    // The pointer over the lit stretch's head, slid there (so it glides with the meter).
+    (share(percent) > 0
+      ? `<g class="ctxp" transform="translate(${lit} 0)"><path d="M${barX - 3.5} ${barY - 6.5}h7l-3.5 4.5z" fill="${pointer}"/></g>` +
+        glideStyle('ctxp', 'transform', p => `translateX(${litOf(p, barW)}px)`, opts.fromPercent, percent ?? 0)
+      : '') +
+    (words ? cap(width - end, opts.stack ? X.baseline - 1 : X.barY + X.barH - 0.5, words, 10, INK.label, { ls: 1, anchor: 'end' }) : '')
   return { inner, width, height, natural, seam }
 }
 
@@ -432,7 +560,7 @@ type ContextOpts = Parameters<typeof contextLayers>[2]
 
 export const hudContextSvg = (percent: number | null, color: string, opts: ContextOpts = {}) => {
   const c = contextLayers(percent, color, opts)
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${c.width} ${c.height}" width="${c.width}" height="${c.height}">${c.inner}${themeStyle()}</svg>`, width: c.width, height: c.height, natural: c.natural }
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${c.width} ${c.height}" width="${c.width}" height="${c.height}">${c.inner}${themeStyle(c.inner)}</svg>`, width: c.width, height: c.height, natural: c.natural }
 }
 
 /** hudContextSvg in three pictures (see hudCellParts): the meter stays, the words keep the right end. */
@@ -441,29 +569,35 @@ export const hudContextParts = (percent: number | null, color: string, opts: Con
   return { ...stretchParts(c.inner, glass(-40, FILL.line + 80, c.height), FILL.line, c.width, c.height, c.seam), natural: c.natural }
 }
 
-
-/** A chip of the top line: its height, its text and how far its ends lean. */
+/** A chip of the top line: its height, its text, its chamfer (`lean`) and the room inside its ends. */
 export const HUD_CHIP = { height: 20, fs: 11, lean: 5, pad: 9, baseline: 14 }
 
+/** A chip's outline: its top-right and bottom-left corners cut `c` px at 45°, on the half pixel. */
+const chipShape = (width: number, h: number, c: number = HUD_CHIP.lean) => `M0.5 0.5H${width - c - 0.5}L${width - 0.5} ${c + 0.5}V${h - 0.5}H${c + 0.5}L0.5 ${h - c - 0.5}Z`
+/** An outline chip's corner ticks: short L marks on its two square corners. */
+const cornerTicks = (width: number, h: number, color: string) =>
+  `<path d="M0.5 4.5V0.5H4.5M${width - 4.5} ${h - 0.5}H${width - 0.5}V${h - 4.5}" fill="none" stroke="${color}" stroke-width="1.2"/>`
+
 /**
- * The branch as a gold chip on the band's top line, after the session's slab: a leaning box in a
- * gold frame on a faint gold ground, `// name` in gold. The name keeps its own case: branch names
- * are case-sensitive.
+ * The branch as an outline chip on the band's top line, after the session's plate: a chamfered
+ * hairline box with amber corner ticks, `BR` in microtext, then `// name`, the slashes in amber
+ * and the name in ink. The name keeps its own case: branch names are case-sensitive.
  */
 export const branchChipSvg = (branch: string) => {
   const H = HUD_CHIP
   const h = H.height
-  const text = `// ${branch}`
   const fs = H.fs + 1
-  const textW = labelWidth(text, fs)
+  const textW = labelWidth(`// ${branch}`, fs)
   const pad = 7
-  const width = Math.ceil(H.lean + pad + textW + pad + H.lean)
-  const shape = `M${H.lean + 0.5} 0.5H${width - 0.5}L${width - H.lean - 0.5} ${h - 0.5}H0.5z`
+  const brW = microWidth('BR', 7, 1)
+  const width = Math.ceil(H.lean + pad + brW + 6 + textW + pad + H.lean)
   return {
     svg:
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
-      `<path d="${shape}" fill="${HUE.gold}" fill-opacity="0.14" stroke="${HUE.gold}"/>` +
-      `<text x="${H.lean + pad}" y="${H.baseline}" ${FACE} font-size="${fs}" font-weight="700" fill="${HUE.gold}" textLength="${textW}" lengthAdjust="spacingAndGlyphs">${esc(text)}</text>` +
+      `<path d="${chipShape(width, h)}" fill="${HUE.amber}" fill-opacity="0.06" stroke="${INK.detail}" stroke-opacity="0.75"/>` +
+      cornerTicks(width, h, HUE.amber) +
+      micro(H.lean + pad, H.baseline - 1, 'BR', INK.detail) +
+      `<text x="${H.lean + pad + brW + 6}" y="${H.baseline}" ${FACE} font-size="${fs}" font-weight="700" fill="${INK.value}" textLength="${textW}" lengthAdjust="spacingAndGlyphs"><tspan fill="${HUE.amber}">//</tspan> ${esc(branch)}</text>` +
       `</svg>`,
     width,
     height: h,
@@ -471,12 +605,13 @@ export const branchChipSvg = (branch: string) => {
 }
 
 /**
- * A chip for the top line, a parallelogram: `fill` paints it solid in `color` with dark text
- * (a state: working, success, error); otherwise an outline, or with `plain` no shape at all.
- * `icon` stands before the label, or in its place where the label is empty (the clock).
- * `value` follows the label in ink and rolls to each new one. `pad` sets the room inside its
- * ends (HUD_CHIP.pad unless given). `minWidth` holds
- * it as wide as another state's. With `motion` it comes in once and its mark blinks (a loop).
+ * A chip for the top line, chamfered at two corners: `fill` paints it solid in `color` with dark
+ * text and a square mark (a state: working, success, error); otherwise a hairline outline with
+ * corner ticks, or with `plain` no shape at all. `icon` stands before the label, or in its place
+ * where the label is empty (the clock). `value` follows the label in ink and rolls to each new
+ * one. `pad` sets the room inside its ends (HUD_CHIP.pad unless given). `minWidth` holds it as
+ * wide as another state's. With `motion` it comes in once and its mark blinks (a loop: its
+ * source holds while it works).
  */
 export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName; pad?: number; value?: string; fill?: boolean; plain?: boolean; minWidth?: number; motion?: boolean; reel?: Since<string> | string | null }) => {
   const H = HUD_CHIP
@@ -494,8 +629,8 @@ export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName
   const ink = opts.fill ? HUE.card : opts.plain ? INK.detail : INK.label
   const shape = opts.plain
     ? ''
-    : `<path d="M${H.lean + 0.5} 0.5H${width - 0.5}L${width - H.lean - 0.5} ${h - 0.5}H0.5z" ` +
-      (opts.fill ? `fill="${opts.color}"/>` : `fill="none" stroke="${INK.detail}" stroke-opacity="0.75"/>`)
+    : `<path d="${chipShape(width, h)}" ` +
+      (opts.fill ? `fill="${opts.color}"/>` : `fill="none" stroke="${INK.detail}" stroke-opacity="0.75"/>` + cornerTicks(width, h, INK.label))
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
     (opts.motion ? '<g class="chip">' : '') +
@@ -515,43 +650,143 @@ export const hudChipSvg = (opts: { label: string; color: string; icon?: IconName
   return { svg, width, height: h, natural }
 }
 
-/** The title slab's measures. */
-export const SLAB = { height: 22, fs: 13, lean: 6, pad: 10 }
+/** The session plate's measures: its height, text, the chamfer of its right end, its padding and its hazard tail. */
+export const SLAB = { height: 22, fs: 13, lean: 6, pad: 10, mark: 7, tailGap: 3, tail: 26, pitch: 6 }
 
-/** The session's name on a solid slab, its text knocked out dark: the top line's first word. */
+/**
+ * The session's name on a solid signal plate, its text knocked out dark after a ◆, the plate's
+ * right end chamfered; a short amber hazard-stripe tail after it. The top line's first word.
+ */
 export const slabSvg = (text: string) => {
   const S = SLAB
   const w = capWidth(text.toUpperCase(), S.fs, 1)
-  const width = S.lean + S.pad + w + S.pad + S.lean
+  const plate = S.pad + S.mark + 6 + w + S.pad + S.lean
+  const tx = plate + S.tailGap
+  const width = tx + S.tail
+  const h = S.height
+  const lean = +(h * 0.6).toFixed(1)
+  const stripes = Array.from({ length: Math.ceil(S.tail / S.pitch) + 3 }, (_, k) => `M${tx + (k - 1) * S.pitch + lean} 0h${S.pitch / 2}l${-lean} ${h}h${-S.pitch / 2}z`).join('')
+  const tailShape = `M${tx} 0H${width - S.lean}L${width} ${S.lean}V${h}H${tx}Z`
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${S.height}" width="${width}" height="${S.height}">` +
-    `<path d="M${S.lean} 0H${width}L${width - S.lean} ${S.height}H0z" fill="${INK.value}"/>` +
-    cap(S.lean + S.pad, 15.6, text, S.fs, HUE.card, { ls: 1, bold: true }) +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
+    `<path d="M0 0H${plate - S.lean}L${plate} ${S.lean}V${h}H0z" fill="${HUE.signal}"/>` +
+    diamond(S.pad + S.mark / 2, h / 2, S.mark, HUE.card) +
+    cap(S.pad + S.mark + 6, 15.6, text, S.fs, HUE.card, { ls: 1, bold: true }) +
+    `<clipPath id="tail"><path d="${tailShape}"/></clipPath>` +
+    `<path d="${tailShape}" fill="${HUE.card}"/>` +
+    `<path d="${stripes}" fill="${HUE.amber}" clip-path="url(#tail)"/>` +
     `</svg>`
-  return { svg, width, height: S.height }
+  return { svg, width, height: h }
 }
 
-/** The loading bar's stripes: each one's width along the bar, and the gap before the next. */
+/** The loading bar's stripes: each one's width along the bar, the gap before the next, and one pitch's run in ms. */
 export const STRIPE = { on: 5, off: 5, ms: 700 }
 
 /**
- * The loading bar as warning stripes, leaning, the whole width: `color` while `live`, else
- * `rest` (the track's grey unless given). With `motion` (and `live`) the stripes run to the
- * right, one stripe's pitch a loop, so a redraw sends the same picture and the loop runs on.
+ * The loading bar as hazard stripes on a dark track between two hairline rails, the whole width:
+ * `color` while `live`, else dim stripes in `rest` (the track's grey unless given). With `motion`
+ * (and `live`) the stripes run to the right, one stripe's pitch a loop; the picture's source
+ * never changes, so the loop runs on.
  */
 export const stripeSvg = (width: number, height: number, color: string, opts: { live?: boolean; padBottom?: number; motion?: boolean; rest?: string } = {}) => {
   const w = Math.max(120, Math.round(width))
   const h = height
   const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
   const pitch = STRIPE.on + STRIPE.off
-  const lean = +(h * 0.7).toFixed(1)
-  // One pitch more on the left, so the run to the right never opens a gap there.
-  const d = Array.from({ length: Math.ceil(w / pitch) + 2 }, (_, k) => `M${(k - 1) * pitch + lean} 0h${STRIPE.on}l${-lean} ${h}h${-STRIPE.on}z`).join('')
+  const inset = h >= 6 ? 2 : 0
+  const sh = h - 2 * inset
+  const lean = +(sh * 0.7).toFixed(1)
+  // One stripe in a tile one pitch wide, repeated by a pattern: a few hundred bytes however wide
+  // the bar is drawn (the band sends it on every redraw). The filled run starts a pitch to the
+  // left, so the slide to the right never opens a gap there.
+  const tile = `M${lean} ${inset}h${STRIPE.on}l${-lean} ${sh}h${-STRIPE.on}z`
+  const pat = (id: string, fill: string, extra = '') =>
+    `<pattern id="${id}" patternUnits="userSpaceOnUse" x="0" y="0" width="${pitch}" height="${h}"><path d="${tile}" fill="${fill}"${extra}/></pattern>`
+  const run = (id: string, extra = '') => `<rect x="${-pitch}" y="0" width="${w + 2 * pitch}" height="${h}" fill="url(#${id})"${extra}/>`
   const moving = opts.live === true && opts.motion === true
+  const ink = opts.live ? color : (opts.rest ?? INK.track)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice">` +
-    `<path d="${d}" fill="${opts.live ? color : (opts.rest ?? INK.track)}"${moving ? ' class="run"' : ''}/>` +
-    (moving ? motionStyle(`@keyframes run{to{transform:translateX(${pitch}px)}}.run{animation:run ${STRIPE.ms}ms linear infinite}`) : '') +
+    `<rect x="0" y="0" width="${w}" height="${h}" fill="#000000" fill-opacity="0.35"/>` +
+    `<defs>${pat('st-p', ink, opts.live ? '' : ' fill-opacity="0.8"')}</defs>` +
+    `<g${moving ? ' class="run"' : ''}>` +
+    run('st-p') +
+    `</g>` +
+    (inset
+      ? `<path d="M0 0.5H${w}M0 ${h - 0.5}H${w}" stroke="${opts.live ? color : INK.detail}" stroke-opacity="${opts.live ? 0.7 : 0.35}"/>`
+      : '') +
+    (moving
+      ? motionStyle(`@keyframes run{to{transform:translateX(${pitch}px)}}.run{animation:run ${STRIPE.ms}ms linear infinite}`)
+      : '') +
     `</svg>`
   )
+}
+
+/**
+ * The telemetry rail's measures: its height, a tick every `step` px (a major one every fifth),
+ * the pattern repeating every `period` px, scrolling `pxPerSec` while live, and its caption's size.
+ */
+export const TELEMETRY = { height: 12, step: 6, period: 240, pxPerSec: 20, fs: 7 }
+
+/**
+ * A full-width decorative telemetry rail for the band's bottom edge, drawn `width` px wide and
+ * sliced (the band clips it to its room): a hairline, a ruler of ticks hanging from it (a major
+ * one every fifth), a ◆ and microtext (`text`) at the left, and sparse lit signal packets like
+ * data in flight. `live` with `motion`: the ruler and packets scroll left at a calm pace (one
+ * repeat a loop, so the loop has no seam; well under half a tick a frame). At rest it is still and dimmer. The same inputs draw the same picture.
+ */
+export const telemetrySvg = (width: number, height: number = TELEMETRY.height, opts: { live?: boolean; motion?: boolean; text?: string } = {}) => {
+  const T = TELEMETRY
+  const w = Math.max(120, Math.round(width))
+  const h = Math.max(8, Math.round(height))
+  const live = opts.live === true
+  const moving = live && opts.motion === true
+  const f = (v: number) => +v.toFixed(2)
+  const text = (opts.text ?? '').toUpperCase()
+  const textX = 14
+  const textW = text ? microWidth(text, T.fs, 1.2) : 0
+  const from = text ? Math.ceil(textX + textW + 10) : 14
+  const P = T.period
+  // One period of the ruler and packets, in a tile a pattern repeats across the width (and one
+  // period more for the slide): the band sends this picture on every redraw, so it stays small.
+  let minor = ''
+  let major = ''
+  let packets = ''
+  const steps = P / T.step
+  for (let k = 0; k < steps; k++) {
+    const x = k * T.step + 0.5
+    if (k % 5 === 0) major += `M${x} 0.5V${f(h * 0.42)}`
+    else minor += `M${x} 0.5V${f(h * 0.22)}`
+  }
+  for (let k = 0; k < steps; k++) {
+    if (jitter(17, k) > 0.16) continue
+    const x = k * T.step + 1.5
+    const len = T.step * (1 + Math.floor(jitter(29, k) * 3)) - 2
+    packets += `M${x} ${f(h - 3.5)}h${len}v2h${-len}z`
+  }
+  const dim = live ? 1 : 0.55
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="xMinYMid slice">` +
+    `<defs><clipPath id="tl-c"><rect x="${from}" y="0" width="${w - from}" height="${h}"/></clipPath>` +
+    `</defs>` +
+    `<path d="M0 0.5H${w}" stroke="${INK.detail}" stroke-opacity="${0.5 * dim}"/>` +
+    `<path d="M0 ${f(h - 0.5)}H${w}" stroke="${INK.detail}" stroke-opacity="${0.18 * dim}"/>` +
+    diamond(6, h / 2 + 0.5, 6, live ? HUE.signal : INK.detail) +
+    (text ? micro(textX, f(h / 2 + 3), text, INK.label, { fs: T.fs, ls: 1.2, extra: live ? '' : ' fill-opacity="0.75"' }) : '') +
+    `<defs><pattern id="tl-p" patternUnits="userSpaceOnUse" x="${from - 0.5}" y="0" width="${P}" height="${h}">` +
+    `<path d="${minor}" stroke="${INK.detail}" stroke-opacity="${0.55 * dim}" stroke-width="0.7"/>` +
+    `<path d="${major}" stroke="${INK.label}" stroke-opacity="${0.8 * dim}" stroke-width="0.9"/>` +
+    `<path d="${packets}" fill="${HUE.signal}" fill-opacity="${live ? 0.9 : 0.35}"/>` +
+    `</pattern></defs>` +
+    `<g clip-path="url(#tl-c)"><g${moving ? ' class="tl"' : ''}>` +
+    `<rect x="${from}" y="0" width="${w - from + P}" height="${h}" fill="url(#tl-p)"/>` +
+    `</g>` +
+    `</g>` +
+    (moving
+      ? motionStyle(
+          `@keyframes tl{to{transform:translateX(${-P}px)}}.tl{animation:tl ${Math.round((P / T.pxPerSec) * 1000)}ms linear infinite}`,
+        )
+      : '') +
+    `</svg>`
+  return svg
 }

@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AGENT_CHIP, agentChipParts, prettyModel } from '../hooks/agents'
 import { HUE, fmtClock, fmtElapsed } from '../hooks/chat'
-import { HUD_CONTEXT, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, branchChipSvg, stripeSvg } from '../hooks/hud'
+import { HUD_CONTEXT, TELEMETRY, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, branchChipSvg, stripeSvg, telemetrySvg } from '../hooks/hud'
 import { iconSvg } from '../hooks/icons'
 import { SKILLS_VERSION, VERSION } from '../hooks/version'
 import type { Agent } from '../types'
@@ -27,7 +27,7 @@ const agents: Agent[] = [
 ]
 
 const GAP = 4 // px between two cells, as the band's spacer picture
-const SKY = HUE.sky
+const SKY = HUE.signal
 // Agent strip, then the band: the top line, the context cell, two lines of stat cells.
 const lineH = 34
 const parts: string[] = []
@@ -51,9 +51,9 @@ const top = stripY + AGENT_CHIP.H + 14
 type Draw = (width?: number, height?: number) => ReturnType<typeof hudCellSvg>
 const gauges: Draw[] = [
   (width, height) => hudCellSvg('5h limit', '4%', { index: '01', width, height, sub: '96% left · resets 3h 59m', bars: [{ percent: 4, color: SKY }] }),
-  (width, height) => hudCellSvg('7d limit', '22%', { index: '02', width, height, sub: '78% left · resets 2d 8h', bars: [{ label: 'all', percent: 22, color: SKY }, { label: 'fable', percent: 41, color: HUE.petal }] }),
-  (width, height) => hudCellSvg('tok/s', '58', { index: '03', width, height, sub: 'peak 81', bars: [{ percent: (58 / 100) * 100, color: SKY }] }),
-  (width, height) => hudCellSvg('mode', 'Hanahira', { index: '04', width, height, sub: `Active · V${SKILLS_VERSION} · design`, tone: HUE.petal, toggle: { on: true } }),
+  (width, height) => hudCellSvg('7d limit', '22%', { index: '02', width, height, sub: '78% left · resets 2d 8h', bars: [{ label: 'all', percent: 22, color: SKY }, { label: 'fable', percent: 41, color: HUE.steel }] }),
+  (width, height) => hudCellSvg('tok/s', '58', { index: '03', width, height, sub: 'peak 81', bars: [{ percent: (58 / 100) * 100, color: HUE.ember }] }),
+  (width, height) => hudCellSvg('mode', 'Hanahira', { index: '04', width, height, sub: `Active · V${SKILLS_VERSION} · design`, tone: HUE.signal, toggle: { on: true } }),
 ]
 const figures: Draw[] = ([['cost', '≈$46.22'], ['tokens', '172M'], ['run time', fmtClock(2_730_000)], ['model', prettyModel('claude-fable-5-2')]] as const).map(
   ([label, value], i) => (width?: number, height?: number) => hudCellSvg(label, value, { index: `0${i + 5}`, width, height, rule: SKY }),
@@ -64,11 +64,11 @@ const rowH = [gauges, figures].map(line => Math.max(...line.map(c => c().height)
 const gridPx = gauges.length * colPx + (gauges.length - 1) * GAP
 const X0 = 14
 const R = X0 + gridPx // the band's right edge
-const frameH = 10 + lineH + 4 + HUD_CONTEXT.height + GAP + rowH[0]! + GAP + rowH[1]! + 10
+const frameH = 10 + lineH + 4 + HUD_CONTEXT.height + GAP + rowH[0]! + GAP + rowH[1]! + GAP + TELEMETRY.height + 10
 const H = top + frameH + 36
 // The picture is as wide as the band and its margins.
 const W = R + X0
-parts.unshift(`<rect width="${W}" height="${H}" rx="18" fill="#1f1f22"/>`)
+parts.unshift(`<rect width="${W}" height="${H}" rx="18" fill="#0e0d0c"/>`)
 // the top line: the name on its slab, the branch, the stripes (running while working), the time, the chips
 const y0 = top + 10
 const ty = y0 + (lineH - 24) / 2
@@ -86,9 +86,9 @@ const chipsW = chips.reduce((w, c) => w + c.width, 0) + 6 * (chips.length - 1)
 let chipX = R - chipsW
 const timeX = chipX - 84
 const barX = branchX + branch.width + 10
-parts.push(`<svg x="${barX}" y="${ty + 7}" width="${timeX - barX - 12}" height="10" overflow="hidden">${stripeSvg(timeX - barX - 12, 10, HUE.hazard, { live: true })}</svg>`)
-parts.push(nest(iconSvg('clock', '#a3a3ab', 14), timeX, ty + 5))
-parts.push(`<text x="${timeX + 20}" y="${ty + 17}" ${font} font-size="14" fill="#a3a3ab">${fmtElapsed(134)}</text>`)
+parts.push(`<svg x="${barX}" y="${ty + 7}" width="${timeX - barX - 12}" height="10" overflow="hidden">${stripeSvg(timeX - barX - 12, 10, HUE.amber, { live: true })}</svg>`)
+parts.push(nest(iconSvg('clock', '#aaa49b', 14), timeX, ty + 5))
+parts.push(`<text x="${timeX + 20}" y="${ty + 17}" ${font} font-size="14" fill="#aaa49b">${fmtElapsed(134)}</text>`)
 for (const c of chips) {
   parts.push(nest(c, chipX, ty + (24 - c.height) / 2))
   chipX += c.width + 6
@@ -104,7 +104,9 @@ let ry = cy + HUD_CONTEXT.height + GAP
   line.forEach((cell, j) => parts.push(nest(dark(cell(colPx, rowH[r])), X0 + j * (colPx + GAP), ry)))
   ry += rowH[r]! + GAP
 })
-parts.push(`<text x="${W - 40}" y="${H - 14}" text-anchor="end" ${font} font-size="11" fill="#5c5c63">Hanahira Claude UI · sample numbers</text>`)
+// the telemetry rail along the band's foot, as it runs while Claude works
+parts.push(`<svg x="${X0}" y="${ry}" width="${gridPx}" height="${TELEMETRY.height}" overflow="hidden">${telemetrySvg(gridPx, TELEMETRY.height, { live: true, text: `HANAHIRA // FIELD TERMINAL · V${VERSION}` })}</svg>`)
+parts.push(`<text x="${W - 40}" y="${H - 14}" text-anchor="end" ${font} font-size="11" fill="#6b655c">Hanahira Claude UI · FOUNDRY · sample numbers</text>`)
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${parts.join('')}</svg>`
 const doc = (name: string) => fileURLToPath(new URL(`../docs/${name}`, import.meta.url))

@@ -1,14 +1,26 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { CELL, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg, telemetrySvg, TELEMETRY } from './hud'
 
 describe('hudCellSvg', () => {
-  test('sets the name on a slab and the figure in capitals', () => {
+  test('heads the cell `NN / NAME` and sets the figure in capitals', () => {
     const c = hudCellSvg('model', 'Fable 5.2', { index: '08' })
+    expect(c.svg).toContain(`fill="${HUE.signal}" textLength="${capWidth('08 /', CELL.tabFs, 1.2)}" lengthAdjust="spacingAndGlyphs">08 /</text>`)
     expect(c.svg).toContain('>MODEL</text>')
     expect(c.svg).toContain('>FABLE 5.2</text>')
-    expect(c.svg).toContain('>08</text>')
     expect(c.svg).not.toContain(' rx=')
+  })
+  test('a chamfered panel with an outlined index numeral', () => {
+    const c = hudCellSvg('model', 'Fable 5.2', { index: '08' })
+    expect(c.svg).toContain(`d="M0.5 0.5H${c.width - CELL.cut - 0.5}L${c.width - 0.5} ${CELL.cut + 0.5}V`)
+    expect(c.svg).toMatch(/fill="none" stroke="[^"]+" stroke-opacity="0.13" stroke-width="0.8">08<\/text>/)
+  })
+  test('a figure with no meter gets an accent bar and a ruler that ends before the seam', () => {
+    const c = hudCellSvg('cost', '$1', { rule: HUE.signal, width: 150 }).svg
+    expect(c).toContain(`width="22" height="2" fill="${HUE.signal}"`)
+    const ends = [...c.matchAll(/<path d="M(\d+) [\d.]+H([\d.]+)" stroke=/g)].map(m => Number(m[2]))
+    expect(ends.length).toBeGreaterThan(0)
+    for (const x of ends) expect(x).toBeLessThan(150 - SEAM)
   })
   test('only ever grows to its column and its line', () => {
     const c = hudCellSvg('cost', '$1')
@@ -65,6 +77,18 @@ describe('blocksSvg', () => {
     expect(svg).toContain(`fill="${INK.track}"`)
     expect(svg).toContain(`fill="${HUE.sky}" clip-path="url(#a)"`)
   })
+  test('lights its head in amber, sliding with the lit stretch, and hangs a ruler when asked', () => {
+    const svg = blocksSvg('a', 0, 0, 200, 4, 50, HUE.signal, { ruler: true })
+    expect(svg).toContain(`fill="${HUE.amber}" clip-path="url(#ah)"`)
+    expect(svg).toContain('transform="translate(100 0)" class="ah"')
+    expect(svg).toContain('<path d="M0 5.5V')
+    expect(blocksSvg('a', 0, 0, 200, 4, 0, HUE.signal)).not.toContain('url(#ah)')
+    expect(blocksSvg('a', 0, 0, 200, 4, 50, HUE.signal, { head: null })).not.toContain('url(#ah)')
+    // A glide moves the head with the stretch, from the same place.
+    const g = blocksSvg('a', 0, 0, 200, 4, 50, HUE.signal, { from: { from: 20, age: 100 } })
+    expect(g).toContain('@keyframes ah{from{transform:translateX(40px)}to{transform:translateX(100px)}}')
+    expect(g).toContain('@keyframes a{from{width:40px}to{width:100px}}')
+  })
 })
 
 describe('hudContextSvg', () => {
@@ -72,6 +96,8 @@ describe('hudContextSvg', () => {
     const c = hudContextSvg(11, HUE.sky, { left: '889k left', window: '1M window' })
     expect(c.height).toBe(HUD_CONTEXT.height)
     expect(c.svg).toContain('>11%</text>')
+    expect(c.svg).toContain('>CTX /</text>')
+    expect(c.svg).toContain('>CONTEXT</text>')
     expect(c.svg).toContain('>889K LEFT · 1M WINDOW</text>')
     expect(hudContextSvg(11, HUE.sky, { width: 900 }).width).toBe(900)
   })
@@ -83,6 +109,14 @@ describe('hudContextSvg', () => {
     expect(hudContextSvg(null, HUE.sky).svg).toContain('>—</text>')
     expect(hudContextSvg(NaN, HUE.sky, { left: 'x' }).svg).not.toContain('NaN')
     expect(hudContextSvg(90, HUE.rose, { warn: true }).svg).toContain(`fill="${HUE.rose}">90%</text>`)
+  })
+  test('a pointer rides the head and glides with the meter; the ruler is labelled where there is room', () => {
+    const c = hudContextSvg(40, HUE.signal, { width: 900, fromPercent: { from: 20, age: 50 } }).svg
+    expect(c).toMatch(/<g class="ctxp" transform="translate\([\d.]+ 0\)">/)
+    expect(c).toContain('@keyframes ctxp{')
+    expect(c).toContain('>100</text>')
+    expect(hudContextSvg(0, HUE.signal, { width: 900 }).svg).not.toContain('ctxp')
+    expect(hudContextSvg(40, HUE.signal, { width: 900 }).svg).not.toContain('@keyframes')
   })
 })
 
@@ -110,17 +144,24 @@ describe('hudChipSvg', () => {
     expect(hudChipSvg({ color: HUE.sky, label: 'working', fill: true }).svg).not.toContain('@keyframes')
     expect(hudChipSvg({ color: HUE.sky, label: 'working', fill: true, motion: true }).svg).toContain('@keyframes chip-in')
   })
+  test('a working chip blinks its mark on a loop, with no light sweeping across it', () => {
+    const svg = hudChipSvg({ color: HUE.signal, label: 'working', fill: true, motion: true }).svg
+    expect(svg).toContain('class="mk"')
+    expect(svg).not.toContain('#ffffff')
+  })
 })
 
 describe('branch chip', () => {
-  test('the branch sits in a gold frame on a gold ground, in its own case, escaped', () => {
+  test('the branch is an outline chip: BR, amber slashes, the name in ink in its own case, escaped', () => {
     const a = branchChipSvg('main')
-    expect(a.svg).toContain(`stroke="${HUE.gold}"`)
-    expect(a.svg).toContain(`fill="${HUE.gold}" fill-opacity="0.14"`)
-    expect(a.svg).toContain('>// main</text>')
+    expect(a.svg).toContain(`stroke="${INK.detail}"`)
+    expect(a.svg).toContain('>BR</text>')
+    expect(a.svg).toContain(`fill="${INK.value}"`)
+    expect(a.svg).toContain(`<tspan fill="${HUE.amber}">//</tspan> main</text>`)
+    expect(branchChipSvg('Feature/X').svg).toContain('</tspan> Feature/X</text>')
     expect(a.height).toBe(HUD_CHIP.height)
     expect(branchChipSvg('feature/Long-Name').width).toBeGreaterThan(a.width)
-    expect(branchChipSvg('a<b').svg).toContain('// a&lt;b')
+    expect(branchChipSvg('a<b').svg).toContain('</tspan> a&lt;b</text>')
   })
 })
 
@@ -128,6 +169,10 @@ describe('slabSvg and stripeSvg', () => {
   test('the slab fits its name', () => {
     expect(slabSvg('a longer name').width).toBeGreaterThan(slabSvg('spa').width)
     expect(slabSvg('spa').svg).toContain('>SPA</text>')
+    // A signal plate, its name knocked out dark, and an amber hazard tail.
+    expect(slabSvg('spa').svg).toContain(`fill="${HUE.signal}"`)
+    expect(slabSvg('spa').svg).toContain(`fill="${HUE.card}" textLength`)
+    expect(slabSvg('spa').svg).toContain(`fill="${HUE.amber}" clip-path="url(#tail)"`)
     expect(capWidth('WWW', 10)).toBeGreaterThan(capWidth('III', 10))
   })
   test('stripes are lit while live, at rest otherwise, and run only with motion', () => {
@@ -139,12 +184,41 @@ describe('slabSvg and stripeSvg', () => {
     expect(stripeSvg(500, 10, HUE.hazard, { motion: true })).not.toContain('@keyframes')
     expect(stripeSvg(600, 10, '#fff', { padBottom: 6 })).toContain('viewBox="0 0 600 16"')
   })
+  test('a live bar runs its stripes only, no white glint, and its source never changes', () => {
+    const svg = stripeSvg(2400, 10, HUE.amber, { live: true, motion: true })
+    expect(svg).toContain('.run{animation:run')
+    expect(svg).not.toContain('#ffffff')
+    expect(svg).toBe(stripeSvg(2400, 10, HUE.amber, { live: true, motion: true }))
+  })
+})
+
+describe('telemetrySvg', () => {
+  test('a sliced rail with its caption, the same every time', () => {
+    const a = telemetrySvg(2400, TELEMETRY.height, { live: true, motion: true, text: 'Hanahira // field' })
+    expect(a).toBe(telemetrySvg(2400, TELEMETRY.height, { live: true, motion: true, text: 'Hanahira // field' }))
+    expect(a).toContain('preserveAspectRatio="xMinYMid slice"')
+    expect(a).toContain(`viewBox="0 0 2400 ${TELEMETRY.height}"`)
+    expect(a).toContain('>HANAHIRA // FIELD</text>')
+    expect(a).not.toContain('NaN')
+  })
+  test('scrolls one period a loop, calmly, only while live with motion', () => {
+    const a = telemetrySvg(1000, 12, { live: true, motion: true })
+    expect(a).toContain(`@keyframes tl{to{transform:translateX(${-TELEMETRY.period}px)}}`)
+    const ms = Number(/\.tl\{animation:tl (\d+)ms linear infinite/.exec(a)![1])
+    // Under half a tick a frame.
+    expect(TELEMETRY.period / (ms / 1000) / 60).toBeLessThan(TELEMETRY.step / 2)
+    expect(TELEMETRY.period % (TELEMETRY.step * 5)).toBe(0)
+    expect(a).not.toContain('class="ts"')
+    expect(a).not.toContain('#ffffff')
+    expect(telemetrySvg(1000, 12, { motion: true })).not.toMatch(/@keyframes|animation/)
+    expect(telemetrySvg(1000, 12, { live: true })).not.toMatch(/@keyframes|animation/)
+  })
 })
 
 describe('charge', () => {
-  test('blue from the first token a second, purple from 100, red from 200', () => {
+  test('signal from the first token a second, amber from 100, ember from 200', () => {
     expect([null, NaN, 0, 1, 49, 50, 99, 100, 199, 200, 2000].map(chargeLevel)).toEqual([0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3])
-    expect(CHARGE_COLOR.slice(1)).toEqual([HUE.sky, HUE.lilac, HUE.red])
+    expect(CHARGE_COLOR.slice(1)).toEqual([HUE.signal, HUE.amber, HUE.ember])
   })
   test('each level adds to the one under it, in its own colour', () => {
     const at = (level: number) => hudCellSvg('tok/s', '120', { bars: [{ percent: 50, color: HUE.sky }], charge: { level } }).svg
@@ -152,8 +226,8 @@ describe('charge', () => {
     const sizes = [0, 1, 2, 3].map(l => at(l).length)
     for (let l = 1; l <= 3; l++) expect(sizes[l]!).toBeGreaterThan(sizes[l - 1]!)
     for (let l = 1; l <= 3; l++) expect(at(l)).toContain(`stroke="${CHARGE_COLOR[l]}"`)
-    expect(at(3)).toContain(`fill="${HUE.red}">120</text>`)
-    expect(at(2)).not.toContain(`fill="${HUE.red}">120</text>`)
+    expect(at(3)).toContain(`fill="${HUE.ember}">120</text>`)
+    expect(at(2)).not.toContain(`fill="${HUE.ember}">120</text>`)
   })
   test('with motion its arcs run on by themselves, and nothing in the picture follows the clock', () => {
     const run = hudCellSvg('tok/s', '120', { charge: { level: 3, motion: true } }).svg
@@ -183,7 +257,7 @@ describe('charge', () => {
     }
   })
   test('the lit frame never flickers', () => {
-    expect(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg).toMatch(/<rect [^>]*stroke-opacity="0.65"\/>/)
+    expect(hudCellSvg('tok/s', '120', { charge: { level: 2, motion: true } }).svg).toMatch(/<path d="M0.5 0.5H[^"]+" fill="none" stroke="[^"]+" stroke-opacity="0.65"\/>/)
   })
 })
 

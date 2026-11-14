@@ -20,7 +20,6 @@ import {
   fmtTokens,
   glideHolder,
   glideStyle,
-  reelHolder,
   pillSvg,
   ROW,
   liveSpeed,
@@ -31,7 +30,7 @@ import {
   tokensPerSec,
 } from './chat'
 export { clip }
-import { SEAM, branchChipSvg, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg } from './hud'
+import { SEAM, TELEMETRY, branchChipSvg, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg, telemetrySvg } from './hud'
 import type { HudBar } from './hud'
 import { iconGroup, iconSvg } from './icons'
 import { SKILLS_FROM, SKILLS_VERSION, VERSION } from './version'
@@ -68,10 +67,11 @@ const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, 
 type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[] }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
-// How often the live speed redraws the gauge while a response streams, in ms: about seven times a
-// second, so the figure reads as live. Every loop on the band holds its props across a redraw
-// (its alt included), so a redraw this often restarts none of them.
+// How often the live speed is taken while a response streams, in ms. It is not drawn then: the
+// turn's beat (BEAT_MS) shows the latest reading with the clock, so the band redraws once a beat.
 const LIVE_SPEED_MS = 150
+// The turn's beat, in ms: every figure on the band updates on it, straight, with no motion.
+const BEAT_MS = 500
 // The live speed is the rate over this last stretch of the stream, in ms: short, so the figure
 // follows the stream within a moment, and long enough to smooth over a single burst.
 const LIVE_WINDOW_MS = 800
@@ -154,7 +154,7 @@ const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, []
 const skill = atom({ plugin: 'hanahira-claude-ui', key: 'skill' } as const, { on: false, loaded: [] } as Skill)
 // How the latest main turn ended; none before the first one ends, and none while one runs.
 const outcome = atom({ plugin: 'hanahira-claude-ui', key: 'outcome' } as const, null as Outcome | null)
-const SKILL_ON = HUE.petal // the mascot's pink: the mode is awake
+const SKILL_ON = HUE.signal // FOUNDRY's signal orange: the mode is awake
 const SKILL_OFF = INK.detail // asleep: quiet grey, nothing is wrong
 export const asSkill = (v: unknown): Skill => {
   const s = v as Partial<Skill> | null | undefined
@@ -233,12 +233,17 @@ export const modeSwitch = (text: string): 'on' | 'off' | null => {
 // The widest each compact-band column has been, per layout: a column only ever widens, so a
 // value that gains or loses a digit while a turn runs never moves its neighbours.
 const colMax = new Map<string, number>()
+// The narrowest layout (its place in the band's list) taken while Claude works. A turn's loops
+// (the bar, the status chip, the agents' marks, the telemetry rail) start over whenever the grid
+// changes shape, so while a turn runs the band may step to a narrower layout but never back to a
+// wider one: a figure flickering at the edge of the room cannot flip it to and fro. The wider
+// layout comes back once the turn is over, when nothing loops.
+let layoutFloor = 0
 const efforts = new Map<string, string>()
-// A change plays once, in CSS inside its picture (see MOTION in chat.ts): the figures written
-// out roll in (reelHolder, reelText), rings, meters and the speed needle glide (glideHolder).
+// A change plays once, in CSS inside its picture (see MOTION in chat.ts): rings, meters and the
+// speed needle glide (glideHolder). Figures change at once (see `reel` in the band's render).
 // Each holds where it came from while it plays, so a redraw then sends the same picture.
 const glides = glideHolder()
-const reels = reelHolder()
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 
@@ -260,11 +265,12 @@ const GAP_ART = blankArt(GRID_GAP)
 const CARD_MIN = 18
 
 const THEME = {
-  accent: HUE.sky, // the speed meter and other calm gauges
-  working: HUE.sky, // the status chip (and, without pictures, the dot) while Claude works
-  bar: HUE.hazard, // the loading bar's warning stripes while Claude works
-  done: '#8fdcb9', // both once the turn is done
-  warm: HUE.sky, // frame, the context meter, the limit meters at rest
+  // FOUNDRY: one signal orange on warm black (palette in chat.ts, look in hud.ts).
+  accent: HUE.signal, // the figures' rules and other calm gauges
+  working: HUE.signal, // the status chip (and, without pictures, the dot) while Claude works
+  bar: HUE.amber, // the loading bar's hazard stripes while Claude works
+  done: HUE.bone, // both once the turn is done
+  warm: HUE.signal, // frame, the context meter, the limit meters at rest
   muted: INK.detail, // the figures' icons: quiet, so the meter leads
   fallbackTitle: 'Hanahira',
   // The band's rounded frame; off since each cell is its own glass card.
@@ -391,7 +397,7 @@ export const meter = (percent: number, width: number) => {
 export const tone = (percent: number) => (percent >= 85 ? '#f2879a' : percent >= 60 ? '#f3cf7a' : '#8fdcb9')
 
 // A limit's colour says how near it is: calm fur, butter from 60%, rose from 85%.
-export const ringColor = (percent: number) => (percent >= 85 ? HUE.rose : percent >= 60 ? HUE.butter : THEME.warm)
+export const ringColor = (percent: number) => (percent >= 85 ? HUE.ember : percent >= 60 ? HUE.amber : THEME.warm)
 
 /** A donut gauge as SVG: a dim track and an arc from 12 o'clock, clockwise. */
 export const ringSvg = (percent: number, color: string, size: number, opts: { icon?: IconName; bigIcon?: boolean; from?: Since<number> | number | null } = {}) => {
@@ -407,7 +413,7 @@ export const ringSvg = (percent: number, color: string, size: number, opts: { ic
   // A disc tinted the arc's colour fills the middle, and the icon fills the disc: big enough
   // to read at a glance, so the gauge reads as one piece.
   const disc = `<circle cx="22" cy="22" r="${opts.bigIcon ? 17 : 15}" fill="${color}" fill-opacity="0.13"/>`
-  const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2c2c31" stroke-width="${stroke}"/>`
+  const track = `${disc}<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2e2a26" stroke-width="${stroke}"/>`
   const fill =
     arc > 0
       ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${dash(percent)}" transform="rotate(-90 22 22)" class="arc"/>` +
@@ -647,6 +653,8 @@ export const register: Register = on => {
   let charsPerToken = 4
   // This prompt switched the mode off: the skill it loads to say so does not switch it back on.
   let switchedOff = false
+  // The live speed's latest reading, waiting for the next beat to be drawn (null: nothing new).
+  let pendingSpeed: { tps: number; held: number } | null = null
 
   on('session.start', async ($, e, next) => {
     await locate($)
@@ -735,16 +743,21 @@ export const register: Register = on => {
     }
     if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
     startedAt = await $.clock.now()
-    // A beat every second while the turn runs, so the clock and figures move live.
+    // A beat every half second while the turn runs: the clock, the live speed and every figure
+    // that changed since the last one are drawn together, once.
     ticker?.cancel()
+    pendingSpeed = null
     const turnStart = startedAt
     beatSecs = 0
     turnBeat = true
-    ticker = $.clock.every(1000, () => {
+    ticker = $.clock.every(BEAT_MS, () => {
       void (async () => {
         // Seconds by the clock, not by counting beats: a timer held back (a window out of
         // focus) then still reads true, and a long turn's clock never stops short.
         beatSecs = Math.max(0, Math.floor(((await $.clock.now()) - turnStart) / 1000))
+        const sp = pendingSpeed
+        pendingSpeed = null
+        if (sp) await update($, speed, s => ({ tps: sp.tps, peak: Math.max(s.peak ?? 0, sp.held) }))
         await update($, tick, n => (n ?? 0) + 1)
         // The limits, context and spend, re-read as the turn goes: not on every beat.
         const now = await $.clock.now()
@@ -924,7 +937,7 @@ export const register: Register = on => {
           const tps = liveSpeed(samples, at, { charsPerToken, windowMs: LIVE_WINDOW_MS, minMs: 250 })
           if (tps === null) return
           drawnAt = at
-          void update($, speed, s => ({ tps, peak: s.peak ?? 0 }))
+          pendingSpeed = { tps, held: 0 }
         })
     try {
       for await (const c of stream) {
@@ -945,7 +958,7 @@ export const register: Register = on => {
         // the live speed. Only a rate held for a full second counts: a buffered burst read live
         // would set a peak no real speed reaches, and the needle would sit near zero after it.
         const held = liveSpeed(samples, at, { charsPerToken, windowMs: LIVE_WINDOW_MS + 400, minMs: PEAK_HOLD_MS }) ?? 0
-        void update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, held) }))
+        pendingSpeed = { tps, held: Math.max(held, pendingSpeed?.held ?? 0) }
       }
     } finally {
       stall?.cancel()
@@ -965,8 +978,12 @@ export const register: Register = on => {
     // Speed of the main thread only: subagents run beside it and would blur the figure.
     const tps = !aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
     if (!aid && u?.model) await update($, model, () => u.model)
-    // The response's own average settles the needle once it ends.
-    if (tps !== null) await update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, tps) }))
+    // The response's own average settles the needle once it ends; a live reading still waiting
+    // for the beat is older than it, so it is dropped.
+    if (tps !== null) {
+      pendingSpeed = null
+      await update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, tps) }))
+    }
     // A subagent's own speed: its latest response's output over the time that response took.
     const agentTps = aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
     if (aid) {
@@ -1057,8 +1074,14 @@ export const register: Register = on => {
     ])
     // What the band draws: each figure as stored, and where a change came from while it plays
     // (see MOTION in chat.ts): `reel` for a figure written out, `from` for a ring or meter.
-    const reel = (key: string, text: string) => reels.value(key, text, nowMs)
-    const from = (key: string, v: number | null) => glides.from(key, v, nowMs)
+    // Figures change at once, with no slot roll. On Desktop a roll can play only as a run of new
+    // pictures, two or three a second for each figure while Claude works, and the new value only
+    // settles once the roll ends: a figure that rolls looks late and choppy. Meters still glide.
+    const reel = (_key: string, _text: string): Since<string> | null => null
+    // Values change at once, with no motion (the user's choice: a glide on Desktop plays as a
+    // run of new pictures and makes the figures look late). Only the mascot's hop as the mode
+    // wakes still plays, once, from its moment (`glides`).
+    const from = (_key: string, _v: number | null): Since<number> | null => null
 
     const st = stNow
     const use = {
@@ -1124,7 +1147,7 @@ export const register: Register = on => {
     const STATUS: Record<Status, Parameters<typeof hudChipSvg>[0]> = {
       working: { color: THEME.working, label: 'working', fill: true, motion: true },
       done: { color: THEME.done, label: 'success', fill: true },
-      error: { color: HUE.rose, label: 'error', fill: true },
+      error: { color: HUE.ember, label: 'error', fill: true },
       stopped: { color: INK.label, label: 'stopped' },
       idle: { color: INK.label, label: 'idle' },
     }
@@ -1207,7 +1230,7 @@ export const register: Register = on => {
         // Its meter, and one more for each model the week is also counted for on its own.
         bars: [
           { ...(l.models.length ? { label: 'all' } : {}), percent: l.percentUsed, color: ringColor(l.percentUsed), from: from(`limit-${l.kind}`, l.percentUsed) },
-          ...l.models.map(m => ({ label: weeklyModel(m.kind)!, percent: m.percentUsed, color: m.percentUsed >= 60 ? ringColor(m.percentUsed) : HUE.petal, from: from(`limit-${m.kind}`, m.percentUsed) })),
+          ...l.models.map(m => ({ label: weeklyModel(m.kind)!, percent: m.percentUsed, color: m.percentUsed >= 60 ? ringColor(m.percentUsed) : HUE.steel, from: from(`limit-${m.kind}`, m.percentUsed) })),
         ],
         icon: (l.kind === 'five_hour' ? 'hourglass' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
         percent: l.percentUsed,
@@ -1226,8 +1249,6 @@ export const register: Register = on => {
         icon: 'bolt' as IconName,
         // Against a round full scale clear of the best seen, as on a speedometer's dial.
         percent: speedPct,
-        // The needle swings to each reading; the figure itself just changes, as on a dial.
-        from: from('tps', speedPct),
         big: sp.tps === null ? '—' : fmtSpeed(sp.tps),
         caption: 'tokens / sec',
         sub: sp.peak > 0 ? `peak ${fmtSpeed(sp.peak)}` : undefined,
@@ -1237,7 +1258,10 @@ export const register: Register = on => {
         calm: true,
         name: 'tok/s',
         // Charged while the turn streams: blue from the first token a second, purple from 100, red from 200.
-        bars: [{ percent: speedPct, color: HUE.red, from: from('tps', speedPct) }],
+        // No glide: a new reading comes several times a second while Claude streams, so a glide
+        // would never end and every redraw would be a new picture. At that rate the meter's steps
+        // already read as motion.
+        bars: [{ percent: speedPct, color: HUE.ember }],
       },
       // Hanahira Claude UI mode: active or not and the skills' version, under the name, and the
       // companions loaded beside the core.
@@ -1255,7 +1279,7 @@ export const register: Register = on => {
         // A switch, as on a smart-home panel: it slides over once as the mode switches on.
         // How long ago the mode woke (a glide held like the figures'), so the mascot's hop is
         // anchored to that moment and never replays on a later redraw.
-        toggle: { on: sk.on, enter: from('mascot-awake', sk.on ? 1 : 0)?.age ?? null, motion: sk.on && e.props.isWorking },
+        toggle: { on: sk.on, enter: glides.from('mascot-awake', sk.on ? 1 : 0, nowMs)?.age ?? null, motion: sk.on && e.props.isWorking },
       },
     ]
     // A tile's ring (or, where pictures are not drawn, a glyph of it), at either size.
@@ -1375,9 +1399,10 @@ export const register: Register = on => {
     // The layout is chosen from what the cells need now. The widest a column has been only pads
     // the chosen layout, and only while it still fits: one wide value (a long reset time, four
     // companions) must not hold the band on a narrower layout after it has gone.
-    const natural =
-      layouts.map(l => ({ ...l, ...widthsFor(l.k, l.mode) })).find(l => lineW(l.colW) <= roomPx) ??
-      { k: 1, mode: 'bare' as Mode, ...widthsFor(1, 'bare') }
+    const fitAt = layouts.findIndex(l => lineW(widthsFor(l.k, l.mode).colW) <= roomPx)
+    const at = Math.max(fitAt < 0 ? layouts.length - 1 : fitAt, e.props.isWorking ? Math.min(layoutFloor, layouts.length - 1) : 0)
+    layoutFloor = at
+    const natural = { ...layouts[at]!, ...widthsFor(layouts[at]!.k, layouts[at]!.mode) }
     const held = natural.colW.map((w, j) => Math.max(w, colMax.get(`${natural.k}:${natural.mode}:${j}`) ?? 0))
     const picked = { ...natural, colW: lineW(held) <= roomPx ? held : natural.colW }
     picked.colW.forEach((w, j) => colMax.set(`${picked.k}:${picked.mode}:${j}`, w))
@@ -1437,7 +1462,7 @@ export const register: Register = on => {
     const versionChip = chips.find(c => c.key === 'version')
     const showVersion = !(THEME.compact && stacked && versionChip && rightPx > headRoomPx)
     // Whatever this draw set moving, the band draws its plain pictures as the last of it ends.
-    const motionLeft = Math.max(reels.left(nowMs), glides.left(nowMs))
+    const motionLeft = glides.left(nowMs)
     if (motionLeft > 0 && nowMs + motionLeft > restDue) {
       restDue = nowMs + motionLeft
       $.clock.after(motionLeft + 20, () => void update($, tick, n => (n ?? 0) + 1))
@@ -1509,7 +1534,7 @@ export const register: Register = on => {
             {shownSecs !== null && !(THEME.compact && Svg) ? (
               // As wide as '59m 59s' from the start, so the pill does not step right as it grows.
               <Box gap={1} alignItems="center" minWidth={9}>
-                {iconEl({ Text, Svg }, 'clock', '#a3a3ab', 14, '⏱')}
+                {iconEl({ Text, Svg }, 'clock', '#aaa49b', 14, '⏱')}
                 {Svg ? (
                   // Each second rolls in on the beat, like the band's figures.
                   <Svg source={themed(elapsedArt!.svg)} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
@@ -1651,6 +1676,22 @@ export const register: Register = on => {
           </Box>
         </Box>
         )}
+        {Svg ? (
+          // FOUNDRY's telemetry rail along the band's foot: ticks and data packets that run while
+          // Claude works. Its source holds for the whole turn (no figure in it), so the loop runs
+          // smooth in the surface's frame; drawn THEME.barPx wide and clipped to the room.
+          <Box flexDirection="row" marginTop={0}>
+            <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+              <Svg
+                source={themed(telemetrySvg(THEME.barPx, TELEMETRY.height, { live: e.props.isWorking, motion: true, text: `HANAHIRA // FIELD TERMINAL · V${VERSION}` }))}
+                alt="telemetry"
+                width={THEME.barPx}
+                height={TELEMETRY.height}
+                {...loop}
+              />
+            </Box>
+          </Box>
+        ) : null}
       </Box>
       </Box>
     )

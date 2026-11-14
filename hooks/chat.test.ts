@@ -248,7 +248,7 @@ describe('band pictures', () => {
     expect(statSvg('Hanahira', 'Active', { tone: '#8fdcb9' }).svg).toContain('<tspan dx="5" fill="#8fdcb9" font-weight="600">Active</tspan>')
     const stacked = statSvg('Hanahira', '', { tone: '#f2879a', stack: ['Deactive', 'design'] }).svg
     expect(stacked).toMatch(/fill="#f2879a" font-weight="600">Deactive<\/text>/)
-    expect(stacked).toMatch(/fill="#86868f">design<\/text>/)
+    expect(stacked).toMatch(/fill="#8c867d">design<\/text>/)
     expect(statSvg('6%', '5h limit', { stack: ['94% left'] }).svg).not.toContain('font-weight="600"')
   })
 
@@ -369,7 +369,7 @@ describe('chipSvg', () => {
 
   test('minWidth holds a chip as wide as another state, and nothing on it moves', () => {
     const wide = chipSvg({ color: '#a9b6ec', label: 'working', dots: true, strong: true }).natural
-    expect(chipSvg({ color: '#a3a3ab', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
+    expect(chipSvg({ color: '#aaa49b', label: 'idle', icon: 'pause', strong: true, minWidth: wide }).width).toBe(wide)
     expect(chipSvg({ color: '#a9b6ec', label: 'working', dots: true }).svg).not.toContain('@keyframes')
     expect(chipSvg({ color: '#fff', value: '3', label: 'tools' }).svg).not.toContain('@keyframes')
   })
@@ -394,7 +394,7 @@ describe('contextSvg', () => {
   test('one line: figure, meter, then the name and what is left; the figure in ink', () => {
     const c = contextSvg(11, '#a9b6ec', { left: '889k left', window: '1M window' })
     expect(c.height).toBe(CONTEXT.height)
-    expect(c.svg).toContain(`font-size="${CONTEXT.fs}" font-weight="700" fill="#ededf0">11%</text>`)
+    expect(c.svg).toContain(`font-size="${CONTEXT.fs}" font-weight="700" fill="#f2eee8">11%</text>`)
     expect(c.svg).toContain('>context</tspan>')
     expect(c.svg).toContain('> · 889k left</tspan>')
     expect(c.svg).toContain('> · 1M window</tspan>')
@@ -417,16 +417,16 @@ describe('contextSvg', () => {
 describe('chipSvg quiet', () => {
   test('outlined in the line colour, no tint, muted glyph and words', () => {
     const c = chipSvg({ color: '#f3cf7a', icon: 'bolt', value: '10', label: 'tools', quiet: true })
-    expect(c.svg).toContain('fill-opacity="0" stroke="#2a2a2f" stroke-opacity="1"')
-    expect(c.svg).toContain('stroke="#86868f"')
-    expect(chipSvg({ color: '#a3a3ab', label: 'idle', icon: 'pause', strong: true, quiet: true }).svg).toContain('font-weight="700" fill="#a3a3ab"')
+    expect(c.svg).toContain('fill-opacity="0" stroke="#2c2925" stroke-opacity="1"')
+    expect(c.svg).toContain('stroke="#8c867d"')
+    expect(chipSvg({ color: '#aaa49b', label: 'idle', icon: 'pause', strong: true, quiet: true }).svg).toContain('font-weight="700" fill="#aaa49b"')
   })
 
 })
 
 describe('statSvg plain', () => {
   test('the icon alone, centred in the glyph slot, no tile', () => {
-    const svg = statSvg('$1', 'cost', { icon: 'coin', plain: true, color: '#86868f' }).svg
+    const svg = statSvg('$1', 'cost', { icon: 'coin', plain: true, color: '#8c867d' }).svg
     expect(svg).not.toContain('rx="7"')
     const across = (STAT.glyph - STAT.plainIcon) / 2
     const down = (STAT.height - STAT.glyph) / 2 + across
@@ -449,7 +449,7 @@ describe('statSvg stacked', () => {
     const stacked = statSvg('31%', 'context', { stack: ['693k left', '1M window'] })
     expect(stacked.natural).toBeLessThan(line.natural)
     expect(stacked.height).toBeGreaterThan(STAT.height)
-    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#86868f">693k left</text>`)
+    expect(stacked.svg).toContain(`font-size="${STAT.subFs}" fill="#8c867d">693k left</text>`)
     expect(stacked.svg).toContain('>1M window</text>')
     expect(stacked.svg).not.toContain(' · 1M window')
   })

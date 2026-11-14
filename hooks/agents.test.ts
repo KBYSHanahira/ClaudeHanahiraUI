@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
-import { fmtClock, MOTION } from './chat'
+import { fmtClock, HUE, INK, LIGHT, MOTION } from './chat'
 import { AGENT_CHIP, BAR_ROOM, agentSpec, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, shellFates, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
@@ -27,11 +27,16 @@ const mk = (over: Partial<Agent> = {}): Agent => ({
 
 describe('accent and model name', () => {
   test('the accent follows the effort when it is known, else the model family, else grey', () => {
-    expect(accentFor('low', 'x')).toBe('#8fdcb9')
-    expect(accentFor('xhigh', 'x')).toBe('#c3b5f7')
-    expect(accentFor(null, 'claude-haiku-5-5')).toBe('#8fdcb9')
-    expect(accentFor(null, 'claude-opus-5-5')).toBe('#f6b896')
-    expect(accentFor(null, 'mystery')).toBe('#a3a3ab')
+    expect(accentFor('low', 'x')).toBe(HUE.steel)
+    expect(accentFor('medium', 'x')).toBe(HUE.amber)
+    expect(accentFor('high', 'x')).toBe(HUE.signal)
+    expect(accentFor('xhigh', 'x')).toBe(HUE.ember)
+    expect(accentFor('max', 'x')).toBe(HUE.ember)
+    expect(accentFor(null, 'claude-haiku-5-5')).toBe(HUE.steel)
+    expect(accentFor(null, 'claude-sonnet-5-5')).toBe(HUE.amber)
+    expect(accentFor(null, 'claude-opus-5-5')).toBe(HUE.signal)
+    expect(accentFor(null, 'claude-fable-5-2')).toBe(HUE.ember)
+    expect(accentFor(null, 'mystery')).toBe(INK.label)
   })
 
   test('prettyModel reads the current naming', () => {
@@ -153,7 +158,7 @@ describe('agent card', () => {
     const padded = agentCardSvg(mk(), { padBottom: 8 })
     expect(padded.height).toBe(CARD_H + 8)
     expect(padded.svg).toContain(`viewBox="0 0 ${CARD_W} ${CARD_H + 8}"`)
-    expect(padded.svg).toContain(`height="${CARD_H - 1.5}" rx="12"`)
+    expect(padded.svg).toContain(`V${CARD_H - 0.75}H0.75z`)
   })
 
   test('shows the name, the tag, the model and the figures', () => {
@@ -199,7 +204,7 @@ describe('agent card', () => {
   test('a barless card leaves the bar out', () => {
     const svg = agentCardSvg(mk({ startedAt: 0 }), { barless: true })
     expect(svg.height).toBe(CARD_H - BAR_ROOM)
-    expect(svg.svg).not.toContain('fill="#2c2c31"')
+    expect(svg.svg).not.toContain('fill="#2e2a26"')
   })
 
   test('escapes a name that would break the markup', () => {
@@ -285,6 +290,41 @@ describe('small agent card', () => {
 
   test('the same agent draws the same card', () => {
     expect(agentChipParts(mk()).body.svg).toBe(agentChipParts(mk()).body.svg)
+  })
+
+  test('a running mark is one picture whatever the figures do: no figure, no clock in it', () => {
+    const at = (tools: number, tps: number) => agentChipParts(mk({ tools, tps, input: tools * 1000 }), { motion: true })
+    expect(at(1, 20).mark.svg).toBe(at(9, 140).mark.svg)
+    const mark = at(1, 20).mark.svg
+    expect(mark).toContain('infinite')
+    expect(mark).toContain('class="pulse"')
+    expect(mark).toContain('prefers-reduced-motion: reduce')
+  })
+
+  test('the frame is sharp with its top-right corner cut, in the mark piece', () => {
+    const { W, H } = AGENT_CHIP
+    const p = agentChipParts(mk())
+    expect(p.mark.svg).toContain(`L${W - 0.5} 7.5V${H - 0.5}`)
+    expect(p.body.svg).toContain('<path d="M0.5 0.5H')
+  })
+
+  test('every colour it draws in follows the light theme', () => {
+    const swapped = new Set(Object.keys(LIGHT))
+    for (const a of [mk(), mk({ effort: 'low' }), mk({ effort: 'medium', status: 'done', endedAt: 5 }), mk({ effort: 'xhigh', status: 'error', endedAt: 5 }), mk({ status: 'stopped', endedAt: 5 }), mk({ kind: 'shell', model: '' }), mk({ model: 'mystery' })]) {
+      const p = agentChipParts(a, { motion: true })
+      for (const svg of [p.body.svg, p.mark.svg]) {
+        for (const m of svg.matchAll(/(?:fill|stroke)="(#[0-9a-f]{6})"/gi)) expect(swapped.has(m[1]!)).toBe(true)
+      }
+    }
+  })
+
+  test('a running card wears its accent: the frame, the rail and its code', () => {
+    const run = agentChipParts(mk({ id: 'agt_k3', effort: 'low' })).body.svg
+    expect(run).toContain(`stroke="${HUE.steel}"`)
+    expect(run).toContain('>OP-K3<')
+    const done = agentChipParts(mk({ id: 'agt_k3', effort: 'low', status: 'done', endedAt: 5 })).body.svg
+    expect(done).not.toContain('OP-K3')
+    expect(done).toContain(`stroke="${INK.line}"`)
   })
 
   test('a running card turns its square only with motion; a finished one shows a check', () => {
