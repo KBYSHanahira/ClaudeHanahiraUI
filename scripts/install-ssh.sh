@@ -43,8 +43,8 @@ cp "$SRC/types/index.d.ts" "$P/types/"
 if [ "$SKILLS" = 1 ]; then
   cp -r "$SRC/skills" "$P/"
   # The banner names the copy too, so a reply shows where its rules came from. Same widths.
-  sed -i -e 's/^\(+ ╭─ -(O)- Hanahira Claude UI V[0-9]*\) · ● ACTIVE/\1 · SSH · ● ACTIVE/' \
-    -e 's/┃ Version \([0-9]*\) · SKILL  /┃ Version \1 · SSH    /' "$P/skills/$NAME/SKILL.md"
+  sed -i -e 's/^\(+ ╭─ -(O)- Hanahira Claude UI V[0-9]*\) · ● ACTIVE/\1 · SSH · ● ACTIVE/' "$P/skills/$NAME/SKILL.md"
+  sed -i -e 's/┃ Version \([0-9]*\) · SKILL  /┃ Version \1 · SSH    /' "$P/skills/$NAME/references/banners.md"
   sed -i "/SKILLS_FROM/s/= 'Account'/= 'SSH'/" "$P/hooks/version.ts"
 fi
 # Values in $.state belong to the plugin by name, so the name inside the code follows it. Only

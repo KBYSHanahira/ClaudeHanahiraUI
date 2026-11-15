@@ -33,14 +33,16 @@ test('the preview shows this version, and the PNG was drawn from that SVG', () =
 test('the texts install-ssh.sh rewrites in the SSH copy are still there', () => {
   const core = file('skills/hanahira-claude-ui/SKILL.md').toString()
   expect(core).toMatch(/^\+ ╭─ -\(O\)- Hanahira Claude UI V\d+ · ● ACTIVE$/m)
-  expect(core.match(/┃ Version \d+ · SKILL  /g)?.length).toBe(2)
+  const boxes = file('skills/hanahira-claude-ui/references/banners.md').toString()
+  expect(boxes.match(/┃ Version \d+ · SKILL  /g)?.length).toBe(2)
+  expect(core).toContain('references/banners.md')
   expect(file('hooks/version.ts').toString()).toMatch(/^export const SKILLS_FROM\b.*= 'Account'$/m)
 })
 
 // The full banner boxes are copied verbatim into replies: a row one character off breaks the
 // right border, so every box row (2-char prefix, border, 49 inside, border) is 53 wide.
-test('every full-box row in the core skill is 53 characters wide', () => {
-  const rows = file('skills/hanahira-claude-ui/SKILL.md')
+test('every full-box row in the banner boxes is 53 characters wide', () => {
+  const rows = file('skills/hanahira-claude-ui/references/banners.md')
     .toString()
     .split('\n')
     .filter(l => /^[ +-] [│├╭╰].*[│┤╮╯]$/.test(l))

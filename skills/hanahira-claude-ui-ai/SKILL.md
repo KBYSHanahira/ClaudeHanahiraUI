@@ -45,7 +45,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Production
 
-- Set timeouts; retry with exponential backoff and jitter on 429, 5xx and overloaded errors, never on 400.
+- Set timeouts; retry with exponential backoff and jitter on 429, 5xx and overloaded errors, never on other 4xx.
 - Stream long replies for the user's sake; handle a stream that breaks midway.
 - Budget tokens per request and per user; alert on cost, not only on errors.
 - Cache what repeats: prompt caching for shared prefixes, a response cache for identical requests.

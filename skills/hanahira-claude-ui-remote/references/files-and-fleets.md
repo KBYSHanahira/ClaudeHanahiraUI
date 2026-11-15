@@ -10,7 +10,7 @@ A look-up for moving data between machines and for running one change across man
 - Limit bandwidth on a shared link: `--bwlimit=20M` (units per second).
 - Resume a large interrupted copy: `--partial --append-verify`; show progress with `--info=progress2`.
 - Compare by content, not size and time: `-c` (slow on big trees; use it for a final check).
-- Keep ownership and ACLs when copying as root: `-aAX --numeric-ids`, with `--rsync-path='sudo rsync'` when the remote side needs sudo.
+- Keep ownership and ACLs when copying as root: `-aAX --numeric-ids`, with `--rsync-path='sudo -n rsync'` when the remote side needs sudo (needs passwordless sudo for rsync; `-n` fails fast otherwise).
 - A non-default port or key: `-e 'ssh -p 2222 -i ~/.ssh/key'`, or simply a `~/.ssh/config` alias.
 
 ## scp and sftp
@@ -46,7 +46,7 @@ db1.example.com ansible_user=admin
 ```
 
 - Prove access: `ansible all -i inventory.ini -m ping`.
-- Ad hoc reads: `ansible web -m command -a 'uptime'`, `ansible web -m shell -a 'df -h | grep /srv'`.
+- Ad hoc reads: `ansible web -i inventory.ini -m command -a 'uptime'`, `ansible web -i inventory.ini -m shell -a 'df -h | grep /srv'`.
 - Root: `--become` (`-b`), with `-K` when sudo needs a password.
 - Preview a playbook: `ansible-playbook site.yml --check --diff`. Modules that do not support check mode report skipped, not safe.
 - One host first: `--limit web1.example.com`, then the group.

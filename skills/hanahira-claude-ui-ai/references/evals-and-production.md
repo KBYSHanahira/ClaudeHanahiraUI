@@ -64,7 +64,7 @@ Failure modes and where to look:
 ## Retries
 
 - Retry 429, 5xx and overloaded errors with exponential backoff and jitter; honour any retry-after header.
-- Do not retry 400-class input errors; fix the request.
+- Do not retry other 4xx errors (400, 401, 403, 404, 413); fix the request.
 - Cap total retries and time; fall back to a cached answer, a smaller model or a clear error.
 - Make the action around the call idempotent so a retry does not double-charge or double-send.
 

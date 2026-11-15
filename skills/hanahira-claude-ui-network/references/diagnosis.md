@@ -15,7 +15,7 @@ Prove each step before moving on; a passing step clears every layer below it.
 ## Reading tcpdump
 
 - Capture narrowly: `tcpdump -ni any 'host 203.0.113.10 and tcp port 443'`; save with `-w cap.pcap` for Wireshark.
-- Only SYNs: `tcpdump -ni any 'tcp[tcpflags] & tcp-syn != 0 and port 443'`.
+- Only SYNs: `tcpdump -ni any 'tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn and port 443'` (drop the ack test to see SYN-ACKs too).
 - Only resets: `tcpdump -ni any 'tcp[tcpflags] & tcp-rst != 0'`.
 - SYN out, nothing back: a firewall drops it or the route is wrong.
 - SYN out, RST back: the host is reached and nothing listens, or a firewall rejects.

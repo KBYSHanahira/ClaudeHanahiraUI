@@ -10,7 +10,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## The one discipline
 
-**A job that runs without anyone watching must be safe to run twice, must say when it fails, and must have a dry-run mode.** Run it once by hand in the real environment before scheduling it. A job that deletes or sends is an outward step under the core's rule 2.
+**A job that runs without anyone watching must be safe to run twice, must say when it fails, and must have a dry-run mode.** Run it once by hand in the real environment before scheduling it. A job that deletes or sends is an outward step under the core's rule 2 unless the user named it.
 
 ## What saves the most time
 
@@ -53,6 +53,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - Pair up when part of the job lies in another field: `hanahira-claude-ui-remote` for running on servers, `hanahira-claude-ui-windows` for Task Scheduler and PowerShell, `hanahira-claude-ui-data` for database backups, `hanahira-claude-ui-devops` for jobs scheduled in CI.
+- A recurring task for Claude itself (a check every morning, a re-run on a timer) is the session's own scheduling skill (`schedule` or `loop` where the session lists one), not a cron job that starts `claude`.
 - Helpers checking separate jobs or hosts follow `references/agents.md` in the core.
 
 Script skeletons and pitfalls in bash and Python: `references/scripts.md`. Cron, systemd and Task Scheduler examples, monitoring, log rotation and backup jobs: `references/scheduling-and-ops.md`.

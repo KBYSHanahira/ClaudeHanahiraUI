@@ -526,6 +526,29 @@ let agentTicker: { cancel: () => void } | null = null
 // True while a turn's own beat runs: it redraws the band every second already, so the agents'
 // beat then only looks at the engine's list, and the band is not redrawn twice a second.
 let turnBeat = false
+// The main turn's clock: when it started (0: none), the beat that moves it, and whether it runs on
+// after the turn ended because an agent or background command it started still works.
+let startedAt = 0
+let ticker: { cancel: () => void } | null = null
+let trailing = false
+
+// The clock stops: the beat ends, and the time shown and added to the run time is `ranMs` (the
+// engine's own length of the turn) or, without it, from the turn's start to now. None after a
+// reload mid-turn, when startedAt is 0 and the span would be epoch seconds.
+const stopTurnClock = async ($: EngineInterface, ranMs: number | null = null) => {
+  ticker?.cancel()
+  ticker = null
+  turnBeat = false
+  trailing = false
+  const now = await $.clock.now()
+  const ran = ranMs ?? (startedAt > 0 ? now - startedAt : null)
+  if (ran !== null) {
+    await update($, seconds, () => Math.round(ran / 1000))
+    await update($, runMs, t => (t ?? 0) + ran)
+  }
+  startedAt = 0
+  await update($, tick, n => (n ?? 0) + 1)
+}
 
 // The folder and its branch. Read again after every turn: a turn can switch the branch.
 // One of Hanahira Claude UI's skills loaded: the mode is on, and the part is named. At the top
@@ -555,20 +578,39 @@ const locate = async ($: EngineInterface) => {
 
 // A card whose agent ended without a turn.complete of its own (stopped from the tasks list,
 // say) would read "running" for good and keep the beat going: the engine's list settles it.
+// How many looks in a row each running agent was missing from the engine's list.
+const unlisted = new Map<string, number>()
+
+// The cards kept: every running one, whatever its age, and the latest finished ones up to 12 in
+// all. A plain cap of the last 12 dropped a long agent's card while it still ran, once twelve
+// newer agents or commands had started after it.
+export const keepCards = (list: Agent[], max = 12): Agent[] => {
+  const finishedRoom = Math.max(0, max - list.filter(a => a.status === 'running').length)
+  const finished = list.filter(a => a.status !== 'running')
+  const keepFinished = new Set(finished.slice(Math.max(0, finished.length - finishedRoom)))
+  return list.filter(a => a.status === 'running' || keepFinished.has(a))
+}
+
 const reconcileAgents = async ($: EngineInterface) => {
   const list = asList(await read($, agents))
   const live = list.some(a => a.status === 'running') ? await $.agent.list().catch(() => null) : null
   if (live) {
     const byId = new Map(live.map(a => [a.id, a.status]))
     const now = await $.clock.now()
-    const settled = (s: string | undefined): Agent['status'] | null =>
-      s === undefined || s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
+    // Missing from the list counts as ended only on the second look in a row: one list taken
+    // between two of an agent's turns must not end a card whose agent still works.
+    for (const a of list) if (a.status === 'running' && a.kind !== 'shell') {
+      if (byId.has(a.id)) unlisted.delete(a.id)
+      else unlisted.set(a.id, (unlisted.get(a.id) ?? 0) + 1)
+    }
+    const settled = (s: string | undefined, id: string): Agent['status'] | null =>
+      s === undefined ? ((unlisted.get(id) ?? 0) >= 2 ? 'done' : null) : s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
     let changed = false
     await update($, agents, l =>
       asList(l).map(a => {
         // A background command is no agent: the engine's agent list never names it, so only its
         // notification settles it (prompt.submit).
-        const status = a.status === 'running' && a.kind !== 'shell' ? settled(byId.get(a.id)) : null
+        const status = a.status === 'running' && a.kind !== 'shell' ? settled(byId.get(a.id), a.id) : null
         if (status) changed = true
         return status ? { ...a, status, endedAt: now } : a
       }),
@@ -620,6 +662,8 @@ const restAgentBeat = async ($: EngineInterface) => {
   if (asList(await read($, agents)).some(a => a.status === 'running')) return
   agentTicker?.cancel()
   agentTicker = null
+  // The main turn ended while this card still ran: its clock stops now, with the agent's time in.
+  if (trailing) await stopTurnClock($)
 }
 
 // The beat while an agent runs: a redraw a second (unless the turn's own beat redraws), and every
@@ -637,8 +681,6 @@ const agentBeat = ($: EngineInterface) => {
 }
 
 export const register: Register = on => {
-  let startedAt = 0
-  let ticker: { cancel: () => void } | null = null
   // What the running turn's clock shows: set on each beat alone, so it moves once a second
   // whenever else the band redraws. Every other figure shows its value as it comes, on its own.
   let beatSecs = 0
@@ -742,6 +784,8 @@ export const register: Register = on => {
       return next(e)
     }
     if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
+    // The last turn's clock was still running on for its agents: it is counted up to now first.
+    if (trailing) await stopTurnClock($)
     startedAt = await $.clock.now()
     // A beat every half second while the turn runs: the clock, the live speed and every figure
     // that changed since the last one are drawn together, once.
@@ -794,7 +838,7 @@ export const register: Register = on => {
       cacheRead: 0,
       cacheWrite: 0,
     }
-    await update($, agents, list => [...asList(list).filter(x => x.id !== agentId), a].slice(-12))
+    await update($, agents, list => keepCards([...asList(list).filter(x => x.id !== agentId), a]))
     agentBeat($)
     return r
   })
@@ -863,7 +907,7 @@ export const register: Register = on => {
           cacheRead: 0,
           cacheWrite: 0,
         }
-        await update($, agents, list => [...asList(list).filter(x => x.id !== id), rec].slice(-12))
+        await update($, agents, list => keepCards([...asList(list).filter(x => x.id !== id), rec]))
         agentBeat($)
       }
     }
@@ -905,7 +949,7 @@ export const register: Register = on => {
             cacheRead: old?.cacheRead ?? 0,
             cacheWrite: old?.cacheWrite ?? 0,
           }
-          return [...rest, rec].slice(-12)
+          return keepCards([...rest, rec])
         })
         if (!finished) agentBeat($)
         if (finished) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
@@ -1032,20 +1076,17 @@ export const register: Register = on => {
       await restAgentBeat($)
       return next(e)
     }
-    ticker?.cancel()
-    ticker = null
-    turnBeat = false
     const reason = (e as unknown as { reason?: string }).reason
     await update($, outcome, () => (reason === 'error' || reason === 'refusal' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done'))
-    // The turn's length as the engine reports it; failing that, from the start this module heard
-    // (none after a reload mid-turn: startedAt is 0 and the span would be epoch seconds).
-    const nowMs = await $.clock.now()
-    const ran = Number.isFinite(e.durationMs) && e.durationMs >= 0 ? e.durationMs : startedAt > 0 ? nowMs - startedAt : null
-    if (ran !== null) {
-      await update($, seconds, () => Math.round(ran / 1000))
-      await update($, runMs, t => (t ?? 0) + ran)
+    // An agent or background command the turn started still works: the clock runs on until the
+    // last one settles (restAgentBeat), so the time it takes is counted. Otherwise it stops here,
+    // at the turn's length as the engine reports it.
+    if (asList(await read($, agents)).some(a => a.status === 'running')) {
+      trailing = true
+      agentBeat($)
+    } else {
+      await stopTurnClock($, Number.isFinite(e.durationMs) && e.durationMs >= 0 ? e.durationMs : null)
     }
-    startedAt = 0
     await locate($).catch(() => undefined)
     await reconcileAgents($)
     await reconcileMode($)
@@ -1099,7 +1140,7 @@ export const register: Register = on => {
     // would show one still frame and move only when the band redraws. Idle they hold no loop,
     // so they go back to plain images and the motion stops.
     const loop = e.props.isWorking ? { isInteractive: true } : {}
-    const live = e.props.isWorking && startedAt > 0
+    const live = (e.props.isWorking || trailing) && startedAt > 0
     const liveMs = live ? beatSecs * 1000 : 0
     // Time spent running: the finished turns, and the running one as it goes.
     const runShown = (run ?? 0) + liveMs

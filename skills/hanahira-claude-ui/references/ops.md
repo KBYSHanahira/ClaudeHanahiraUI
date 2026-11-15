@@ -1,6 +1,6 @@
 # Operations
 
-A look-up for work on a running service, container, build or deploy, and for anything that will not start or will not connect at all. (A connection that works and then drops or slows belongs to `hanahira-claude-ui-security`.)
+A look-up for work on a running service, container, build or deploy, and for anything that will not start or will not connect at all. (A connection that works and then drops or slows belongs to `hanahira-claude-ui-security`; DNS, routing, proxies and VPNs load `hanahira-claude-ui-network` as well.)
 
 ## Rule one: look before touching
 

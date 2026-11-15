@@ -10,13 +10,13 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## The one discipline
 
-**The cause is shown before the fix, and the symptom is seen gone after it.** A change made on a guess either does nothing or hides the symptom. When the user has pinned the exact place and change, it is a plain edit and none of this applies.
+**The cause is shown before the fix, and the symptom is seen gone after it.** A change made on a guess either does nothing or hides the symptom. When the user has pinned the exact place and change, skip finding the cause; still check the symptom is gone (core rule 5).
 
 ## What saves the most time
 
 - **The first error, whole.** Later errors are usually consequences. Read the real text, not a paraphrase.
 - **What changed?** `git log`, the deploy history and the lock-file diff answer faster than reasoning. Something always changed: code, a dependency, config, data, load, the clock.
-- **Working against failing.** Find one case that works and one that fails, and narrow the difference between them. With a known-good commit, `git bisect` finds the change mechanically.
+- **Working against failing.** Find one case that works and one that fails, and narrow the difference between them. With a known-good commit, `git bisect` finds the change mechanically; start from a clean working tree and end with `git bisect reset`.
 - **Make it fail on demand** with the smallest input. That reproduction is the instrument that proves the fix; without one, say the fix is unverified.
 - **Trace back from the symptom** to the first place the state is wrong. Where an error is raised is rarely where it was caused. Print or log the actual value at the boundary instead of reasoning about what it must be.
 - **One hypothesis, one cheap test of it.** Change one thing at a time. Two failed fixes means the model of the bug is wrong: go back to observing.
@@ -37,7 +37,7 @@ Stale build or cache, or the running code is not the edited code · wrong enviro
 ## Working with tools and other skills
 
 - Observe with the session's tools before reasoning: a browser tool for console and network errors, a log or monitoring connector for the failing request, the database connector for the row that broke.
-- When two or three causes still stand after reproducing, a read-only helper for each, told to prove or kill its own, is faster than testing them in turn (`references/agents.md` in the core). The fix and its proof stay with me.
+- Rival causes get one read-only helper each, told to prove or kill its own, instead of being tested in turn (`references/agents.md` in the core). The fix and its proof stay with me.
 - Pair up when the cause lies in another field: `hanahira-claude-ui-data` for a query or migration, `hanahira-claude-ui-security` for auth, TLS or a dropping connection, `hanahira-claude-ui-design` for a layout bug, `hanahira-claude-ui-perf` when the bug is slowness, `hanahira-claude-ui-api` for a failing integration, `hanahira-claude-ui-devops` for a red pipeline or a bad deploy.
 
-Hard cases (heisenbugs, memory, performance, production-only, concurrency): `references/hard-bugs.md`. Choosing what to test and at which level, fixtures, mocks: `references/testing.md`. Open them only when the plain method above has stalled.
+Hard cases (heisenbugs, memory, performance, production-only, concurrency): `references/hard-bugs.md`. Choosing what to test and at which level, fixtures, mocks: `references/testing.md`. Open `hard-bugs.md` when the plain method has stalled; `testing.md` before writing or repairing tests.

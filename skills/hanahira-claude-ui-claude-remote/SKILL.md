@@ -24,8 +24,8 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 - **Check the place first**: `hostname`, `pwd`, `git status`, `claude --version`. Half of "it works locally" is a different host, branch or version.
 - **Push before going to the cloud.** A cloud session clones the pushed branch; local commits it cannot see are not there.
 - **Plugins, hooks and skills on a remote host are that host's.** After changing a plugin's files on the host, the running session needs `/reload-plugins` (skills: `/reload-skills`) before it sees them.
-- **Headless runs fail closed when allowed tools are missing**: list exactly the tools the job needs rather than widening the permission mode.
-- **Long work survives a dropped connection only when detached** (`tmux`, a cloud session, a background task); a foreground `claude` in a plain SSH shell dies with the shell.
+- **Headless runs get exactly the tools listed**: list with `--allowedTools` exactly the tools the job needs rather than widening the permission mode.
+- **Long work survives a dropped connection only when detached** (`tmux` or `screen`, or a cloud session); a foreground `claude` in a plain SSH shell dies with the shell, background tasks included.
 
 ## Staying safe
 
@@ -38,6 +38,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - Pair up: `hanahira-claude-ui-remote` for SSH, tmux and moving files to the host; `hanahira-claude-ui-devops` for running `claude -p` in CI; `hanahira-claude-ui-security` for secrets and credentials on the host; `hanahira-claude-ui-browser` when the browser is on the person's machine and Claude is not.
-- The session's own Claude Code guide (the `claude-code-guide` agent or the docs) answers "does Claude Code support …" questions; check there before saying a feature exists.
+- The Claude Code docs (`references/modes.md` names the pages, or a Claude Code guide agent if the session lists one) answer "does Claude Code support …" questions; check there before saying a feature exists.
 
 Modes, requirements, commands and the doc page for each: `references/modes.md`. Open it before relying on a flag or a limit.

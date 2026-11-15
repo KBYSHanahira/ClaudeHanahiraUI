@@ -27,8 +27,8 @@ for attempt in 0..max_attempts-1:
     response = call(timeout=t, idempotency_key=key)     # same key every attempt
     if success: return response
     if not retryable(response) or attempt is last: raise
-    wait = retry_after(response) or min(cap, base * 2**attempt)
-    sleep(random(0, wait))                               # full jitter
+    if retry_after(response): sleep(retry_after(response))   # honour it exactly
+    else: sleep(random(0, min(cap, base * 2**attempt)))      # full jitter
 ```
 
 - Retryable: connection errors, timeouts, 408, 429, 500, 502, 503, 504. Not retryable: other 4xx, which will fail the same way again.
@@ -66,7 +66,7 @@ for attempt in 0..max_attempts-1:
 
 ## Debugging
 
-- Reproduce with `curl -v` (or `-i` for the response headers with the body, without the connection detail; `-I` sends a HEAD request, so it cannot reproduce a POST): it shows the resolved host, TLS handshake, sent headers and the full response. Copy the exact request the code sends, including content type.
+- Reproduce with `curl -v` (or `-i` for the response headers with the body, without the connection detail; `-I` sends a HEAD request, so it cannot reproduce a POST): it shows the resolved host, TLS handshake, sent headers and the full response. Copy the exact request the code sends, including content type. Pass the key from an env var (`-H "Authorization: Bearer $API_KEY"`) and redact `Authorization` and cookies from any output before quoting it.
 - Compare a working request with the failing one field by field: base URL, path, method, headers, body encoding, auth scheme.
 - Log method, URL without secrets, status, duration and the provider's request id on every call; quote the request id to the provider's support.
 - Check the provider's status page and changelog before suspecting the code.

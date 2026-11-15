@@ -23,7 +23,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Long jobs
 
 - Anything longer than a few minutes runs detached: `tmux new -d -s build 'make all > ~/build.log 2>&1; echo "exit $?" >> ~/build.log'`, then `tmux attach -t build` or `tail -f ~/build.log`.
-- Without tmux: `nohup cmd > job.log 2>&1 &`, or `systemd-run --user --unit=job cmd` and `journalctl --user -u job` (a user unit stops at logout unless `loginctl enable-linger` is on).
+- Without tmux: `nohup cmd > job.log 2>&1 < /dev/null &`, or `systemd-run --user --unit=job cmd` and `journalctl --user -u job` (a user unit stops at logout unless `loginctl enable-linger` is on).
 - Check the exit code afterwards; a job that stopped printing is not a job that succeeded.
 
 ## Moving files

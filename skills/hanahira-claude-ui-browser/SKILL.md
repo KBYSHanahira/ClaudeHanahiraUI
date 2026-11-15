@@ -43,6 +43,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - Pair up: `hanahira-claude-ui-design` for what the layout should be, `hanahira-claude-ui-perf` for a performance trace or Lighthouse run, `hanahira-claude-ui-api` for a failing request seen in the network panel, `hanahira-claude-ui-security` before anything that touches sign-in or credentials, `hanahira-claude-ui-claude-remote` when the session and the browser are on different machines.
-- Helpers do not share my browser session; a browser task stays with me (`references/agents.md` in the core).
+- Helpers do not share my browser session, so driving the browser stays with me; scouts, side-by-side pieces and the fresh reviewer for any code change still follow `references/agents.md` in the core.
 
 Testing a site end to end, forms, waits and flaky pages, and reaching a dev server from the person's browser: `references/web-checks.md`. Open it only when the lines above do not settle the question.

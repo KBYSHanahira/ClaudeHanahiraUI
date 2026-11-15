@@ -19,6 +19,8 @@ A look-up for measuring and profiling when the plain method needs sharper tools:
 
 ## Per runtime
 
+On a live service: serve pprof only on a localhost or admin port; a heap dump or snapshot pauses the process and holds secrets and personal data, so take it off-peak, ask first, and never commit or paste it; py-spy and perf need ptrace or root rights (`sudo`, `CAP_SYS_PTRACE`).
+
 ### Node and Bun
 
 - `node --cpu-prof app.js` writes a `.cpuprofile` on exit; open it in Chrome DevTools (Performance or the JavaScript Profiler) or speedscope.
@@ -35,7 +37,7 @@ A look-up for measuring and profiling when the plain method needs sharper tools:
 
 ### Go
 
-- `import _ "net/http/pprof"` exposes profiles; `go tool pprof http://host/debug/pprof/profile?seconds=30` for CPU, `/debug/pprof/heap` for memory.
+- `import _ "net/http/pprof"` exposes profiles; `go tool pprof 'http://host/debug/pprof/profile?seconds=30'` for CPU, `/debug/pprof/heap` for memory.
 - `go test -cpuprofile cpu.out -memprofile mem.out -bench .` then `go tool pprof -http=:8080 cpu.out` for a flame graph in the browser.
 
 ### JVM

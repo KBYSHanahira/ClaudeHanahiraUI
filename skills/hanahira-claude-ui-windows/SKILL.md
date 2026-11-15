@@ -16,7 +16,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 - **Objects, not text.** Pipe to `Select-Object` and `Where-Object`; use `Format-List *` to see every property. Parse strings only from native `.exe` output.
 - **`Get-Help <cmdlet> -Examples`** answers faster than guessing parameters.
-- **Elevation.** Many failures are just a non-admin shell: `([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrators')`.
+- **Elevation.** Many failures are just a non-admin shell: `([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)`.
 - **Execution policy.** `Get-ExecutionPolicy -List` explains a script that will not run; prefer `-Scope Process` over changing the machine policy.
 - **Paths with spaces** go in quotes, and the call operator `&` runs a quoted path.
 - **Errors that stop.** Many errors are non-terminating; add `-ErrorAction Stop` inside `try`/`catch` or the `catch` never runs.
@@ -41,7 +41,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Permissions
 
 - `icacls path` and `Get-Acl path | Format-List` show who has what; inheritance (`(I)`) explains most surprises.
-- `Get-LocalUser`, `Get-LocalGroupMember Administrators`, and `whoami /groups` for the current token.
+- `Get-LocalUser`, `Get-LocalGroupMember -SID S-1-5-32-544`, and `whoami /groups` for the current token.
 
 ## Networking
 
@@ -55,6 +55,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up: `hanahira-claude-ui-remote` for reaching the machine, `hanahira-claude-ui-security` for firewall policy and accounts, `hanahira-claude-ui-devops` for CI on Windows runners. Read-only helpers follow `references/agents.md` in the core; changes stay with me.
+- Pair up: `hanahira-claude-ui-remote` for reaching the machine, `hanahira-claude-ui-security` for firewall policy and accounts, `hanahira-claude-ui-devops` for CI on Windows runners. Helpers follow `references/agents.md` in the core; outward steps (registry, service, firewall, account changes on a live machine) stay with me.
 
 PowerShell scripts, quoting, remoting and encoding: `references/powershell.md`. Services, tasks, event logs, IIS, registry, updates, features and disks: `references/admin.md`. Open them only when the lines above are not enough.

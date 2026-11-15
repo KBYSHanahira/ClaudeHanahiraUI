@@ -22,7 +22,7 @@ Then run a pre-mortem on the choice: assume it failed in real use; name the most
 
 ## 3. Write the plan
 
-A plan the user approves has exactly these parts:
+A plan, when the user asked for one or the work spans days, has exactly these parts:
 
 ```
 Goal          one sentence, in the user's words
@@ -41,13 +41,13 @@ Rules for steps:
 - The riskiest or least certain step comes first, so a wrong approach fails early and cheaply.
 - Every irreversible or outward action is named with its exact target. Approving a plan is not a yes to each of them: a destructive write, push, merge or access change the user did not name in their own words still gets its own yes when reached.
 
-A project (many days, several components) gets a short design document before the plan: the problem, the chosen approach and the rejected one, the data it holds, the interfaces between parts, how it is run and tested. The design gets its own yes; then the plan.
+A project (many days, several components) gets a short design document before the plan: the problem, the chosen approach and the rejected one, the data it holds, the interfaces between parts, how it is run and tested. The design gets the user's yes when they asked to see it first; otherwise state it in a line and go on to the plan.
 
 ## 4. Execute
 
 Follow the plan in order. After each step, run its check and read the result before starting the next. When reality differs from the plan — a file is not what was assumed, a step fails twice — stop and say what changed and what I propose instead. A plan is not permission to push through a surprise.
 
-Steps that share no files or state can run side by side on helper agents; mark them in the plan, and see `references/agents.md` for the briefs.
+Steps that share no files or state run side by side, one helper each (low effort); mark them in the plan, add a fresh-reviewer step for every change of more than a few lines, and see `references/agents.md` for the briefs.
 
 ## 5. Breaking down and scheduling work
 

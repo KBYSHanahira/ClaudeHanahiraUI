@@ -84,6 +84,6 @@ Register-ScheduledTask -TaskName 'NightlyBackup' -Action $action -Trigger $trigg
 1. Lock, then dump or copy to a temp name: `pg_dump -Fc mydb > "$dest/mydb.$ts.dump.tmp"`, or `tar -czf "$dest/files.$ts.tar.gz.tmp" -C /srv data`.
 2. Verify the archive reads back: `pg_restore --list` or `tar -tzf` on it. Then `mv` the temp name to the final name.
 3. Record a checksum: `sha256sum "$file" > "$file.sha256"`; copy off-site (`rsync -a` or `rclone copy`) and verify there with `sha256sum -c`.
-4. Prune by age, printing first: `find "$dest" -name '*.dump' -mtime +14 -print`, then the same with `-delete` once the list is right.
+4. Prune by age, printing first: `find "$dest" \( -name '*.dump' -o -name '*.tar.gz' -o -name '*.sha256' \) -mtime +14 -print`, then the same with `-delete` once the list is right.
 5. Ping the heartbeat only after all of the above succeeded.
 6. **Restore test** on a schedule (monthly): restore the latest backup into a scratch database or directory, run a sanity query or file count, and alert if it differs from expectation.

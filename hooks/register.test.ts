@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { keepCards, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -323,3 +323,18 @@ describe('sameLimits', () => {
   })
 })
 
+
+describe('agent cards kept', () => {
+  const card = (id: string, status: 'running' | 'done') => ({ id, name: id, type: 'x', model: '', effort: null, background: true, status, startedAt: 0, endedAt: null, tools: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+  test('a running card is never trimmed, however many newer ones finished', () => {
+    const list = [card('long', 'running'), ...Array.from({ length: 15 }, (_, i) => card(`s${i}`, 'done'))]
+    const kept = keepCards(list as never)
+    expect(kept.length).toBe(12)
+    expect(kept[0]!.id).toBe('long')
+    expect(kept.at(-1)!.id).toBe('s14')
+  })
+  test('more running cards than the cap: all of them stay', () => {
+    const list = Array.from({ length: 14 }, (_, i) => card(`r${i}`, 'running'))
+    expect(keepCards(list as never).length).toBe(14)
+  })
+})

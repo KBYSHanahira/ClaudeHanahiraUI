@@ -26,7 +26,7 @@ Row counts from statistics are estimates; `COUNT(*)` is exact and can be slow on
 | SQL Server | `SET SHOWPLAN_XML ON` | `SET STATISTICS XML ON` then run (add `SET STATISTICS IO, TIME ON` for I/O and timing) |
 | MongoDB | `db.c.find(...).explain()` | `.explain('executionStats')` |
 
-"Actual" executes the statement. For a write, wrap it in a transaction and roll back (`BEGIN; EXPLAIN ANALYZE UPDATE ...; ROLLBACK;`) — and that is still a write needing a yes.
+"Actual" executes the statement. For a write, wrap it in a transaction and roll back (`BEGIN; EXPLAIN ANALYZE UPDATE ...; ROLLBACK;`) — and that is still a write needing a yes. That works in PostgreSQL; check the MySQL manual for which statements its `EXPLAIN ANALYZE` accepts. A rollback does not undo sequence values, trigger side effects or writes to non-transactional (MyISAM) tables.
 
 Reading them: PostgreSQL — compare `rows=` estimated with actual; `Seq Scan` on a big table and a large gap between the two are the usual findings. MySQL — `type: ALL` is a full scan; `Using filesort` and `Using temporary` are sorts and temp tables. MongoDB — `COLLSCAN` is a full scan; compare `totalDocsExamined` with `nReturned`.
 
@@ -48,7 +48,7 @@ Cancelling or killing a session is a state change: ask first unless the user nam
 - `CREATE INDEX CONCURRENTLY` (not inside a transaction). A failed build leaves an `INVALID` index to drop.
 - Adding a column with a constant default is instant from version 11. A volatile default rewrites the table.
 - Add a constraint as `NOT VALID`, then `VALIDATE CONSTRAINT` separately; a foreign key likewise.
-- `NOT NULL` on a big table: add a `CHECK (col IS NOT NULL) NOT VALID`, validate it, then `SET NOT NULL` (version 12+ uses the check and skips the scan).
+- `NOT NULL` on a big table: add a `CHECK (col IS NOT NULL) NOT VALID`, validate it, then `SET NOT NULL` (version 12+ uses the check and skips the scan); then drop the CHECK.
 - Changing a column type usually rewrites the table: use a new column and a backfill instead.
 
 **MySQL (InnoDB)**
@@ -73,13 +73,13 @@ Cancelling or killing a session is a state change: ask first unless the user nam
 
 | Engine | Backup | Restore |
 |---|---|---|
-| PostgreSQL | `pg_dump -Fc -d db -f db.dump` (one database) · `pg_dumpall --globals-only` (roles) | `pg_restore -d newdb db.dump` |
+| PostgreSQL | `pg_dump -Fc -d db -f db.dump` (one database) · `pg_dumpall --globals-only` (roles) | `createdb newdb && pg_restore -d newdb db.dump` (never `--clean`/`-C` against a live database name) |
 | MySQL | `mysqldump --single-transaction --routines --triggers db > db.sql` (InnoDB; consistent without locking). MySQL with GTIDs, restoring into another server: add `--set-gtid-purged=OFF` — MariaDB's `mariadb-dump` has no such option | `mysql newdb < db.sql` |
-| SQLite | `sqlite3 app.db ".backup 'copy.db'"` or `VACUUM INTO 'copy.db';` — never a plain file copy of a live database | Replace the file while nothing has it open |
+| SQLite | `sqlite3 app.db ".backup 'copy.db'"` or `VACUUM INTO 'copy.db';` — never a plain file copy of a live database | Stop every writer, remove the old `app.db-wal` and `app.db-shm`, then replace the file |
 | SQL Server | `BACKUP DATABASE db TO DISK='...' WITH COPY_ONLY, CHECKSUM;` | `RESTORE DATABASE newdb FROM DISK='...' WITH MOVE ...;` · check first with `RESTORE VERIFYONLY` |
 | MongoDB | `mongodump --uri=... --db=db --out=dir` · for a consistent point in time on a replica set, a full dump with `--oplog` (it cannot be combined with `--db` or `--collection`) | `mongorestore --nsFrom='db.*' --nsTo='newdb.*' dir` |
 
-Give credentials through the client's own mechanism (`~/.pgpass`, `~/.my.cnf`, environment variables), never on the command line, where they show in the process list and the shell history. A logical dump of a large database is slow to restore; where recovery time matters, physical backups and point-in-time recovery are the right tool, and the user's existing backup system is the first thing to ask about.
+Give credentials through the client's own mechanism (`~/.pgpass`, `~/.my.cnf` or `--defaults-extra-file` with mode 600; not `MYSQL_PWD`), never on the command line, where they show in the process list and the shell history. A logical dump of a large database is slow to restore; where recovery time matters, physical backups and point-in-time recovery are the right tool, and the user's existing backup system is the first thing to ask about.
 
 Check a backup at once: the file exists and has a plausible size; for a PostgreSQL custom dump `pg_restore -l db.dump | head`; for SQL `tail -n 3 db.sql` shows the completion comment. The real test is a restore into a scratch database and a row-count comparison.
 

@@ -9,7 +9,7 @@ A look-up for building and shipping: CI configuration, reproducing a CI failure 
 - **Caching**: `actions/setup-node` with `cache: npm`, or `actions/cache` keyed on `hashFiles('**/package-lock.json')`. A key without the lock file serves stale dependencies.
 - **Matrix**: `strategy.matrix` for versions and OS; `fail-fast: false` when every cell's result matters.
 - **Artifacts**: `actions/upload-artifact` and `actions/download-artifact` pass build output between jobs; set `retention-days`.
-- **Concurrency**: `concurrency: { group: deploy-${{ github.ref }}, cancel-in-progress: false }` for deploys; `true` for PR builds.
+- **Concurrency**: `concurrency:` with `group: deploy-${{ github.ref }}` and `cancel-in-progress: false` (block form; braces inside `{ }` break YAML) for deploys; `true` for PR builds.
 - **Cloud credentials by OIDC**: `permissions: id-token: write` plus the cloud's login action (`aws-actions/configure-aws-credentials`, `google-github-actions/auth`, `azure/login`) with a role trusted only for this repo and branch. No long-lived keys in secrets.
 - **Secrets**: reference as `${{ secrets.NAME }}`; never `echo` them; pass them to scripts through `env:`, not the command line. Use environments with required reviewers for production.
 - **Untrusted input**: never interpolate `${{ github.event.* }}` titles or branch names into `run:`; pass them through `env:` and quote.
@@ -28,7 +28,7 @@ A look-up for building and shipping: CI configuration, reproducing a CI failure 
 
 ## Reproducing CI locally
 
-- Use the same image: `docker run --rm -it -v "$PWD":/src -w /src node:20-bookworm bash`, then run the step's exact commands.
+- Use the same image: `docker run --rm -v "$PWD":/src -w /src node:20-bookworm sh -c '<the step's exact commands>'`.
 - Match the environment: CI often sets `CI=true`, a different locale and time zone, no TTY, and a clean checkout (a fresh clone, or `git clean -xdn` to see what a clean would remove).
 - GitHub Actions: `act -j <job>` runs a job locally; good for shell steps, weaker for service containers and OIDC.
 - GitLab: `gitlab-runner exec` is gone from recent versions; run the job's image by hand.
@@ -36,7 +36,7 @@ A look-up for building and shipping: CI configuration, reproducing a CI failure 
 
 ## Dockerfiles by language
 
-- **Node**: `FROM node:20-slim AS deps`, `COPY package*.json ./`, `RUN npm ci --omit=dev`; build in a separate stage; runtime `USER node`, `CMD ["node", "dist/server.js"]` in exec form so signals reach the process.
+- **Node**: `FROM node:20-slim AS build`, `COPY package*.json ./`, `RUN npm ci`, build; a runtime stage runs `npm ci --omit=dev` and copies `dist/`; runtime `USER node`, `CMD ["node", "dist/server.js"]` in exec form so signals reach the process.
 - **Python**: `python:3.12-slim`; `PIP_NO_CACHE_DIR=1`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONUNBUFFERED=1`; install `requirements.txt` before copying code, or build wheels in one stage and install them in the next.
 - **Go**: build with `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"` in `golang:1.23`; ship on `gcr.io/distroless/static` or `scratch` with CA certificates copied in.
 - **Java**: build in a JDK image (`./mvnw -B package` or `./gradlew build`); run on a JRE image; set `-XX:MaxRAMPercentage=75` so the heap respects the container limit.

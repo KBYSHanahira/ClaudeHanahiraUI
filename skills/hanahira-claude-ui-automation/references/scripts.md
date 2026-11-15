@@ -25,7 +25,7 @@ done
 TARGET="${1:?}"
 [[ -d "$TARGET" ]] || { echo "not a directory: $TARGET" >&2; exit 1; }
 
-LOG=/var/log/myjob.log
+LOG="${LOG:-/var/log/myjob.log}"   # a path the job's user can write
 log() { printf '%s %s\n' "$(date -Is)" "$*" | tee -a "$LOG" >&2; }
 # `local IFS=' '`: "$*" joins with IFS's first character, a newline above, which would split one step over several log lines.
 run() { local IFS=' '; if (( DRY_RUN )); then log "DRY: $*"; else log "RUN: $*"; "$@"; fi; }
@@ -55,7 +55,7 @@ log "done"
 
 ```python
 #!/usr/bin/env python3
-import argparse, logging, subprocess, sys
+import argparse, logging, os, subprocess, sys
 from pathlib import Path
 
 log = logging.getLogger("myjob")
@@ -66,11 +66,13 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
-                        handlers=[logging.FileHandler("/var/log/myjob.log"), logging.StreamHandler()])
+                        handlers=[logging.FileHandler(os.environ.get("LOG", "/var/log/myjob.log")), logging.StreamHandler()])
     if not args.target.is_dir():
         log.error("not a directory: %s", args.target)
         return 1
     for f in sorted(args.target.glob("*.csv")):
+        if f.with_name(f.name + ".gz").exists():
+            continue
         cmd = ["gzip", "-k", str(f)]
         log.info("%s %s", "DRY" if args.dry_run else "RUN", cmd)
         if not args.dry_run:

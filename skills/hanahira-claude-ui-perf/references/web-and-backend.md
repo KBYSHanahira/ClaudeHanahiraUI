@@ -44,9 +44,9 @@ A look-up for the usual fixes once a measurement has named the slow part: Core W
 
 ## Queries
 
-- Run `EXPLAIN ANALYZE` (PostgreSQL, MySQL 8) on the real query with real parameters and production-sized data; a small dev table hides the problem.
+- Run `EXPLAIN ANALYZE` (PostgreSQL; MySQL 8.0.18+, SELECT only) on the real query with real parameters and production-sized data; a small dev table hides the problem. It runs the query for real: wrap a write in `BEGIN; … ROLLBACK;`, and on production run it on a replica or ask first; plain `EXPLAIN` does not run it.
 - Read: sequential scans on large tables, estimated rows far from actual rows (stale statistics; run `ANALYZE`), sorts or hashes spilling to disk, and nested loops over many rows.
-- Index the columns used in `WHERE`, `JOIN` and `ORDER BY` together, in the order the query uses them. Every index slows writes, so add the one the plan needs.
+- Index the columns used in `WHERE`, `JOIN` and `ORDER BY` together, in the order the query uses them. Every index slows writes, so add the one the plan needs. On a live table, build it without blocking writes (`CREATE INDEX CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`). A schema change on a real database is asked first (core rule 2).
 - A function on an indexed column (`WHERE lower(email) = ...`) skips the index unless there is an expression index.
 - Select only needed columns and page with a keyset (`WHERE id > :last ORDER BY id LIMIT n`) rather than a large `OFFSET`.
 

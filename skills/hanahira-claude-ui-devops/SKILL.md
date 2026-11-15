@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-devops"
-description: Hanahira Claude UI companion for delivery and infrastructure — CI/CD pipelines, Dockerfiles and Compose, Kubernetes manifests and Helm, infrastructure as code (Terraform), releases, deploys and rollbacks, environment config and secrets in pipelines, logs, metrics and alerts. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for delivery and infrastructure — CI/CD pipelines, Dockerfiles and Compose, Kubernetes manifests and Helm, infrastructure as code (Terraform), cloud provider CLIs and IAM (AWS, GCP, Azure), releases, deploys and rollbacks, environment config and secrets in pipelines, logs, metrics and alerts. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -15,7 +15,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## What saves the most time
 
 - **The failing CI log from its first error.** `gh run view <id> --log-failed` shows only the failed steps; later errors are usually consequences.
-- **Reproduce the CI step locally** with the same image and command: `docker run --rm -it -v "$PWD":/src -w /src <ci-image> <step>`. A guess about the runner costs more than a run.
+- **Reproduce the CI step locally** with the same image and command: `docker run --rm -v "$PWD":/src -w /src <ci-image> sh -c '<step>'`. A guess about the runner costs more than a run.
 - **Plan before apply.** `terraform plan -out=tfplan`, `kubectl diff -f <file>`, `helm diff upgrade` (plugin) or `helm template`. Read the diff; apply exactly the reviewed plan.
 - **Pin versions and digests**: base images by `@sha256:`, actions by commit SHA, charts and providers by exact version. Floating tags make yesterday's build unrepeatable.
 - **One change per deploy.** When it breaks, the cause is the one thing that changed.

@@ -14,7 +14,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## What saves the most time
 
-- **Call the real endpoint first** with `curl -i` and read the whole response, headers included, before writing code against it.
+- **Call the real endpoint first** with `curl -i`: a read, or the sandbox. A call that writes, charges, sends or deletes is asked first (see below). Read the whole response, headers included, before writing code against it. Pass the key from an env var (`-H "Authorization: Bearer $API_KEY"`) and redact `Authorization` and cookies from any output before quoting it.
 - **Auth and base URL before logic.** A 401, 403 or 404 is most often the wrong key, scope, environment or path prefix, not a bug in the code.
 - **Log the request id** the server returns (`X-Request-Id` or the provider's own); it is what support and the provider's logs answer to.
 - **Read the rate-limit headers** (`RateLimit-*`, `X-RateLimit-*`, `Retry-After`) on the first response, not after the first 429.
@@ -36,7 +36,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 - Retry only what is safe: idempotent methods or a request with an idempotency key, and only on network errors, 408, 429, 500, 502, 503 and 504 (not 501 or other 5xx that will fail the same way again). Use exponential backoff with jitter and a cap.
 - On 429 or 503, honour `Retry-After`. Throttle on the client side before the provider does it for you.
 - Stop calling a dependency that keeps failing (a circuit breaker) and degrade, instead of piling retries on it.
-- Webhooks: verify the signature over the raw body, answer 2xx fast, process asynchronously, and dedupe by event id because delivery is at least once and out of order.
+- Webhooks: verify the signature over the raw body, store the event, then answer 2xx fast and process it from a queue; dedupe by event id because delivery is at least once and out of order.
 
 ## Working with tools and other skills
 

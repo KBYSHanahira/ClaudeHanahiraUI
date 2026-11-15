@@ -12,7 +12,7 @@ A look-up for putting a change live and knowing it worked: release strategies, r
 ## Rollback by platform
 
 - **Kubernetes**: `kubectl rollout undo deploy/<name>` (or `--to-revision=<n>` after `kubectl rollout history deploy/<name>`); watch with `kubectl rollout status`.
-- **Helm**: `helm history <release> -n <ns>`, then `helm rollback <release> <revision> -n <ns>`. `helm upgrade --atomic --timeout 5m` rolls a failed upgrade back by itself.
+- **Helm**: `helm history <release> -n <ns>`, then `helm rollback <release> <revision> -n <ns>`. `helm upgrade --atomic --timeout 5m` rolls a failed upgrade back by itself (check `helm upgrade --help` on the installed Helm: newer versions may name the flag differently).
 - **Docker Compose**: set the previous pinned tag or digest, then `docker compose up -d <svc>`.
 - **Terraform**: revert the commit, then `plan` and `apply` again; there is no undo. Destroyed data is not restored by reapplying.
 - **Serverless and PaaS**: move the alias or traffic to the previous version (`aws lambda update-alias`, `gcloud run services update-traffic <svc> --to-revisions=<rev>=100`, `heroku rollback`).

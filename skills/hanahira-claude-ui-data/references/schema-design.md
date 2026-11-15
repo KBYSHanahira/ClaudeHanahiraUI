@@ -18,7 +18,7 @@ List what the application will ask of the data — the five or ten queries that 
 
 | Data | Use | Not |
 |---|---|---|
-| Money | Exact decimal (`NUMERIC(12,2)`) or integer minor units, with the currency in its own column | Floating point |
+| Money | Exact decimal (`NUMERIC(19,4)`, or the scale the currencies held need) or integer minor units, with the currency in its own column | Floating point |
 | Points in time | A zone-aware timestamp (`timestamptz`), or UTC by convention | Local time without a zone; strings |
 | Calendar dates (a birthday, a due date) | `DATE` | A timestamp |
 | True/false | `BOOLEAN` | `'Y'`/`'N'`, 0/1 in a text column |
@@ -42,7 +42,7 @@ The application still validates, for good error messages. The database constrain
 
 ## Indexes at design time
 
-- The primary key and unique constraints are indexed automatically. Foreign-key columns are **not** indexed automatically in PostgreSQL; index them when the child is looked up by parent or the parent is ever deleted.
+- The primary key and unique constraints are indexed automatically. Foreign-key columns are **not** indexed automatically in PostgreSQL, SQL Server or SQLite (MySQL InnoDB adds one); index them when the child is looked up by parent or the parent is ever deleted.
 - Add an index for each query from the list at the top that filters or sorts on something else: equality columns first, then the range or sort column.
 - Stop there. Add more when a real query plan asks for one.
 

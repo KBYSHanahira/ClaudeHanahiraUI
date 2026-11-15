@@ -41,6 +41,7 @@ A look-up for choosing and running Claude Code away from the person's own termin
 
 - Install Claude Code on the server, sign in there, and run it inside `tmux new -s claude` so it survives a dropped SSH connection; reattach with `tmux attach -t claude`.
 - The server's own `~/.claude/` holds its settings, skills and plugins; copying a plugin there means reloading it in the running session.
+- After changing plugin files on the host, run `/reload-plugins` (and `/reload-skills` for skills) in the running session; both were seen working in Claude Code 2.1.3xx Desktop SSH sessions.
 - Combine with Remote Control to reach that tmux session from the phone.
 
 ## Security — https://code.claude.com/docs/en/security.md

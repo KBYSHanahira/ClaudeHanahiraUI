@@ -31,7 +31,7 @@ Host app-prod
 ## Quoting remote commands
 
 - The command is parsed twice: once locally, once by the remote shell. Single quotes stop the local pass: `ssh host 'echo $HOME'` prints the remote home.
-- To pass a local value in, close and reopen the quotes: `ssh host 'ls -- '"$dir"`; for untrusted values use `printf %q`: `ssh host "ls -- $(printf %q "$dir")"`.
+- To pass a local value in, quote it for the remote shell: `ssh host "ls -- $(printf %q "$dir")"`; bare `'…'"$dir"` breaks on spaces.
 - A single quote inside a single-quoted command: `'\''`.
 - Pipes and redirects inside the quotes run remotely; outside them, locally. `ssh host 'cat log' | grep x` filters here.
 

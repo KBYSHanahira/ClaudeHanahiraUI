@@ -8,7 +8,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.14.5-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.14.6-34c38f?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-Version_30-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
@@ -23,7 +23,7 @@
 One plugin, two parts:
 
 - **🖥️ The interface** — a status band above the prompt (context, usage limits, cost, tokens, speed, agents) Always on, nothing to configure.
-- **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Fifteen companions add rules for data, design, security, debugging, performance, APIs, DevOps, remote machines, networking, Windows, automation, AI, mobile, the browser and remote Claude.
+- **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Sixteen companions add rules for data, design, frontend, security, debugging, performance, APIs, DevOps, remote machines, networking, Windows, automation, AI, mobile, the browser and remote Claude.
 
 ## 🚀 Quick start
 
@@ -86,7 +86,7 @@ The mode is **opt-in**: it never switches itself on because of the task, a file,
 - **Done means verified** — no "fixed" or "should work now" without a check run after the last change.
 - **Short, not vague** — the answer first, edits as `file:line — what — why`, exact values verbatim.
 - **Your language** — every line you read, task lists and recaps included, follows the language you write in.
-- **Your model, your effort** — the work runs on the model and effort you picked for the session. Helper agents are off by default: they start only when you ask, for sizeable independent pieces, or for a wide search of a large unfamiliar codebase. A helper runs on low effort with an exact, step-by-step brief: the same result, faster and cheaper.
+- **Your model, your effort** — the work runs on the model and effort you picked for the session. Helper agents are the default for anything past a truly small task: a scout maps unfamiliar code first (even a system that looks small), independent pieces run side by side, and a fresh reviewer checks every real change. The companions a task touches load before its first step. A helper runs on low effort with an exact, step-by-step brief: the same result, faster and cheaper.
 
 **Companions** load while the mode is on, when most of a task lies in their field:
 
@@ -95,6 +95,7 @@ The mode is **opt-in**: it never switches itself on because of the task, a file,
 | **Data** | MySQL, PostgreSQL, SQLite, SQL Server, MongoDB — queries, schema design, migrations, backups, indexes, bulk updates |
 | **Design** | Visual direction, palette, type (Thai typography included), responsive layout from phone to TV, accessibility, design tokens, CSS, render checks |
 | **Security** | TLS and certificates, firewall and ports, SSH, auth and sessions, secrets, headers, unstable or slow connections |
+| **Frontend** | React, Vue, Svelte, Angular, Next and Nuxt: components, state, routing, data fetching, forms, SSR and hydration, bundlers, component and end-to-end tests |
 | **Debug-Test** | Reproducing bugs, proving root causes, logs and traces, writing tests, flaky tests, proving a fix |
 | **Perf** | Measuring before changing, CPU and memory profiling, Core Web Vitals, slow endpoints and queries, caching, load tests |
 | **API** | REST and GraphQL design, status codes, pagination, versioning, idempotency, retries, webhooks, third-party APIs and SDKs |
@@ -133,7 +134,7 @@ scripts/install-ssh.sh
 Then open a **new session** in Desktop.
 
 - **Skills come from this clone** (named `hanahira-claude-ui-ssh:`), so SSH sessions run the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) on this host only, so every skill is listed once; sessions on your local machine keep the account's copy.
-- **You can tell which copy is in use** — the band shows `V1.14.5` with a yellow `SSH` chip, and the skill's banner reads `V31 · SSH`.
+- **You can tell which copy is in use** — the band shows `V1.14.6` with a yellow `SSH` chip, and the skill's banner reads `V32 · SSH`.
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** goes back to hooks only here, with the skills from your account.
 
 On your local machine none of this is needed; Option 1 works as is.
@@ -220,7 +221,7 @@ skills/
   hanahira-claude-ui-devops/
   hanahira-claude-ui-remote/   …-network/  …-windows/
   hanahira-claude-ui-automation/  …-ai/  …-mobile/
-  hanahira-claude-ui-browser/  …-claude-remote/
+  hanahira-claude-ui-browser/  …-claude-remote/  …-frontend/
 scripts/
   install-ssh.sh    install on an SSH host
   update.sh         one-command update

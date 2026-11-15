@@ -55,4 +55,4 @@ Each worktree needs its own dependency install and its own environment files. A 
 
 ## Pull requests
 
-The description says what changed, why, how it was tested, and what a reviewer should look at first. Keep it to one purpose. Opening a PR, commenting and merging all publish on the user's behalf: ask first.
+The description says what changed, why, how it was tested, and what a reviewer should look at first. Keep it to one purpose. Opening a PR, commenting and merging publish on the user's behalf: do it when the user asked for it; ask first when it was my idea.

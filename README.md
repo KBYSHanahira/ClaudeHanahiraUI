@@ -8,7 +8,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.14.5-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.14.6-34c38f?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-Version_30-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
@@ -23,7 +23,7 @@
 ひとつのプラグインに 2 つの部分があります。
 
 - **🖥️ インターフェース** — プロンプトの上のステータスバンド（コンテキスト、利用制限、費用、トークン、速度、エージェント）。常にオンで、設定は不要です。
-- **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・セキュリティ・デバッグ・パフォーマンス・API・DevOps・リモート・ネットワーク・Windows・自動化・AI・モバイル・ブラウザ・リモート Claude 向けの 15 のコンパニオンがルールを加えます。
+- **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・フロントエンド・セキュリティ・デバッグ・パフォーマンス・API・DevOps・リモート・ネットワーク・Windows・自動化・AI・モバイル・ブラウザ・リモート Claude 向けの 16 のコンパニオンがルールを加えます。
 
 ## 🚀 クイックスタート
 
@@ -86,7 +86,7 @@ Compose のボリュームを削除する Bash コマンド（`docker compose do
 - **完了 ＝ 確認済み** — 最後の変更のあとに確認を実行するまで「直りました」「動くはずです」とは言いません。
 - **短く、でも曖昧にしない** — 答えが先、編集は `file:line — 何を — なぜ`、正確な値はそのまま。
 - **あなたの言語で** — タスクリストや要約も含め、読む文はすべて、あなたが書いた言語に合わせます。
-- **あなたのモデルと effort で** — 作業はセッションで選んだモデルと effort で進めます。ヘルパーエージェントは既定でオフです。あなたが頼んだとき、独立した大きな作業が複数あるとき、見たことのない大きなコードベースを広く探すときだけ起動します。ヘルパーは手順まで書いた正確な指示を受けて low effort で動くため、同じ結果をより速く、より安く出します。
+- **あなたのモデルと effort で** — 作業はセッションで選んだモデルと effort で進めます。ごく小さな作業以外ではヘルパーエージェントが既定です。小さく見えるシステムでも、まず偵察役がコードを調べ、独立した作業は並行して進め、実際の変更はすべて別のレビュー役が確認します。作業が関わる分野のコンパニオンは最初の一歩の前に読み込みます。ヘルパーは手順まで書いた正確な指示を受けて low effort で動くため、同じ結果をより速く、より安く出します。
 
 **コンパニオン** はモードがオンの間、作業の大部分がその分野にあるときに読み込まれます。
 
@@ -95,6 +95,7 @@ Compose のボリュームを削除する Bash コマンド（`docker compose do
 | **Data** | MySQL、PostgreSQL、SQLite、SQL Server、MongoDB — クエリ、マイグレーション、バックアップ、インデックス、一括更新 |
 | **Design** | 見た目の方向性、配色、書体（タイ語の組版を含む）、レスポンシブレイアウト、デザイントークン、CSS、描画の確認 |
 | **Security** | TLS と証明書、ファイアウォールとポート、認証とセッション、シークレット、ヘッダー、不安定な接続 |
+| **Frontend** | React、Vue、Svelte、Angular、Next、Nuxt：コンポーネント、状態管理、ルーティング、データ取得、フォーム、SSR とハイドレーション、バンドラー、コンポーネントと E2E テスト |
 | **Debug-Test** | バグの再現、根本原因、ログとトレース、不安定なテスト、修正の証明 |
 | **Perf** | 変更前の計測、CPU とメモリのプロファイル、Core Web Vitals、遅いエンドポイントとクエリ、キャッシュ、負荷テスト |
 | **API** | REST と GraphQL の設計、ステータスコード、ページング、バージョニング、冪等性、リトライ、Webhook、外部 API と SDK |
@@ -133,7 +134,7 @@ scripts/install-ssh.sh
 その後、Desktop で **新しいセッション** を開きます。
 
 - **スキルはこのクローンのもの**（`hanahira-claude-ui-ssh:` の名前）になり、SSH セッションでは開発中のバージョンが動きます。スクリプトはアカウントから同期されるコピー（`hanahira-claude-ui@inline`）をこのホストでだけ無効にするので、スキルは 1 回だけ表示されます。手元のマシンのセッションでは、これまでどおりアカウントのコピーが使われます。
-- **どのコピーかはひと目でわかります** — バンドには `V1.14.5` と黄色の `SSH` チップが並び、スキルのバナーは `V31 · SSH` になります。
+- **どのコピーかはひと目でわかります** — バンドには `V1.14.6` と黄色の `SSH` チップが並び、スキルのバナーは `V32 · SSH` になります。
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** で元に戻せます（ここは hooks だけ、スキルはアカウントから）。
 
 手元のマシンで使う場合はこの手順は不要で、方法 1 のままで動きます。
@@ -220,7 +221,7 @@ skills/
   hanahira-claude-ui-devops/
   hanahira-claude-ui-remote/   …-network/  …-windows/
   hanahira-claude-ui-automation/  …-ai/  …-mobile/
-  hanahira-claude-ui-browser/  …-claude-remote/
+  hanahira-claude-ui-browser/  …-claude-remote/  …-frontend/
 scripts/
   install-ssh.sh    SSH 接続先へのインストール
   update.sh         1 コマンドでアップデート

@@ -12,8 +12,8 @@ Defensive work on systems the user runs. Every item below serves keeping them sa
 
 ## Never lock the user out
 
-- **Keep the way in open.** Before any change to SSH, a firewall, a VPN or auth: confirm how I am connected, keep that session open, make the change so it can be undone (a timed rollback such as `at`, `ufw` in a second session, `sshd -t` before reload), and test a *new* connection before closing the old one.
-- **Validate before reload**: `sshd -t`, `nginx -t`, `nft -c`, the tool's own checker. A reload is safer than a restart where both exist.
+- **Keep the way in open.** Before any change to SSH, a firewall, a VPN or auth: confirm how I am connected, keep that session open, make the change so it can be undone (a timed rollback, e.g. `echo 'ufw disable' | at now + 5 minutes`, cancelled with `atrm` once a new connection works; `at` may need installing), and test a *new* connection before closing the old one.
+- **Validate before reload**: `sshd -t`, `nginx -t`, `nft -c -f <file>`, the tool's own checker. A reload is safer than a restart where both exist.
 - A change the user asked for by name goes ahead with these safeguards; one that was my idea is asked first with the exact command, its target and the way back (core rule 2). Reading rules, certificates and logs needs no question.
 
 ## Where it usually goes wrong
@@ -39,7 +39,7 @@ What it is, where (`file:line`, host, port), what an attacker or an outage could
 
 - Read with the session's tools first: the host's own commands, a cloud or monitoring connector, the repository. A scanner's or a connector's output is evidence to check, not a verdict.
 - Nothing secret goes into a tool argument, a helper's brief, a web search or a ticket. A connector that would send the user's data to an outside service is used only when the task is to send it there.
-- A change to auth, sessions, firewall rules or secrets handling gets a fresh reviewer before it goes out (`references/agents.md` in the core); a helper is never handed the change that could lock the user out.
+- A change to auth, sessions, firewall rules or secrets handling gets a fresh reviewer before I call it done or it goes out (`references/agents.md` in the core); a helper is never handed the change that could lock the user out.
 - Pair with `hanahira-claude-ui-data` for stored credentials and personal data, and `hanahira-claude-ui-debug-test` for a failure that only shows under load or in production.
 
 Auth, sessions and tokens: `references/auth.md`. TLS, DNS, proxies and stability: `references/connections.md`. Hosts, SSH, firewalls, headers: `references/hardening.md`. Open only the one the task needs.

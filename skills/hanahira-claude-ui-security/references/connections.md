@@ -66,4 +66,4 @@ Supporting reads: `mtr -rwc 100 host` (loss and latency per hop — loss only at
 
 ## 5. Change and prove
 
-Change one setting, at the layer the evidence points to, asking first as the core's rule 2 says. Then reproduce the original condition — hold a connection idle past the old limit, repeat the load, transfer the large file — and show the measurement before and after. A connection problem is fixed when the original failure can no longer be produced, not when a setting looks more sensible.
+Change one setting, at the layer the evidence points to, asking first when the change was my idea (core rule 2). Then reproduce the original condition — hold a connection idle past the old limit, repeat the load, transfer the large file — and show the measurement before and after. A connection problem is fixed when the original failure can no longer be produced, not when a setting looks more sensible.

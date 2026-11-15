@@ -12,7 +12,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 - **Know which database this is.** Read the connection target (host, database name, user) from the config or the session, not from the task's wording. One I cannot place is production.
 - **See the rows first.** Run the `WHERE` as a `SELECT COUNT(*)` (and a sample) before the `UPDATE` or `DELETE` that uses it. A count that surprises me stops the write.
-- **Make it undoable.** Inside a transaction where the engine allows it, checked before `COMMIT`; otherwise a copy of the affected rows (`CREATE TABLE … AS SELECT`) or a fresh backup whose restore I have reason to trust. Say which.
+- **Make it undoable.** Inside an explicit transaction (`BEGIN` first; clients autocommit), checked and committed promptly, since it holds locks; otherwise, before the write, a copy of the affected rows (`CREATE TABLE … AS SELECT`; SQL Server `SELECT … INTO`) — in MySQL never inside the transaction, as DDL commits it — or a fresh backup whose restore I have reason to trust. Say which.
 - A write the user asked for by name goes ahead once the count matches what they expect; one that was my idea, or whose count surprises, is asked first with the exact statement and the row count (core rule 2).
 
 ## Where queries go wrong
@@ -23,7 +23,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 - **Money and ids**: never floats for money; never assume an auto-increment id has no gaps or is in time order.
 - **Text**: collation decides case and accent matching and can differ between columns being joined; MySQL `utf8` is not full UTF-8 (`utf8mb4` is).
 - **Paging**: `OFFSET` on a big table is a scan; page by key. An `ORDER BY` without a unique tiebreaker returns rows in a different order between pages.
-- Always parameters, never string-built SQL. Read the plan (`EXPLAIN`, `EXPLAIN ANALYZE` on a copy) before blaming or adding an index.
+- Always parameters, never string-built SQL. Read the plan (`EXPLAIN`; `EXPLAIN ANALYZE` executes the statement — for a write, on a copy or rolled back, see `references/engines.md`) before blaming or adding an index.
 
 ## Schema changes and migrations
 
@@ -40,7 +40,7 @@ A backup is proven only by a restore. Report what was backed up, where it is, it
 
 - A database connector or MCP server is the fastest way to see real rows. Check which database and which role it is before anything else; prefer a read-only role for looking, and treat every write through it as a write to that database (core rule 2).
 - Pull the rows that answer the question (`LIMIT`, the columns needed), never a table dump into the chat, and never personal data the task did not need.
-- Pair up when the task crosses fields: `hanahira-claude-ui-security` when the data is credentials, personal data or access rules; `hanahira-claude-ui-debug-test` when a slow or wrong query is the bug being hunted.
-- A migration on a large live table is worth a fresh reviewer before it runs (`references/agents.md` in the core).
+- Pair up when the task crosses fields: `hanahira-claude-ui-security` when the data is credentials, personal data or access rules; `hanahira-claude-ui-perf` when a query is slow; `hanahira-claude-ui-debug-test` when a wrong result is the bug being hunted.
+- Every change to stored data (a migration, a bulk update, a schema change) gets a fresh reviewer before it runs (`references/agents.md` in the core); the run itself stays with me.
 
 Engine specifics (locking behaviour, dump and restore commands, plan reading): `references/engines.md`. Modelling choices (keys, normalisation, types, soft delete, multi-tenant): `references/schema-design.md`. Open them only for the engine or the choice in front of me.

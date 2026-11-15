@@ -10,7 +10,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## The one discipline
 
-**It is seen working on a real device or the right simulator or emulator before it is called done** — on both platforms when the app ships to both. A green build or a passing unit test is not a running app. A store submission, a signing-key change or a release to users is an outward step under the core's rule 2: state it and get the go-ahead first.
+**It is seen working on a real device or the right simulator or emulator before it is called done** — on both platforms when the app ships to both. A green build or a passing unit test is not a running app. A store submission, a signing-key change or a release to users is an outward step under the core's rule 2: unless the user named it, show what will ship and ask first.
 
 ## What saves the most time
 

@@ -50,7 +50,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Containers
 
-- Bridge networks need published ports (`-p 8080:80`); host networking shares the host's stack and ports.
+- Bridge networks need published ports (`-p 8080:80`); host networking shares the host's stack and ports. A published port skips ufw/firewalld INPUT rules: publish only what must be public, and bind the rest to loopback (`-p 127.0.0.1:5432:5432`).
 - A service bound to `127.0.0.1` inside a container is unreachable from outside it; bind `0.0.0.0`.
 - Docker's embedded DNS (127.0.0.11) resolves service names only on user-defined networks.
 - Kubernetes: Pod, then Service (check `kubectl get endpoints`), then Ingress; `kubectl port-forward svc/name 8080:80` tests one layer at a time.

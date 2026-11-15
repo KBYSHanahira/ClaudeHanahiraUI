@@ -12,7 +12,7 @@ A look-up for when choosing fonts, building a type scale, or setting text in Tha
 
 ## Scale and measure
 
-- A scale with few steps and a consistent ratio (for example 1.2 or 1.25): roughly 12 · 14 · 16 · 20 · 24 · 30 · 36 · 48. Use the steps; no in-between sizes.
+- A scale with few steps, either a consistent ratio (1.2 or 1.25) or a hand-tuned set such as 12 · 14 · 16 · 20 · 24 · 30 · 36 · 48. Use the steps; no in-between sizes.
 - **Body**: 16px or larger on screens. Small text (12–13px) only for secondary labels, never for anything that must be read.
 - **Line height**: about 1.5 for body text, 1.1–1.3 for large headings — the larger the text, the tighter. Unitless values, so it scales.
 - **Line length**: 45–75 characters for Latin body text (`max-width: 65ch`). Long lines are the most common reason text feels hard to read.
@@ -34,7 +34,7 @@ Thai behaves differently from Latin in ways that break layouts designed only wit
 
 - **Vertical space.** Thai stacks vowels and tone marks above the consonant and vowels below it — up to two levels above. A line height that suits English clips or collides: use about **1.6–1.8** for body text, and check headings at the tightest line height used. Give single-line elements (buttons, inputs, table cells, badges) enough height and padding that upper and lower marks are not cut; never set `overflow: hidden` on a tight line box.
 - **No letter-spacing.** Extra tracking pulls marks away from their consonants and breaks the reading. Set `letter-spacing: 0` for Thai, including in uppercase-styled labels, which have no meaning in Thai anyway.
-- **No spaces between words.** Words run together; spaces mark phrases and sentences. Browsers break lines using a dictionary, which works well when the element has the right language: mark it `lang="th"`. As a safety net for long unbroken strings, `overflow-wrap: anywhere` with `word-break: normal`. Insert a zero-width space (`&#8203;`) or `<wbr>` to suggest a break in a long compound or a product name. Never `word-break: break-all` — it breaks inside words and separates marks from consonants.
+- **No spaces between words.** Words run together; spaces mark phrases and sentences. Browsers break lines using a dictionary, which works well when the element has the right language: mark it `lang="th"`. As a safety net for long unbroken strings, `overflow-wrap: anywhere` with `word-break: normal`. Insert a zero-width space (`&#8203;`) or `<wbr>` to suggest a break in a long compound or a product name. Never `word-break: break-all`: it breaks Thai inside words, wherever the line ends.
 - **Looped and loopless.** Traditional Thai letters have small loops ("มีหัว"); modern display faces often drop them ("ไม่มีหัว"). Looped faces read more easily at small sizes and in long text — use them for body. Loopless faces suit headings and brand moments, where their modern feel reads as intended.
 - **Size.** Thai letterforms look smaller than Latin at the same size in many fonts. When the two share a line, choose a Thai face whose letter height matches the Latin companion, or set Thai body text one notch larger than the Latin body (16px minimum; add that size to the scale as a named step rather than using it ad hoc).
 - **Weights.** Bold Thai fills in at small sizes; prefer medium or semibold for emphasis in body text.

@@ -6,7 +6,7 @@ A look-up for platform features that need several pieces to line up, and for shi
 
 - Ask at the moment the feature needs it, after explaining why in the app's own UI.
 - Handle every state: not asked, granted, denied, denied permanently, limited (partial photo or approximate location). Each needs a working screen.
-- On permanent denial, offer a button to the app's settings page; the system prompt will not show again.
+- On permanent denial, offer a button to the app's settings page; the OS permission dialog will not show again.
 - iOS: every protected API needs its usage description string in `Info.plist`, or the app crashes on access.
 - Android: declare in the manifest and request at runtime for dangerous permissions; some (background location, exact alarms, notifications) have extra rules on newer versions.
 - Re-check permission on resume; the user can change it in settings at any time.

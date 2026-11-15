@@ -4,7 +4,7 @@ A look-up for changing code, config or infrastructure that has not been mapped i
 
 ## 1. Map it first
 
-Spend a few reads on these before the first edit. Stop as soon as they are answered; this is a map, not a survey.
+Unless the task is truly small, a read-only scout (low effort; `references/agents.md`) answers these before the first edit, and I check the lines its answers rest on. Stop as soon as they are answered; this is a map, not a survey.
 
 | Question | Where it is usually answered |
 |---|---|
@@ -14,7 +14,7 @@ Spend a few reads on these before the first edit. Stop as soon as they are answe
 | What conventions does the project keep? | Two or three neighbouring files: naming, error handling, test style, imports, formatting |
 | What is the state right now? | `git status`, the current branch, and the test command's result *before* my change — that is the baseline |
 
-Run the tests before editing. If they are already red, record which ones, so that later "no new failures" is a claim I can back.
+Run the tests that cover what I will change before editing. If they are already red, record which ones, so that later "no new failures" is a claim I can back.
 
 ## 2. Change it in the project's own way
 
@@ -52,4 +52,4 @@ Trace the request end to end before changing anything: client → gateway or pro
 
 ## 6. Finish
 
-Run the full test command, the linter and the type check the project uses, and read the output. Check `git diff` once as a reviewer would: only intended changes, nothing left behind (debug prints, commented-out code, stray files). Report each change as `file:line — what — why`. If I learned the run or test commands the hard way, offer once, in a line, to save them to the project's `CLAUDE.md`.
+Run the checks rule 5 calls for (the full suite, linter and type check when shared code changed; the covering tests otherwise) and read the output. Check `git diff` once as a reviewer would: only intended changes, nothing left behind (debug prints, commented-out code, stray files). Report each change as `file:line — what — why`. If I learned the run or test commands the hard way, offer once, in a line, to save them to the project's `CLAUDE.md`.

@@ -1,6 +1,6 @@
 # Hardening reference
 
-Concrete settings. Read the current state first, change one thing at a time asking first as the core's rule 2 says, and check the tool's documentation for the version installed — defaults and directive names change between releases.
+Concrete settings. Read the current state first, change one thing at a time, asking first when the change was my idea (core rule 2), and check the tool's documentation for the version installed — defaults and directive names change between releases.
 
 ## TLS on a web server
 
@@ -8,7 +8,7 @@ Concrete settings. Read the current state first, change one thing at a time aski
 - Ciphers: for TLS 1.2, forward-secret AEAD suites (ECDHE with AES-GCM or ChaCha20-Poly1305). Take the list for the server's version from Mozilla's SSL Configuration Generator, "intermediate" profile, rather than writing it by hand.
 - Serve the full chain (leaf plus intermediates), not the leaf alone.
 - Redirect port 80 to 443. Add HSTS only once HTTPS works for every subdomain it would cover — it cannot easily be taken back.
-- Enable OCSP stapling where the certificate authority supports it; HTTP/2 or HTTP/3.
+- Enable OCSP stapling only if the certificate has an OCSP URL (`openssl x509 -noout -ocsp_uri -in cert.pem`); many Let's Encrypt certificates no longer carry one; HTTP/2 or HTTP/3.
 
 nginx, as a shape:
 
@@ -53,20 +53,21 @@ Cookies: `Secure; HttpOnly; SameSite=Lax` (or `Strict`); a `__Host-` prefix for 
 
 ## SSH
 
-In `/etc/ssh/sshd_config` (or a file under `sshd_config.d/`), after confirming key login already works for the account in use:
+In a file under `sshd_config.d/` that sorts first (e.g. `00-hardening.conf`; sshd keeps the first value it reads, so a later `50-cloud-init.conf` cannot override it), after confirming key login already works for the account in use. Replace every `<…>` before `sshd -t`, which accepts it as a user name:
 
 ```
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
-AllowUsers <accounts that must log in>   # placeholder: must include the account in use, or it is locked out; or AllowGroups
+# placeholder below: must include the account in use, or it is locked out; or use AllowGroups
+AllowUsers <accounts that must log in>
 MaxAuthTries 3
 LoginGraceTime 30
 X11Forwarding no
 ```
 
-`sshd -t` validates; `sshd -T | grep -i -E 'permitroot|passwordauth|pubkey'` shows what is in effect, including overrides from included files. Reload, then prove a **new** session works before closing the old one. Use Ed25519 keys with a passphrase; one key per person and device; remove keys of people who left. Changing the port only reduces log noise; it is not a control. Rate-limit or ban repeated failures (`fail2ban`, or firewall rate limits).
+`sshd -t` validates; `sshd -T | grep -i -E 'permitroot|passwordauth|pubkey'` shows what is in effect, including overrides from included files. Reload, then prove a **new** session works before closing the old one. Use Ed25519 keys with a passphrase; one key per person and device; remove keys of people who left. Changing the port only reduces log noise; it is not a control. OpenSSH before 8.7 names `KbdInteractiveAuthentication` `ChallengeResponseAuthentication`. On a socket-activated sshd (newer Ubuntu), a `Port` or `ListenAddress` change needs `systemctl daemon-reload && systemctl restart ssh.socket`, or the old port stays. Rate-limit or ban repeated failures (`fail2ban`, or firewall rate limits).
 
 ## Firewalls
 
@@ -75,7 +76,7 @@ Read before changing: `ufw status verbose` · `nft list ruleset` · `iptables -S
 The order that avoids lockout, in `ufw` terms:
 
 ```
-ufw allow from <admin-ip> to any port 22 proto tcp    # the admin path first
+ufw allow from <admin-ip> to any port 22 proto tcp    # <admin-ip> = the source the server sees: first field of $SSH_CLIENT
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 80,443/tcp

@@ -37,7 +37,7 @@ A look-up for checking a web app through Claude in Chrome or the built-in browse
 The browser runs on the person's computer. When Claude runs on an SSH host or in the cloud:
 
 - `http://localhost:3000` in the browser is the person's machine, not the host. A server I started on the host is not there.
-- Ways to make it reachable, in order of preference: a preview or staging URL the project already has; a port forward the person runs on their machine (`ssh -L 3000:localhost:3000 host`) so their `localhost:3000` reaches the host; a tunnel service the team already uses. Opening a port on the host's firewall is an outward step under rule 2.
+- Ways to make it reachable, in order of preference: a preview or staging URL the project already has; a port forward the person runs on their machine (`ssh -L 3000:127.0.0.1:3000 host`) so their `localhost:3000` reaches the host; a tunnel service the team already uses. Opening a port on the host's firewall is an outward step under rule 2.
 - Bind the dev server to `127.0.0.1` when it is reached through an SSH forward; `0.0.0.0` exposes it to the whole network.
 - Generated HTML that only needs to be looked at goes in an artifact, not a local file the browser cannot open.
 

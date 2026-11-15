@@ -10,7 +10,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## The one discipline
 
-**A number before, a number after, on the real workload.** No optimisation goes in without a measured bottleneck behind it, and none is called a win without the second number. When the user has pinned the exact change, it is a plain edit and none of this applies.
+**A number before, a number after, on the real workload.** No optimisation goes in without a measured bottleneck behind it, and none is called a win without the second number. When the user has pinned the exact change, it needs no baseline; it is still checked under the core's rule 5, and a missing before-number is named.
 
 ## What saves the most time
 
@@ -34,7 +34,7 @@ N+1 queries · a missing or unused index · a cache that never hits or is invali
 
 ## Back-end
 
-- Read the plan: `EXPLAIN ANALYZE` (PostgreSQL, MySQL 8) shows where the time goes and whether an index is used. A sequential scan on a large table filtered by one column is a missing index.
+- Read the plan: `EXPLAIN ANALYZE` (PostgreSQL; MySQL 8.0.18+, SELECT only) shows where the time goes and whether an index is used. It runs the query for real: wrap a write in `BEGIN; … ROLLBACK;`, and on production run it on a replica or ask first; plain `EXPLAIN` does not run it. A sequential scan on a large table whose filter keeps few rows usually means a missing index; one that keeps most rows is correct.
 - N+1: count the queries per request. One request should not issue a query per row.
 - Pools: size connection pools to what the database can serve; a request waiting on the pool looks like a slow query.
 - Serialization and payload size cost real time on large responses; page and select only the needed fields.
@@ -48,7 +48,7 @@ N+1 queries · a missing or unused index · a cache that never hits or is invali
 
 ## Working with tools and other skills
 
-- Use a browser tool for a Performance trace or Lighthouse run, and the network panel for waterfall and payload sizes.
+- Use a browser tool for a Performance trace or Lighthouse run, and the network panel for waterfall and payload sizes (load `hanahira-claude-ui-browser` before the first browser step).
 - Pair up when the cause lies in another field: `hanahira-claude-ui-data` for queries and indexes, `hanahira-claude-ui-debug-test` for a regression that needs bisecting, `hanahira-claude-ui-design` for front-end rendering and layout.
 - Helpers for parallel measurement or profiling follow `references/agents.md` in the core. The change and its before-and-after numbers stay with me.
 

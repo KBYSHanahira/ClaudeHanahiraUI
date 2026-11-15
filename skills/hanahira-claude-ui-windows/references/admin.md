@@ -26,6 +26,7 @@ Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4625; StartTime=(Get-Date
 Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='MyApp'; Level=2}
 ```
 
+- No match is reported as an error ('No events were found…'); add `-ErrorAction SilentlyContinue` and treat empty as zero events.
 - `Get-WinEvent -ListLog *` lists logs and sizes; Level 1 critical, 2 error, 3 warning.
 - Reading the Security log needs elevation. Export for someone else with `wevtutil epl System C:\temp\system.evtx`.
 

@@ -59,7 +59,7 @@ A look-up for designing or changing an HTTP API: what to call things, what each 
 
 ## GraphQL specifics
 
-- Errors come back with HTTP 200 in an `errors` array; clients must read it. Use typed error unions for expected business failures.
+- Field errors come back with HTTP 200 in an `errors` array; parse and validation errors may be 4xx depending on the server and media type. Clients read both the status and `errors`. Use typed error unions for expected business failures.
 - Resolvers per field cause N+1 queries; batch them per request with a DataLoader.
 - Limit query depth and cost (complexity scoring), set a timeout, and disable introspection in production if the schema is not public.
 - Paginate with connections (`first`, `after`, `pageInfo`). Evolve by adding fields and marking old ones `@deprecated`; there is no versioning.

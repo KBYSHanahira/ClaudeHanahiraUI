@@ -49,4 +49,4 @@ Change what was asked. "Fix the grammar" is not "rewrite it". Keep the author's 
 
 ## Before delivering
 
-Read it as the reader: Is the point in the first lines? Can they act? Is every number and name right? Would any sentence be missed if cut? A piece going to a client or the public goes to a fresh critic with the brief before it goes to the user; anything else I read as the reader myself, which is faster and enough.
+Read it as the reader: Is the point in the first lines? Can they act? Is every number and name right? Would any sentence be missed if cut? A long draft, or a long piece going to a client or the public, goes to a fresh reviewer (on low effort) with the brief and not my opinion of it, before it goes to the user; a short message I read as the reader myself.

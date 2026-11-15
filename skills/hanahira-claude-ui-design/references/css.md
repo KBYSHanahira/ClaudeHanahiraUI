@@ -23,12 +23,14 @@ Every design decision lives once, as a custom property, in two layers:
 }
 ```
 
+If the project has a theme switch, also define the dark roles under its selector (`:root[data-theme="dark"]`) and guard the media query with `:root:not([data-theme="light"])`.
+
 Components refer to roles, never to raw values, so a theme changes in one place. A value that appears twice in the stylesheet should be a token; a value off the scale needs a reason.
 
 ## Architecture
 
 - **Keep specificity low and flat.** Single classes; no IDs for styling; avoid nesting deeper than two levels. Most "CSS fights" are specificity fights.
-- **Cascade layers** make the order explicit: `@layer reset, tokens, base, components, utilities;` — a later layer wins whatever the selector.
+- **Cascade layers** make the order explicit: `@layer reset, tokens, base, components, utilities;` — a later layer wins whatever the selector, but any unlayered CSS beats all layers, and for `!important` the order reverses; move existing and third-party CSS into a layer (`@import url(x.css) layer(vendor)`) first.
 - **`!important` is a last resort** for utilities and for overriding third-party styles, not a way to win an argument with my own CSS. If it seems needed, find what is overriding and why.
 - **Scope styles to components** by the project's means: CSS modules, scoped styles, a naming convention, or `@scope`.
 - **Logical properties** (`margin-inline`, `padding-block`, `inset-inline-start`) so layouts work in right-to-left scripts.
@@ -67,7 +69,7 @@ Use the browser's developer tools before changing code; they show the answer.
 | A rule "does not apply" | The Styles panel shows it struck through: something more specific, later, or in a later layer wins. Or the selector does not match — check the actual DOM. Or the property is invalid for that element |
 | Page scrolls sideways | One element wider than the viewport. Find it: `* { outline: 1px solid red }`, or in the console look for elements whose `getBoundingClientRect().right` exceeds `innerWidth`. Usual causes: a fixed width, `100vw` (which includes the scrollbar), long unbroken text, negative margins |
 | Flex or grid child overflows or will not shrink | Flex and grid items default to `min-width: auto`. Set `min-width: 0` (or `min-height: 0`) on the item |
-| `z-index` has no effect | The element is in a different stacking context. A parent with `transform`, `opacity < 1`, `filter`, `position` + `z-index`, `isolation` or `contain` creates one; z-index only competes inside it |
+| `z-index` has no effect | The element is in a different stacking context. A parent with `transform`, `opacity < 1`, `filter`, `will-change`, `position: fixed|sticky`, `position` + `z-index`, a flex or grid child with `z-index`, `isolation: isolate`, `contain: paint|layout` creates one; z-index only competes inside it |
 | `position: sticky` does not stick | An ancestor has `overflow` other than visible, or the element has no `top`, or its parent is only as tall as itself |
 | `height: 100%` does nothing | The parent has no definite height |
 | Margins behave oddly | Vertical margins collapse between siblings and between parent and first child. Use `gap` or padding |

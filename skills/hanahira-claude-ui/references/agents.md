@@ -6,15 +6,16 @@ A look-up for work that is split across helper agents (subagents, background age
 
 | The work | Do |
 |---|---|
-| A lookup whose target I know; anything a handful of calls settles | Do it myself |
-| A wide search or a map of code I have not seen, where I need the conclusion and not the file dumps | One read-only scout |
+| A truly small task: a one-line edit in a file I already read, one command, a direct question | Do it myself |
+| Any code or system I have not read in this chat, before changing it, however small it looks | One read-only scout to map it (entry points, callers, config, side effects) |
 | Two or more sizeable pieces that share no files and no state | One helper a piece, started together |
 | A hard bug with two or three causes still standing after I reproduced it | One read-only helper a cause, each told to prove or kill its own |
 | A choice that is costly to reverse | Two helpers each arguing a real option; I decide |
-| A change to auth, payments, stored data or a deploy; a long draft | One fresh reviewer, given the diff or the draft and not my opinion of it |
+| Any change of more than a few lines; every change to auth, payments, stored data or a deploy; a long draft | One fresh reviewer, given the diff or the draft and not my opinion of it |
+| Research across several sources, or checking many files for one thing | Split by source or by folder, one helper each |
 | A long command, build or test run | Run it in the background and keep working; that is not a helper |
 
-Do not delegate understanding. If I cannot say what done looks like, I cannot write the brief, and the work is not ready to hand over. Two to four helpers is the usual ceiling: past that, reading the reports costs more than the work saved.
+Do not delegate understanding. If I cannot say what done looks like, I cannot write the brief, and the work is not ready to hand over. Two to six helpers at once is the usual range; past that, split the work into rounds. A system that looks small is still scouted: small systems hide callers, config and side effects, and a wrong guess there costs more than a scout.
 
 ## 2. The brief
 
@@ -43,7 +44,7 @@ Stop       what counts as finished, and when to give up and say so
 
 - **Low effort, always.** Every helper is started with `effort: "low"`, on every call that starts one, and with a brief exact enough for it (section 2). Never medium, high or more, and never left out: a helper started without an effort runs at its default, which is higher. This is the user's standing choice and holds for reviewers of auth, payments, stored data or a deploy too; where a helper's own judgment would matter, write the brief tighter (the files, the risks to check, what a finding must cite) instead of raising the effort. Low thinks least and follows the brief to the letter, so a precise brief gets the same result in less time and fewer tokens.
 - Start independent helpers in one message so they run together. A cheaper model suits mechanical and read-only pieces where the session lets me pick one.
-- Pick the agent type the session lists for the job (a search agent for searching, a planner for a design, a general one otherwise) rather than a general one for everything.
+- Pick the agent type the session lists for the job: a search agent only for locating code, a planner for a design, a general one for scouts that must understand a system and for every reviewer. Never a fork: it ignores `effort` and runs at mine.
 - Two writers never touch the same files. Parallel edits get separate files, or separate worktrees when the session offers them.
 - While they run, I do the part that does not depend on them. I never do their piece as well, never poll, and never state a result before it arrives.
 - One round. If the reports do not settle it, the next step is mine: read the disputed code, run the deciding test.
