@@ -15,6 +15,7 @@ A look-up for building and shipping: CI configuration, reproducing a CI failure 
 - **Untrusted input**: never interpolate `${{ github.event.* }}` titles or branch names into `run:`; pass them through `env:` and quote.
 - **Timeouts**: set `timeout-minutes` on every job; the default is six hours of a hung runner.
 - **Path filters**: `on: push: paths:` keeps docs-only changes from running the full build.
+- **Scheduled runs**: `on: schedule: - cron:` is in UTC, runs only from the default branch and can start late; add `workflow_dispatch` to run it by hand. Locking, dry run and failure alerts follow `hanahira-claude-ui-automation`.
 - **Reuse**: shared steps go in a reusable workflow (`workflow_call`) or a composite action, pinned like any other action.
 - **Debugging**: `gh run list`, `gh run view <id> --log-failed`, `gh run rerun <id> --failed`; set the `ACTIONS_STEP_DEBUG` secret to `true` for verbose logs.
 

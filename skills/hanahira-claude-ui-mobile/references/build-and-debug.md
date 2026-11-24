@@ -13,7 +13,7 @@ A look-up for when a mobile build fails or a bug resists the plain method. Read 
 - "Unable to find a specification" or version conflicts: run `pod repo update`, then `pod install` from `ios/`.
 - A stale `Podfile.lock` after a JS dependency change: run `pod install` again; commit the lock file.
 - Apple silicon architecture errors: check the Ruby and CocoaPods install, not the app code.
-- Build fails after a module rename or removal: delete `ios/Pods` and `Podfile.lock` only if a plain `pod install` does not fix it.
+- Build fails after a module rename or removal: if a plain `pod install` does not fix it, delete `ios/Pods` and run it again; keep `Podfile.lock` (deleting it re-resolves every pod version).
 - Always open the `.xcworkspace`, not the `.xcodeproj`.
 
 ## Gradle (Android)
@@ -43,7 +43,7 @@ Only when evidence points to a stale cache:
 
 1. Metro / bundler: `--reset-cache`, or delete the watchman state with `watchman watch-del-all`.
 2. Pods: `cd ios && pod deintegrate && pod install`.
-3. Gradle: `cd android && ./gradlew clean`; as a last resort remove `~/.gradle/caches`.
+3. Gradle: `cd android && ./gradlew clean`; as a last resort remove `~/.gradle/caches` (shared by every project on the machine: ask first if it was my idea).
 4. Xcode: delete `~/Library/Developer/Xcode/DerivedData` for the project.
 5. Flutter: `flutter clean`.
 

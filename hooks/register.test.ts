@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { keepCards, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { keepCards, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, streamChars, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -336,5 +336,21 @@ describe('agent cards kept', () => {
   test('more running cards than the cap: all of them stay', () => {
     const list = Array.from({ length: 14 }, (_, i) => card(`r${i}`, 'running'))
     expect(keepCards(list as never).length).toBe(14)
+  })
+})
+
+describe('streamChars', () => {
+  test('counts text, thinking and tool input', () => {
+    expect(streamChars({ kind: 'text', text: 'abc' })).toBe(3)
+    expect(streamChars({ kind: 'thinking', text: 'ab' })).toBe(2)
+    expect(streamChars({ kind: 'input', json: '{"a":1}' })).toBe(7)
+  })
+  test('a piece with no string adds 0 and does not throw (Mythos thinking)', () => {
+    expect(streamChars({ kind: 'thinking' })).toBe(0)
+    expect(streamChars({ kind: 'thinking', text: undefined })).toBe(0)
+    expect(streamChars({ kind: 'input', json: null })).toBe(0)
+  })
+  test('other pieces are not counted', () => {
+    expect(streamChars({ kind: 'tool-done' })).toBeNull()
   })
 })

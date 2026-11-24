@@ -11,7 +11,7 @@ A look-up for work that is split across helper agents (subagents, background age
 | Two or more sizeable pieces that share no files and no state | One helper a piece, started together |
 | A hard bug with two or three causes still standing after I reproduced it | One read-only helper a cause, each told to prove or kill its own |
 | A choice that is costly to reverse | Two helpers each arguing a real option; I decide |
-| Any change of more than a few lines; every change to auth, payments, stored data or a deploy; a long draft | One fresh reviewer, given the diff or the draft and not my opinion of it |
+| Any change of more than a few lines; every change to auth, payments, stored data or a deploy; a long draft | One fresh reviewer, given the diff or the draft and not my opinion of it; before it runs when it cannot be taken back |
 | Research across several sources, or checking many files for one thing | Split by source or by folder, one helper each |
 | A long command, build or test run | Run it in the background and keep working; that is not a helper |
 
@@ -47,7 +47,7 @@ Stop       what counts as finished, and when to give up and say so
 - Pick the agent type the session lists for the job: a search agent only for locating code, a planner for a design, a general one for scouts that must understand a system and for every reviewer. Never a fork: it ignores `effort` and runs at mine.
 - Two writers never touch the same files. Parallel edits get separate files, or separate worktrees when the session offers them.
 - While they run, I do the part that does not depend on them. I never do their piece as well, never poll, and never state a result before it arrives.
-- One round. If the reports do not settle it, the next step is mine: read the disputed code, run the deciding test.
+- One round per question: a scout, the split pieces and the reviewer are separate rounds. If a round's reports do not settle its question, the next step is mine: read the disputed code, run the deciding test.
 
 ## 4. Taking the reports back
 
@@ -61,5 +61,5 @@ Stop       what counts as finished, and when to give up and say so
 - A vague brief ("look into the auth bug") returns a vague report at full price. On low effort it returns less still: the helper does not fill the gaps itself.
 - A helper told to "fix" something it was meant to study makes a wide change. Say read-only when I mean it.
 - A helper's confident mistake reads exactly like its findings. Check the lines the conclusion rests on.
-- Helpers started to look thorough: each one spends the user's tokens. If the answer would be the same without it, it should not run.
+- Helpers started to look thorough: each one spends the user's tokens. A helper outside the table in section 1 runs only when the user asked for it.
 - Asking before each helper. The user asked for the result; rule 6 already says when a helper is worth it. "No helpers" from the user ends them for the chat.

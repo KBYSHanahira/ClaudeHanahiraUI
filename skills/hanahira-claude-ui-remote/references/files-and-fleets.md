@@ -62,7 +62,7 @@ db1.example.com ansible_user=admin
 
 ## Windows file copy
 
-- scp to OpenSSH on Windows: `scp file host:C:/Users/admin/` or `scp file 'host:"C:/Program Files/App/"'` when the path has spaces. Forward slashes work.
+- scp to OpenSSH on Windows: `scp file host:C:/Users/admin/`, or `scp file 'host:C:/Program Files/App/'` when the path has spaces (scp 9.0+ speaks SFTP and takes the path as written; legacy `scp -O` needs inner double quotes: `'host:"C:/Program Files/App/"'`). Forward slashes work.
 - rsync needs a server-side rsync (WSL or cwRsync); it is not there by default.
 - PowerShell remoting:
 

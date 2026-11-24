@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-design"
-description: Hanahira Claude UI companion for UI and visual design — aesthetic direction, palette, type including Thai typography, layouts that avoid templated AI-default looks, responsive UI across phone to TV, design tokens, CSS architecture and style bugs, accessibility, internationalisation (i18n, right-to-left, locale formats), render verification. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for UI and visual design — layout, palette, CSS, Thai typography, responsive UI, accessibility, i18n. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -41,6 +41,6 @@ A layout is not done until it has been rendered and looked at, at a phone and a 
 - Render with what the session has: a browser or preview tool for screenshots at each width, the project's own dev server (load `hanahira-claude-ui-browser` before the first browser step). A screenshot I looked at is the proof; code that should work is not.
 - A design-tool connector or a design-system skill, when the session has one, is the source of truth for tokens and components: read it before inventing a colour or a spacing.
 - When the result is a file with its own skill (a deck, a document, a published page), load that skill and bring this one's direction, type and hierarchy into it.
-- Pair with `hanahira-claude-ui-frontend` for the component, state and framework code behind a screen, `hanahira-claude-ui-debug-test` for a layout bug that will not yield, and `hanahira-claude-ui-security` when the screen is a login, a payment or a permission dialog.
+- Pair with `hanahira-claude-ui-frontend` for the component, state and framework code behind a screen, `hanahira-claude-ui-debug-test` for a layout bug that will not yield, `hanahira-claude-ui-security` when the screen is a login, a payment or a permission dialog, `hanahira-claude-ui-perf` for a slow or janky page, `hanahira-claude-ui-browser` to see the screen rendered, and `hanahira-claude-ui-mobile` when the screen is a native app. Helpers follow `references/agents.md` in the core.
 
 Finding a direction and palette: `references/direction.md`. Latin and Thai type in depth: `references/typography.md`. Tokens, layout patterns and CSS bugs: `references/css.md`. Open only the one the task needs.

@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-debug-test"
-description: Hanahira Claude UI companion for debugging and testing — reproducing bugs, isolating root causes, reading stack traces and logs, flaky or failing suites, writing regression tests, proving a fix. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for debugging and tests — bugs with no plain cause, stack traces, flaky or failing suites, regression tests. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -36,8 +36,8 @@ Stale build or cache, or the running code is not the edited code · wrong enviro
 
 ## Working with tools and other skills
 
-- Observe with the session's tools before reasoning: a browser tool for console and network errors, a log or monitoring connector for the failing request, the database connector for the row that broke.
-- Rival causes get one read-only helper each, told to prove or kill its own, instead of being tested in turn (`references/agents.md` in the core). The fix and its proof stay with me.
-- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for a query or migration, `hanahira-claude-ui-security` for auth, TLS or a dropping connection, `hanahira-claude-ui-design` for a layout bug, `hanahira-claude-ui-perf` when the bug is slowness, `hanahira-claude-ui-api` for a failing integration, `hanahira-claude-ui-devops` for a red pipeline or a bad deploy.
+- Observe with the session's tools before reasoning: a browser tool for console and network errors (load `hanahira-claude-ui-browser` first), a log or monitoring connector for the failing request, the database connector for the row that broke.
+- Rival causes get one read-only helper each, told to prove or kill its own, instead of being tested in turn (`references/agents.md` in the core). The proof stays with me.
+- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for a query or migration, `hanahira-claude-ui-security` for auth, TLS or a dropping connection, `hanahira-claude-ui-design` for a layout bug, `hanahira-claude-ui-frontend` for a state, hydration or routing bug, `hanahira-claude-ui-perf` when the bug is slowness, `hanahira-claude-ui-api` for a failing integration, `hanahira-claude-ui-devops` for a red pipeline or a bad deploy.
 
 Hard cases (heisenbugs, memory, performance, production-only, concurrency): `references/hard-bugs.md`. Choosing what to test and at which level, fixtures, mocks: `references/testing.md`. Open `hard-bugs.md` when the plain method has stalled; `testing.md` before writing or repairing tests.

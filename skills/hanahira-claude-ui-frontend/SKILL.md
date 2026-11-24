@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-frontend"
-description: Hanahira Claude UI companion for web app code — React, Vue, Svelte and Angular components, Next.js, Nuxt and other meta-frameworks, state management, routing, data fetching and caching, forms and validation, server-side rendering and hydration, TypeScript in the UI, bundlers (Vite, webpack), component tests and end-to-end tests. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for web app code — React, Vue, Svelte, Angular, Next, Nuxt, state, routing, SSR, forms, bundlers, UI tests. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -43,12 +43,12 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Tests
 
 - Component tests query what the user sees — role, label, text — in the testing-library style, and act through user events.
-- Flows that cross pages run end to end with Playwright or the project's existing tool.
+- Flows that cross pages run end to end with the project's existing tool; Playwright for a new setup.
 - Avoid snapshot sprawl; a large snapshot is approved without being read and protects nothing.
 
 ## Working with tools and other skills
 
-- `hanahira-claude-ui-design` for the look, CSS and accessibility; `hanahira-claude-ui-perf` for bundle size and Web Vitals; `hanahira-claude-ui-api` for the backend contract; `hanahira-claude-ui-browser` to check the change in a real browser, with its console and network.
+- `hanahira-claude-ui-design` for the look, CSS and accessibility; `hanahira-claude-ui-perf` for bundle size and Web Vitals; `hanahira-claude-ui-api` for the backend contract; `hanahira-claude-ui-browser` to check the change in a real browser, with its console and network; `hanahira-claude-ui-debug-test` for a flaky UI test or a bug with no plain cause; `hanahira-claude-ui-security` for login, sessions and token storage; `hanahira-claude-ui-ai` for a chat or streaming UI over a model.
 - Helpers follow `references/agents.md` in the core.
 
 Framework traps, meta-framework data loading and hydration fixes: `references/frameworks.md`. Component and end-to-end tests, CI checks, env variables, source maps: `references/testing-and-tooling.md`.

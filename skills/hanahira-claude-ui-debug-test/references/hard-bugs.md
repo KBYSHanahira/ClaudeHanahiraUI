@@ -35,20 +35,13 @@ Use the tools the platform offers: a race detector (`go test -race`, ThreadSanit
 
 ## Memory
 
-- **A leak** grows steadily under steady work. Take heap snapshots at two points and compare what grew. Usual causes: an unbounded cache or list, listeners or timers never removed, closures holding large objects, connections or handles not closed.
+- **A leak** grows steadily under steady work: the snapshot-and-compare method is in `references/profiling.md` of `hanahira-claude-ui-perf`.
 - **A spike** comes from one large operation: a whole file or result set loaded at once. Stream it or page it.
 - A process killed by the operating system for memory leaves its trace in the system log, not the application's.
 
 ## Performance
 
-Measure first. Intuition about where time goes is wrong more often than right.
-
-1. **Define slow**: which operation, how slow, compared with what, for what input size. Get a number and a way to repeat the measurement.
-2. **Find where the time goes** with a profiler or with timing at the boundaries. Is it CPU, waiting on I/O, waiting on a lock, or the network?
-3. **Fix the largest part.** Common finds: a query per item in a loop; a missing index; work repeated that could be done once; an accidental quadratic loop; a synchronous call that blocks; too many round trips; too much data fetched.
-4. **Measure again** with the same method. Keep the change only if the number moved.
-
-A change that makes the code harder to read and does not move the measurement is reverted.
+Slowness is `hanahira-claude-ui-perf`'s job: a number before, a number after, the profiler in between. A change that makes the code harder to read and does not move the measurement is reverted.
 
 ## Only in production
 

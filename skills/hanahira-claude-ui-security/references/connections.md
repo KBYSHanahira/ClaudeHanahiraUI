@@ -1,6 +1,6 @@
 # Connections that drop, stall or run slow
 
-A look-up for when a connection works and then fails, or works slowly. (One that never connects at all is covered in the core's `references/ops.md`.) These problems are hard because the failure is rarely in the place that reports it; the method is to find the layer before touching any setting.
+A look-up for when a connection works and then fails, or works slowly. (One that never connects at all is covered in the core's `references/ops.md` and in `hanahira-claude-ui-network`.) These problems are hard because the failure is rarely in the place that reports it; the method is to find the layer before touching any setting.
 
 ## 1. Describe it exactly
 

@@ -54,7 +54,7 @@ Components refer to roles, never to raw values, so a theme changes in one place.
 - **Fluid values** with `clamp()` for type and spacing between a minimum and a maximum.
 - **The viewport meta tag** must be present: `<meta name="viewport" content="width=device-width, initial-scale=1">`. Never disable zoom.
 - **Viewport height**: `100vh` is wrong on mobile browsers with collapsing toolbars; use `100dvh` (with `100vh` as a fallback).
-- **Safe areas** on notched phones: `padding: env(safe-area-inset-top) ...`.
+- **Safe areas** on notched phones: `padding: env(safe-area-inset-top) ...`; the insets stay 0 unless the viewport tag adds `viewport-fit=cover`.
 - **Input type, not screen size, decides hover**: `@media (hover: hover) and (pointer: fine)`. Touch targets are at least 44×44px with space between them.
 - **Images**: `max-width: 100%; height: auto`, with `width` and `height` attributes so space is reserved; `srcset`/`sizes` or `<picture>` to send an appropriate file.
 - **Tables** on narrow screens: let the table scroll horizontally inside its own container, or restack rows as cards — the page itself never scrolls sideways.
@@ -81,18 +81,10 @@ Change one thing at a time in the tools, confirm it fixes the symptom, then writ
 
 ## Performance
 
-Measure with the browser's performance panel and Lighthouse, on a throttled connection and a mid-range phone profile — not on a developer machine on fibre. The numbers people feel:
-
-- **Largest Contentful Paint** (main content visible): aim under 2.5s. Send the main image early (`fetchpriority="high"`, no lazy-loading on it), in a modern format (AVIF/WebP) at the right size; inline or prioritise the CSS for the first screen; do not block rendering with scripts (`defer`, `type="module"`).
-- **Cumulative Layout Shift** (things jumping): aim under 0.1. Give images, video, embeds and ad slots dimensions or `aspect-ratio`; reserve space for anything loaded late; tune fallback fonts.
-- **Interaction to Next Paint** (response to input): aim under 200ms. Keep long JavaScript tasks off the main thread, break up work, avoid layout thrashing (reading layout then writing style in a loop).
-
-And:
+Core Web Vitals targets and fixes, images, fonts and shipping less: `hanahira-claude-ui-perf`. The CSS side:
 
 - Animate only `transform` and `opacity`; they do not trigger layout. `will-change` sparingly, removed afterwards.
-- `loading="lazy"` on images and iframes below the first screen; `content-visibility: auto` for long off-screen sections.
-- Ship less: remove unused CSS and JavaScript, split by route, compress (Brotli), cache static files with hashed names for a long time.
-- Fonts: WOFF2, subset, few files, `font-display: swap`.
+- `content-visibility: auto` for long off-screen sections.
 - Large `box-shadow`, `filter: blur()` and `backdrop-filter` over big areas are expensive to paint, especially on phones.
 
 Report performance as numbers before and after, measured the same way.

@@ -5,13 +5,6 @@ A look-up for the mechanics of reaching a host and keeping work alive on it. Key
 ## ~/.ssh/config
 
 ```
-Host *
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-    ControlMaster auto
-    ControlPath ~/.ssh/cm-%r@%h:%p
-    ControlPersist 10m
-
 Host bastion
     HostName bastion.example.com
     User ops
@@ -21,9 +14,16 @@ Host app-prod
     HostName 10.0.1.20
     User deploy
     ProxyJump bastion
+
+Host *
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%r@%h:%p
+    ControlPersist 10m
 ```
 
-- The first matching value wins, so put specific `Host` blocks before `Host *` when they override the same key.
+- The first matching value wins, so `Host *` goes last.
 - `ssh -G app-prod` prints the final resolved settings; use it when a host connects with the wrong user or key.
 - `ssh -O check app-prod` and `ssh -O exit app-prod` inspect and close a shared master connection.
 - Name aliases so production is obvious (`app-prod`, not `app2`).

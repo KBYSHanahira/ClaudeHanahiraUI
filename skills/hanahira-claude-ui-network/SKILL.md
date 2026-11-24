@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-network"
-description: Hanahira Claude UI companion for networking — DNS records and resolution, IP addressing and subnets, routing, NAT and port forwarding, reverse proxies and load balancers (nginx, HAProxy, cloud LBs), VPNs (WireGuard, OpenVPN), Docker and Kubernetes networking, packet-level diagnosis (dig, mtr, ss, tcpdump). OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for networking — DNS, routing, NAT, proxies, load balancers, VPNs, a host or port that cannot be reached. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -50,14 +50,14 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Containers
 
-- Bridge networks need published ports (`-p 8080:80`); host networking shares the host's stack and ports. A published port skips ufw/firewalld INPUT rules: publish only what must be public, and bind the rest to loopback (`-p 127.0.0.1:5432:5432`).
-- A service bound to `127.0.0.1` inside a container is unreachable from outside it; bind `0.0.0.0`.
+- Bridge networks need published ports (`-p 8080:80`); host networking shares the host's stack and ports. A published port skips ufw/firewalld INPUT rules: publish only what must be public (`references/hardening.md` in `hanahira-claude-ui-security`).
+- A service bound to `127.0.0.1` inside a container is unreachable from outside it; bind `0.0.0.0` inside the container and narrow at the publish (`-p 127.0.0.1:…`).
 - Docker's embedded DNS (127.0.0.11) resolves service names only on user-defined networks.
 - Kubernetes: Pod, then Service (check `kubectl get endpoints`), then Ingress; `kubectl port-forward svc/name 8080:80` tests one layer at a time.
 
 ## Working with tools and other skills
 
-- Drops and slowness after connecting: `references/connections.md` in `hanahira-claude-ui-security`; do not repeat it here.
-- Pair up: `hanahira-claude-ui-security` for TLS and firewall rules, `hanahira-claude-ui-remote` for reaching hosts, `hanahira-claude-ui-devops` for ingress manifests. Helpers follow `references/agents.md` in the core.
+- Drops and slowness after connecting: load `hanahira-claude-ui-security` (its `references/connections.md`); do not repeat it here.
+- Pair up: `hanahira-claude-ui-security` for TLS and firewall rules, `hanahira-claude-ui-remote` for reaching hosts, `hanahira-claude-ui-devops` for ingress manifests, `hanahira-claude-ui-windows` for the Windows side (`Test-NetConnection`, its firewall), `hanahira-claude-ui-perf` when it connects but is slow under load. Helpers follow `references/agents.md` in the core.
 
 Layer-by-layer checks, captures and symptom table: `references/diagnosis.md`. DNS records, proxy and VPN configs, subnet planning: `references/dns-proxies-vpn.md`.

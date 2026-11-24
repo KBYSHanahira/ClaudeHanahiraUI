@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-automation"
-description: Hanahira Claude UI companion for scripts and scheduled jobs — shell and Python scripts that run unattended, cron and systemd timers, Windows Task Scheduler, idempotent and re-runnable jobs, locking, retries, logging and alerting, backups and cleanup jobs, file watchers and glue between tools. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for unattended scripts and jobs — cron, systemd timers, Task Scheduler, locking, backups, cleanup. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -14,7 +14,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## What saves the most time
 
-- **`set -euo pipefail` and quoting** in bash. Quote every expansion: `"$file"`, `"${args[@]}"`.
+- **`set -euo pipefail` and quoting** in bash (`-E` too when an ERR trap is used). Quote every expansion: `"$file"`, `"${args[@]}"`.
 - **Absolute paths.** Cron's `PATH` and working directory are minimal; set `PATH` in the script and `cd` to a known directory with a check.
 - **Log with timestamps to a known file**, one line per step, so the morning after has an answer.
 - **Exit codes that mean something**: 0 for done, non-zero for every failure, never swallowed by a trailing `echo`.
@@ -52,8 +52,8 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up when part of the job lies in another field: `hanahira-claude-ui-remote` for running on servers, `hanahira-claude-ui-windows` for Task Scheduler and PowerShell, `hanahira-claude-ui-data` for database backups, `hanahira-claude-ui-devops` for jobs scheduled in CI.
-- A recurring task for Claude itself (a check every morning, a re-run on a timer) is the session's own scheduling skill (`schedule` or `loop` where the session lists one), not a cron job that starts `claude`.
+- Pair up when part of the job lies in another field: `hanahira-claude-ui-remote` for running on servers, `hanahira-claude-ui-windows` for Task Scheduler and PowerShell, `hanahira-claude-ui-data` for database backups, `hanahira-claude-ui-devops` for jobs scheduled in CI, `hanahira-claude-ui-security` for a credential the job holds (a root-only file or the environment, never the command line or the log), `hanahira-claude-ui-debug-test` for a job that fails only when unattended, `hanahira-claude-ui-claude-remote` for a job that runs `claude -p`.
+- A recurring task for Claude itself (a check every morning, a re-run on a timer) is first the session's own scheduling skill (`schedule` or `loop` where the session lists one); a cron job that starts `claude -p` only when it must run on that machine, by `hanahira-claude-ui-claude-remote`.
 - Helpers checking separate jobs or hosts follow `references/agents.md` in the core.
 
 Script skeletons and pitfalls in bash and Python: `references/scripts.md`. Cron, systemd and Task Scheduler examples, monitoring, log rotation and backup jobs: `references/scheduling-and-ops.md`.

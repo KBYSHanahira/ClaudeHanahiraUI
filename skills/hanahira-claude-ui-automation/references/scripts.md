@@ -6,7 +6,7 @@ A look-up for writing a script that runs unattended: a bash skeleton, the bash p
 
 ```bash
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail   # -E: the ERR trap below also fires inside functions
 IFS=$'\n\t'
 PATH=/usr/local/bin:/usr/bin:/bin
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 ```
 
 - Pass commands as lists, never `shell=True` with user input. `check=True` raises on non-zero exit; let it propagate to a non-zero exit code.
-- Write files atomically: write `path.with_suffix(".tmp")`, then `os.replace` it onto the target.
+- Write files atomically: write `path.with_name(path.name + ".tmp")`, then `os.replace` it onto the target.
 
 ## Bash or Python
 

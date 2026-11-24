@@ -58,3 +58,18 @@ test('every skill folder holds a SKILL.md named after it', () => {
     expect(file(`skills/${name}/SKILL.md`).toString()).toMatch(new RegExp(`^---\\nname: "?${name}"?\\n`))
   }
 })
+
+// The engine lists every skill's description in about 8,000 characters (1% of a 200k context) shared
+// with every other plugin; past that it drops descriptions, and a companion shows by name only.
+test('skill descriptions stay short enough for the listing budget', () => {
+  const dirs = readdirSync(new URL('../skills', import.meta.url), { withFileTypes: true }).filter(d => d.isDirectory())
+  let total = 0
+  for (const { name } of dirs) {
+    const d = file(`skills/${name}/SKILL.md`).toString().match(/^description: (.*)$/m)?.[1] ?? ''
+    expect(d.length).toBeGreaterThan(40)
+    expect(d).not.toMatch(/: /)
+    expect([name, d.length <= (name === 'hanahira-claude-ui' ? 800 : 240)]).toEqual([name, true])
+    total += name.length + 4 + d.length
+  }
+  expect(total).toBeLessThan(5000)
+})

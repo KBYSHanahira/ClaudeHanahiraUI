@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-claude-remote"
-description: Hanahira Claude UI companion for running Claude Code itself remotely — Remote Control (a local session driven from claude.ai or the phone), cloud sessions on claude.ai/code and teleporting them to the terminal, Desktop SSH sessions on a remote host, Claude Code on a server in tmux, headless `claude -p` runs for scripts and CI, and the permissions and sandboxing that keep them safe. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for Claude Code run remotely — Remote Control, cloud sessions, Desktop SSH sessions, a server in tmux, claude -p. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -17,7 +17,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 - **Keep working from the phone or the web on a machine that stays on**: Remote Control. `claude --remote-control` (or `/remote-control` in a running session) prints a link and a QR code; the code and files stay local, so the machine and the `claude` process must stay up — start it inside `tmux` when connected over SSH.
 - **A task that should run with the laptop closed**: a cloud session on claude.ai/code, started there or with `claude --cloud "task"` from a checkout whose branch is pushed. Bring it back with `claude --teleport` (clean git state, same repo, same account).
 - **Work on a server from the Desktop app**: a Desktop SSH session. The CLI runs on the host; skills come from the host's `~/.claude/skills/` and plugins installed there, not from the laptop.
-- **A script, CI step or cron job**: headless `claude -p "…"` with an explicit `--allowedTools` list and `--output-format json` when another program reads the result.
+- **A script, CI step or cron job on a machine of the person's**: headless `claude -p "…"` with an explicit `--allowedTools` list and `--output-format json` when another program reads the result. A recurring task tied to no machine: the session's own scheduling skill instead (`schedule` or `loop` where the session lists one).
 
 ## What saves the most time
 
@@ -37,7 +37,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up: `hanahira-claude-ui-remote` for SSH, tmux and moving files to the host; `hanahira-claude-ui-devops` for running `claude -p` in CI; `hanahira-claude-ui-security` for secrets and credentials on the host; `hanahira-claude-ui-browser` when the browser is on the person's machine and Claude is not.
+- Pair up: `hanahira-claude-ui-remote` for SSH, tmux and moving files to the host; `hanahira-claude-ui-devops` for running `claude -p` in CI; `hanahira-claude-ui-security` for secrets and credentials on the host; `hanahira-claude-ui-browser` when the browser is on the person's machine and Claude is not; `hanahira-claude-ui-automation` for a `claude -p` job on a timer. Helpers follow `references/agents.md` in the core.
 - The Claude Code docs (`references/modes.md` names the pages, or a Claude Code guide agent if the session lists one) answer "does Claude Code support …" questions; check there before saying a feature exists.
 
 Modes, requirements, commands and the doc page for each: `references/modes.md`. Open it before relying on a flag or a limit.

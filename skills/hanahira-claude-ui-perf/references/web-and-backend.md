@@ -28,9 +28,9 @@ A look-up for the usual fixes once a measurement has named the slow part: Core W
 
 - Inspect the bundle with the bundler's analyzer (for example `rollup-plugin-visualizer`, `webpack-bundle-analyzer`, or `source-map-explorer`) before cutting anything.
 - Split code by route and lazy-load heavy components with dynamic `import()`.
-- Replace a large dependency used for one function; import only the parts used so tree-shaking can work.
+- Replace a large dependency used for one function; import only the parts used so tree-shaking can work; remove unused CSS.
 - Compress text with Brotli or gzip at the server or CDN.
-- Images: resize to the displayed size, serve AVIF or WebP, use `srcset` and `sizes`, lazy-load below the fold.
+- Images: resize to the displayed size, serve AVIF or WebP, use `srcset` and `sizes`, lazy-load images and iframes below the fold.
 - Fonts: subset to the needed characters, use WOFF2, preload only the critical face, set `font-display: swap`.
 
 ## HTTP caching and CDN
@@ -44,9 +44,9 @@ A look-up for the usual fixes once a measurement has named the slow part: Core W
 
 ## Queries
 
-- Run `EXPLAIN ANALYZE` (PostgreSQL; MySQL 8.0.18+, SELECT only) on the real query with real parameters and production-sized data; a small dev table hides the problem. It runs the query for real: wrap a write in `BEGIN; … ROLLBACK;`, and on production run it on a replica or ask first; plain `EXPLAIN` does not run it.
+- Run `EXPLAIN ANALYZE` on the real query with real parameters and production-sized data; a small dev table hides the problem. It executes the statement: engines, writes and production as in `SKILL.md`.
 - Read: sequential scans on large tables, estimated rows far from actual rows (stale statistics; run `ANALYZE`), sorts or hashes spilling to disk, and nested loops over many rows.
-- Index the columns used in `WHERE`, `JOIN` and `ORDER BY` together, in the order the query uses them. Every index slows writes, so add the one the plan needs. On a live table, build it without blocking writes (`CREATE INDEX CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`). A schema change on a real database is asked first (core rule 2).
+- Index the columns used in `WHERE`, `JOIN` and `ORDER BY` together: equality columns first, then the range or sort column. Every index slows writes, so add the one the plan needs. On a live table, build it without blocking writes (`CREATE INDEX CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`). A schema change on a real database that was my idea is asked first (core rule 2).
 - A function on an indexed column (`WHERE lower(email) = ...`) skips the index unless there is an expression index.
 - Select only needed columns and page with a keyset (`WHERE id > :last ORDER BY id LIMIT n`) rather than a large `OFFSET`.
 

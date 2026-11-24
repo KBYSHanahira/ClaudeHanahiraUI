@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-devops"
-description: Hanahira Claude UI companion for delivery and infrastructure — CI/CD pipelines, Dockerfiles and Compose, Kubernetes manifests and Helm, infrastructure as code (Terraform), cloud provider CLIs and IAM (AWS, GCP, Azure), releases, deploys and rollbacks, environment config and secrets in pipelines, logs, metrics and alerts. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for delivery and infrastructure — CI/CD, Docker, Kubernetes, Terraform, cloud CLIs and IAM, deploys, rollbacks, alerts. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -57,7 +57,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - A service that will not start or will not connect: core `references/ops.md`, not here.
-- Pair up: `hanahira-claude-ui-security` for secrets, TLS or firewall; `hanahira-claude-ui-perf` for capacity and load; `hanahira-claude-ui-debug-test` for a test failing in the pipeline.
-- Helpers follow `references/agents.md` in the core: read-only checks of logs, plans or manifests. A deploy or apply is never handed to a helper.
+- Pair up: `hanahira-claude-ui-security` for secrets, TLS or firewall; `hanahira-claude-ui-data` for a migration that ships with a deploy; `hanahira-claude-ui-perf` for capacity and load; `hanahira-claude-ui-debug-test` for a test failing in the pipeline; `hanahira-claude-ui-network` for DNS or a load balancer in front of it; `hanahira-claude-ui-remote` for a deploy done over SSH; `hanahira-claude-ui-automation` for a scheduled job; `hanahira-claude-ui-claude-remote` for `claude -p` in CI.
+- Helpers follow `references/agents.md` in the core. A deploy or apply is never handed to a helper.
 
 Pipelines, CI reproduction, Dockerfiles, Compose and scanning: `references/pipelines-and-containers.md`. Release strategies, rollbacks, migrations, Kubernetes failures, Terraform state and alerting: `references/deploy-and-observe.md`.

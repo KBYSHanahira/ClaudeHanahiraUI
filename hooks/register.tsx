@@ -439,6 +439,18 @@ export const contextLeft = (tokens: number | null, window: number | null, percen
       ? `${share(percent)}% left`
       : null
 
+/**
+ * The characters one stream piece adds to the speed reading, or null for a piece that is not
+ * text, thinking or tool input. A piece without its string (a thinking delta the model sends
+ * with no text, as Mythos can) adds 0: reading `.length` on it threw, and the throw ended the
+ * band's handler before the response's tokens, spend, limits and agents were counted.
+ */
+export const streamChars = (c: { kind: string; text?: unknown; json?: unknown }) => {
+  if (c.kind !== 'text' && c.kind !== 'thinking' && c.kind !== 'input') return null
+  const s = c.kind === 'input' ? c.json : c.text
+  return typeof s === 'string' ? s.length : 0
+}
+
 /** The share left of 100, from 0 to 100 whatever the engine reports. */
 const share = (percentUsed: number) => Math.min(100, Math.max(0, 100 - Math.round(percentUsed)))
 
@@ -987,9 +999,9 @@ export const register: Register = on => {
       for await (const c of stream) {
         yield c
         if (aid0) continue
-        if (c.kind === 'text' || c.kind === 'thinking') chars += c.text.length
-        else if (c.kind === 'input') chars += c.json.length
-        else continue
+        const n = streamChars(c)
+        if (n === null) continue
+        chars += n
         const at = performance.now()
         samples.push([at, chars])
         while (samples.length > 2 && at - samples[0]![0] > LIVE_WINDOW_MS + 400) samples.shift()

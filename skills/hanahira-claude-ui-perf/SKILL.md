@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-perf"
-description: Hanahira Claude UI companion for performance — measuring before changing, profiling CPU and memory, slow pages and Core Web Vitals, slow endpoints and queries, caching, bundle size, load and throughput, memory leaks. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for performance — slow code, pages, endpoints and queries, profiling, memory, caching, load. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -34,7 +34,7 @@ N+1 queries · a missing or unused index · a cache that never hits or is invali
 
 ## Back-end
 
-- Read the plan: `EXPLAIN ANALYZE` (PostgreSQL; MySQL 8.0.18+, SELECT only) shows where the time goes and whether an index is used. It runs the query for real: wrap a write in `BEGIN; … ROLLBACK;`, and on production run it on a replica or ask first; plain `EXPLAIN` does not run it. A sequential scan on a large table whose filter keeps few rows usually means a missing index; one that keeps most rows is correct.
+- Read the plan: `EXPLAIN ANALYZE` (PostgreSQL, MySQL 8.0.18+; other engines and what each accepts: `references/engines.md` in `hanahira-claude-ui-data`) shows where the time goes and whether an index is used. It runs the statement for real: a write goes inside `BEGIN; … ROLLBACK;` and is still a write under core rule 2; a heavy SELECT on production goes to a replica; plain `EXPLAIN` does not run it. A sequential scan on a large table whose filter keeps few rows usually means a missing index; one that keeps most rows is correct.
 - N+1: count the queries per request. One request should not issue a query per row.
 - Pools: size connection pools to what the database can serve; a request waiting on the pool looks like a slow query.
 - Serialization and payload size cost real time on large responses; page and select only the needed fields.
@@ -49,7 +49,7 @@ N+1 queries · a missing or unused index · a cache that never hits or is invali
 ## Working with tools and other skills
 
 - Use a browser tool for a Performance trace or Lighthouse run, and the network panel for waterfall and payload sizes (load `hanahira-claude-ui-browser` before the first browser step).
-- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for queries and indexes, `hanahira-claude-ui-debug-test` for a regression that needs bisecting, `hanahira-claude-ui-design` for front-end rendering and layout.
-- Helpers for parallel measurement or profiling follow `references/agents.md` in the core. The change and its before-and-after numbers stay with me.
+- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for queries and indexes, `hanahira-claude-ui-debug-test` for a regression that needs bisecting, `hanahira-claude-ui-frontend` for bundles, hydration and re-renders, `hanahira-claude-ui-design` for layout shift and paint cost, `hanahira-claude-ui-network` when the time is in DNS, a proxy or the route.
+- Helpers for parallel measurement or profiling follow `references/agents.md` in the core. The before-and-after numbers stay with me.
 
 Measuring and profiling per runtime, benchmarks, flame graphs, leaks: `references/profiling.md`. Web vitals, assets, HTTP caching, queries, pools and load tests: `references/web-and-backend.md`. Open them only when the plain method above has stalled.

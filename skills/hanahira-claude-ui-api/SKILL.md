@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-api"
-description: Hanahira Claude UI companion for APIs and integrations — designing REST and GraphQL APIs, HTTP semantics and status codes, request validation, pagination, versioning, idempotency and retries, webhooks, calling third-party APIs and SDKs, rate limits, OpenAPI contracts and contract tests. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for APIs — designing REST and GraphQL, calling third-party APIs, SDKs and webhooks, retries, rate limits, OpenAPI. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -14,7 +14,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## What saves the most time
 
-- **Call the real endpoint first** with `curl -i`: a read, or the sandbox. A call that writes, charges, sends or deletes is asked first (see below). Read the whole response, headers included, before writing code against it. Pass the key from an env var (`-H "Authorization: Bearer $API_KEY"`) and redact `Authorization` and cookies from any output before quoting it.
+- **Call the real endpoint first** with `curl -i`: a read, or the sandbox. A call that writes, charges, sends or deletes is asked first unless the user named it (see below). Read the whole response, headers included, before writing code against it. Pass the key from an env var (`-H "Authorization: Bearer $API_KEY"`) and redact `Authorization` and cookies from any output before quoting it.
 - **Auth and base URL before logic.** A 401, 403 or 404 is most often the wrong key, scope, environment or path prefix, not a bug in the code.
 - **Log the request id** the server returns (`X-Request-Id` or the provider's own); it is what support and the provider's logs answer to.
 - **Read the rate-limit headers** (`RateLimit-*`, `X-RateLimit-*`, `Retry-After`) on the first response, not after the first 429.
@@ -40,8 +40,8 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up when the task crosses fields: `hanahira-claude-ui-security` for auth, tokens, CORS and secrets, `hanahira-claude-ui-data` for how the payload is stored, `hanahira-claude-ui-debug-test` for an integration that fails and must be reproduced.
+- Pair up when the task crosses fields: `hanahira-claude-ui-security` for auth, tokens, CORS and secrets, `hanahira-claude-ui-data` for how the payload is stored, `hanahira-claude-ui-debug-test` for an integration that fails and must be reproduced, `hanahira-claude-ui-ai` when the API is a model's, `hanahira-claude-ui-frontend` for the client that calls it, `hanahira-claude-ui-perf` for a slow endpoint.
 - Calling a real third-party endpoint that writes, charges, sends or deletes is an outward step under the core's rule 2; use a sandbox or test mode first.
-- Helpers that read docs or probe endpoints follow `references/agents.md` in the core. The contract and the code stay with me.
+- Helpers that read docs or probe endpoints follow `references/agents.md` in the core. The contract stays with me; a call to a real endpoint that writes is never a helper's.
 
 Designing an API in depth (status table, errors, pagination, versioning, idempotency, OpenAPI, GraphQL): `references/design.md`. Calling third-party APIs (auth flows, retries, rate limits, webhooks, SDKs, testing, debugging): `references/integrations.md`. Open them only when the lines above do not settle the question.

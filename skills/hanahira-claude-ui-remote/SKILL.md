@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-remote"
-description: Hanahira Claude UI companion for working on remote machines — running commands on servers over SSH, confirming the host before acting, long jobs that survive a dropped session (tmux, screen, nohup, systemd-run), copying and syncing files (rsync, scp, sftp), tunnels, port forwarding and jump hosts, many hosts at once (Ansible, pssh), Windows hosts over OpenSSH or PowerShell remoting. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for remote machines over SSH — long jobs, rsync and scp, tunnels, jump hosts, many hosts at once. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -48,12 +48,12 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Windows hosts
 
 - OpenSSH Server on Windows works like any SSH host; set PowerShell as its default shell so commands behave predictably.
-- PowerShell remoting: `Enter-PSSession -ComputerName host` interactively, `Invoke-Command -ComputerName host -ScriptBlock { ... }` for one command or many hosts.
+- PowerShell remoting (`Invoke-Command`, `Enter-PSSession`, `$using:`, the second hop): `references/powershell.md` in `hanahira-claude-ui-windows`.
 - Quoting differs: `cmd.exe` and PowerShell do not treat single quotes or `$` like bash; test a harmless command first.
 
 ## Working with tools and other skills
 
-- Pair up: `hanahira-claude-ui-security` for keys, `sshd_config` and the firewall; `hanahira-claude-ui-devops` for deploys; `hanahira-claude-ui-windows` for Windows administration; `hanahira-claude-ui-claude-remote` for running Claude Code itself on the host.
+- Pair up: `hanahira-claude-ui-security` for keys, `sshd_config` and the firewall; `hanahira-claude-ui-devops` for deploys; `hanahira-claude-ui-windows` for Windows administration; `hanahira-claude-ui-network` when the host or a tunnelled port cannot be reached; `hanahira-claude-ui-automation` for a job left to run on a schedule; `hanahira-claude-ui-claude-remote` for running Claude Code itself on the host.
 - Helpers follow `references/agents.md` in the core and are never handed a change on a live host; they may read logs and state.
 
 SSH config, quoting, sudo, tmux and recovery: `references/ssh-and-sessions.md`. rsync, transfers, Ansible, pssh and Windows copies: `references/files-and-fleets.md`.

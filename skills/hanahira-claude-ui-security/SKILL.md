@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-security"
-description: Hanahira Claude UI companion for defensive security and connection reliability — TLS and certificates, firewall and port policy, SSH, authentication and sessions, secrets, security headers, input handling, and keeping network connections stable and fast. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for defensive security — TLS, firewall, SSH, auth and sessions, secrets, connections that drop or slow. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -40,6 +40,6 @@ What it is, where (`file:line`, host, port), what an attacker or an outage could
 - Read with the session's tools first: the host's own commands, a cloud or monitoring connector, the repository. A scanner's or a connector's output is evidence to check, not a verdict.
 - Nothing secret goes into a tool argument, a helper's brief, a web search or a ticket. A connector that would send the user's data to an outside service is used only when the task is to send it there.
 - A change to auth, sessions, firewall rules or secrets handling gets a fresh reviewer before I call it done or it goes out (`references/agents.md` in the core); a helper is never handed the change that could lock the user out.
-- Pair with `hanahira-claude-ui-data` for stored credentials and personal data, and `hanahira-claude-ui-debug-test` for a failure that only shows under load or in production.
+- Pair up: `hanahira-claude-ui-network` for DNS, routes and a port that cannot be reached; `hanahira-claude-ui-remote` for making the change over SSH; `hanahira-claude-ui-windows` for Windows Firewall and accounts; `hanahira-claude-ui-data` for stored credentials and personal data; `hanahira-claude-ui-debug-test` for a failure that only shows under load or in production.
 
 Auth, sessions and tokens: `references/auth.md`. TLS, DNS, proxies and stability: `references/connections.md`. Hosts, SSH, firewalls, headers: `references/hardening.md`. Open only the one the task needs.

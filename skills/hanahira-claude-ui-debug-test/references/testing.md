@@ -37,7 +37,7 @@ Then prove the test works: change the code so the behaviour is wrong, and watch 
 2. Write the least code that makes it pass.
 3. Tidy the code with the test green.
 
-For a bug fix, where the project has tests, this is not optional: the failing test is the proof the bug is understood, and it stays as the guard against its return. Without a test setup, the failing reproduction is the proof; adding a framework is a separate decision.
+For a bug whose cause was not plain, where the project has tests and a test fits, this is not optional: the failing test is the proof the bug is understood, and it stays as the guard against its return. Without a test setup, the failing reproduction is the proof; adding a framework is a separate decision.
 
 ## Mocks, fakes and real things
 

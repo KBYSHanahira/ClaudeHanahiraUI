@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-mobile"
-description: Hanahira Claude UI companion for mobile apps — React Native and Expo, Flutter, native iOS (Swift, SwiftUI, Xcode) and Android (Kotlin, Jetpack Compose, Gradle), builds and signing, permissions, push notifications, deep links, offline storage, app store and Play releases, crash reports. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for mobile apps — React Native, Expo, Flutter, iOS, Android, builds, signing, push, store releases. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -50,7 +50,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up: `hanahira-claude-ui-design` for UI, `hanahira-claude-ui-api` for the backend, `hanahira-claude-ui-perf` for startup time and jank, `hanahira-claude-ui-devops` for CI builds.
+- Pair up: `hanahira-claude-ui-design` for UI (its direction, type, hierarchy and states apply; its CSS does not: use the platform's units, 44pt targets on iOS, 48dp on Android), `hanahira-claude-ui-api` for the backend, `hanahira-claude-ui-perf` for startup time and jank, `hanahira-claude-ui-devops` for CI builds, `hanahira-claude-ui-security` for login, tokens and signing keys, `hanahira-claude-ui-frontend` for React state and effects in React Native, `hanahira-claude-ui-debug-test` for a crash with no plain cause.
 - Helpers follow `references/agents.md` in the core.
 
 Build failures, caches, device logs and release-only bugs: `references/build-and-debug.md`. Permissions, push, deep links, secure storage, store releases and symbolication: `references/platform-and-release.md`.

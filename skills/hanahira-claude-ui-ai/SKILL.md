@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-ai"
-description: Hanahira Claude UI companion for building with LLMs — calling the Claude API and other model APIs, prompts and system prompts, tool use and agents, structured output, retrieval (RAG) and embeddings, evaluation, prompt caching, streaming, cost and latency. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for building with LLMs — the Claude API and other model APIs, prompts, tool use, agents, RAG, evals, caching, cost. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -45,7 +45,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Production
 
-- Set timeouts; retry with exponential backoff and jitter on 429, 5xx and overloaded errors, never on other 4xx.
+- Set timeouts; retry what `hanahira-claude-ui-api` lists (backoff with jitter; network errors, 408, 429, 500, 502–504) plus the provider's overloaded status. Check what the SDK already retries before adding a loop. A model call writes nothing, so its POST is safe to retry; a call that runs tools or creates a batch is not.
 - Stream long replies for the user's sake; handle a stream that breaks midway.
 - Budget tokens per request and per user; alert on cost, not only on errors.
 - Cache what repeats: prompt caching for shared prefixes, a response cache for identical requests.
@@ -55,6 +55,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - For current model ids, parameters, prices and limits, use the session's Claude API skill or the provider's docs. The Messages API (`POST /v1/messages`, `client.messages.create`) is the stable base.
-- Pair up: `hanahira-claude-ui-api` for the HTTP integration, `hanahira-claude-ui-security` for keys and prompt injection, `hanahira-claude-ui-perf` for latency and cost. Helpers follow `references/agents.md` in the core.
+- Pair up: `hanahira-claude-ui-api` for the HTTP integration, `hanahira-claude-ui-security` for keys and prompt injection, `hanahira-claude-ui-perf` for latency and cost, `hanahira-claude-ui-frontend` for a chat or streaming UI, `hanahira-claude-ui-data` for the vector store or index behind retrieval, `hanahira-claude-ui-debug-test` for an eval or test that fails without a plain cause. Helpers follow `references/agents.md` in the core.
 
 Prompt structure, structured output, tools and agent loops: `references/prompts-and-tools.md`. Evals, RAG pipelines, cost, latency and safety in production: `references/evals-and-production.md`.

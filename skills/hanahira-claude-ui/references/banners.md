@@ -22,7 +22,7 @@ The full boxes a `/Hanahira Claude UI` command answers with: the green one for `
 + │                                                 │
   ├─────────────────────────────────────────────────┤
 + │  H A N A H I R A  ·  C L A U D E   U I          │
-+ │  ┃ Version 32 · SKILL  ● ACTIVE                 │
++ │  ┃ Version 33 · SKILL  ● ACTIVE                 │
 + │  ┃ ━━━━━ ready to work                          │
   ├─────────────────────────────────────────────────┤
 + │  ▸ Hanahira Claude UI                           │
@@ -50,7 +50,7 @@ The full boxes a `/Hanahira Claude UI` command answers with: the green one for `
 - │                                                 │
   ├─────────────────────────────────────────────────┤
 - │  H A N A H I R A  ·  C L A U D E   U I          │
-- │  ┃ Version 32 · SKILL  ○ DEACTIVE               │
+- │  ┃ Version 33 · SKILL  ○ DEACTIVE               │
 - │  ┃ ───── resting                                │
   ╰─────────────────────────────────────────────────╯
 ```

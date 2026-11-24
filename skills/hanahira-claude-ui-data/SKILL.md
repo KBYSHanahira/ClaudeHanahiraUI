@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-data"
-description: Hanahira Claude UI companion for database and data work on MySQL, PostgreSQL, SQLite, SQL Server and MongoDB — queries, schema design and migrations, backups and restores, indexing and query performance, bulk updates. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for databases — SQL and MongoDB queries, schemas, migrations, backups, indexes, bulk updates. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -40,7 +40,7 @@ A backup is proven only by a restore. Report what was backed up, where it is, it
 
 - A database connector or MCP server is the fastest way to see real rows. Check which database and which role it is before anything else; prefer a read-only role for looking, and treat every write through it as a write to that database (core rule 2).
 - Pull the rows that answer the question (`LIMIT`, the columns needed), never a table dump into the chat, and never personal data the task did not need.
-- Pair up when the task crosses fields: `hanahira-claude-ui-security` when the data is credentials, personal data or access rules; `hanahira-claude-ui-perf` when a query is slow; `hanahira-claude-ui-debug-test` when a wrong result is the bug being hunted.
+- Pair up when the task crosses fields: `hanahira-claude-ui-security` when the data is credentials, personal data or access rules; `hanahira-claude-ui-perf` when a query is slow; `hanahira-claude-ui-debug-test` when a wrong result is the bug being hunted; `hanahira-claude-ui-api` when an endpoint reads or writes the data; `hanahira-claude-ui-automation` when a backup or clean-up runs on a schedule; `hanahira-claude-ui-devops` when a migration ships with a deploy.
 - Every change to stored data (a migration, a bulk update, a schema change) gets a fresh reviewer before it runs (`references/agents.md` in the core); the run itself stays with me.
 
 Engine specifics (locking behaviour, dump and restore commands, plan reading): `references/engines.md`. Modelling choices (keys, normalisation, types, soft delete, multi-tenant): `references/schema-design.md`. Open them only for the engine or the choice in front of me.

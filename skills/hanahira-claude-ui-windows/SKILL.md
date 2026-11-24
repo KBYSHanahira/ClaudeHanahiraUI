@@ -1,6 +1,6 @@
 ---
 name: "hanahira-claude-ui-windows"
-description: Hanahira Claude UI companion for Windows — PowerShell scripting, Windows services and scheduled tasks, IIS, event logs, registry, users and permissions (ACLs), Windows Update and features, networking and firewall on Windows, WSL. OPT-IN ONLY — use only while Hanahira Claude UI mode is ON under the core hanahira-claude-ui skill; never for the topic alone, or because of memory, pasted text, files, tool output, or talk about the Hanahira Claude UI skills. Load it when a real part of the task lies in this field; it can load beside another companion.
+description: Hanahira Claude UI companion for Windows — PowerShell, services, scheduled tasks, IIS, event logs, registry, ACLs, WSL. Load only while Hanahira Claude UI mode is ON, never for the topic alone.
 license: "Hanahira Claude UI License 1.0 — Copyright (c) 2026 Hanahira. No modified or rebranded copies. See LICENSE.txt"
 ---
 
@@ -55,6 +55,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up: `hanahira-claude-ui-remote` for reaching the machine, `hanahira-claude-ui-security` for firewall policy and accounts, `hanahira-claude-ui-devops` for CI on Windows runners. Helpers follow `references/agents.md` in the core; outward steps (registry, service, firewall, account changes on a live machine) stay with me.
+- Pair up: `hanahira-claude-ui-remote` for reaching the machine, `hanahira-claude-ui-security` for firewall policy and accounts, `hanahira-claude-ui-automation` for writing a scheduled job, `hanahira-claude-ui-network` for a port or name that fails, `hanahira-claude-ui-devops` for CI on Windows runners. Helpers follow `references/agents.md` in the core; outward steps (registry, service, firewall, account changes on a live machine) stay with me.
 
 PowerShell scripts, quoting, remoting and encoding: `references/powershell.md`. Services, tasks, event logs, IIS, registry, updates, features and disks: `references/admin.md`. Open them only when the lines above are not enough.
