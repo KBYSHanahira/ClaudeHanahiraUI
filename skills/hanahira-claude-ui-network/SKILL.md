@@ -58,6 +58,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - Drops and slowness after connecting: load `hanahira-claude-ui-security` (its `references/connections.md`); do not repeat it here.
-- Pair up: `hanahira-claude-ui-security` for TLS and firewall rules, `hanahira-claude-ui-remote` for reaching hosts, `hanahira-claude-ui-devops` for ingress manifests, `hanahira-claude-ui-windows` for the Windows side (`Test-NetConnection`, its firewall), `hanahira-claude-ui-perf` when it connects but is slow under load. Helpers follow `references/agents.md` in the core.
+- Pair up: `hanahira-claude-ui-security` for TLS and firewall rules, `hanahira-claude-ui-remote` for reaching hosts, `hanahira-claude-ui-devops` for ingress manifests, `hanahira-claude-ui-backend` when the service itself is not listening or drops its connections, `hanahira-claude-ui-windows` for the Windows side (`Test-NetConnection`, its firewall), `hanahira-claude-ui-perf` when it connects but is slow under load. Helpers follow `references/agents.md` in the core.
 
 Layer-by-layer checks, captures and symptom table: `references/diagnosis.md`. DNS records, proxy and VPN configs, subnet planning: `references/dns-proxies-vpn.md`.

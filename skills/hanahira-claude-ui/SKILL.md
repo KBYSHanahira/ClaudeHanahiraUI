@@ -74,6 +74,7 @@ The `references/` files are opened when the work is in that area and I am about 
 | TLS, firewall, SSH hardening, auth and sessions, secrets; a connection that is made but then drops or slows | `hanahira-claude-ui-security` |
 | A bug with no obvious cause; flaky or failing tests | `hanahira-claude-ui-debug-test` |
 | Slow code, pages, endpoints or queries; memory; load and throughput | `hanahira-claude-ui-perf` |
+| Server-side code: services, handlers, background jobs, queues, concurrency, caching, WebSockets, bots, config, shutdown | `hanahira-claude-ui-backend` |
 | Web app code: React, Vue, Svelte, Angular, Next; state, routing, SSR, forms, bundlers | `hanahira-claude-ui-frontend` |
 | Designing an API; calling a third-party API, SDK or webhook | `hanahira-claude-ui-api` |
 | CI/CD, Docker, Kubernetes, Terraform, cloud CLIs and IAM; deploys, rollbacks, alerts | `hanahira-claude-ui-devops` |

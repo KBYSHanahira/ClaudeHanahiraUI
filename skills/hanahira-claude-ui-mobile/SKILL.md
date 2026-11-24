@@ -50,7 +50,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up: `hanahira-claude-ui-design` for UI (its direction, type, hierarchy and states apply; its CSS does not: use the platform's units, 44pt targets on iOS, 48dp on Android), `hanahira-claude-ui-api` for the backend, `hanahira-claude-ui-perf` for startup time and jank, `hanahira-claude-ui-devops` for CI builds, `hanahira-claude-ui-security` for login, tokens and signing keys, `hanahira-claude-ui-frontend` for React state and effects in React Native, `hanahira-claude-ui-debug-test` for a crash with no plain cause.
+- Pair up: `hanahira-claude-ui-design` for UI (its direction, type, hierarchy and states apply; its CSS does not: use the platform's units, 44pt targets on iOS, 48dp on Android), `hanahira-claude-ui-api` for the backend's contract, `hanahira-claude-ui-backend` for its server code and push delivery, `hanahira-claude-ui-perf` for startup time and jank, `hanahira-claude-ui-devops` for CI builds, `hanahira-claude-ui-security` for login, tokens and signing keys, `hanahira-claude-ui-frontend` for React state and effects in React Native, `hanahira-claude-ui-debug-test` for a crash with no plain cause.
 - Helpers follow `references/agents.md` in the core.
 
 Build failures, caches, device logs and release-only bugs: `references/build-and-debug.md`. Permissions, push, deep links, secure storage, store releases and symbolication: `references/platform-and-release.md`.

@@ -23,7 +23,7 @@
 ひとつのプラグインに 2 つの部分があります。
 
 - **🖥️ インターフェース** — プロンプトの上のステータスバンド（コンテキスト、利用制限、費用、トークン、速度、エージェント）。常にオンで、設定は不要です。
-- **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・フロントエンド・セキュリティ・デバッグ・パフォーマンス・API・DevOps・リモート・ネットワーク・Windows・自動化・AI・モバイル・ブラウザ・リモート Claude 向けの 16 のコンパニオンがルールを加えます。
+- **🧠 スキル** — *Hanahira Claude UI モード*。自分でオンにする働き方で、Claude はタスクの大きさを見極め、必要なときだけ質問し、「完了」と言う前に確認し、事実を削らずに短く答えます。データ・デザイン・フロントエンド・バックエンド・セキュリティ・デバッグ・パフォーマンス・API・DevOps・リモート・ネットワーク・Windows・自動化・AI・モバイル・ブラウザ・リモート Claude 向けの 17 のコンパニオンがルールを加えます。
 
 ## 🚀 クイックスタート
 
@@ -222,6 +222,7 @@ skills/
   hanahira-claude-ui-remote/   …-network/  …-windows/
   hanahira-claude-ui-automation/  …-ai/  …-mobile/
   hanahira-claude-ui-browser/  …-claude-remote/  …-frontend/
+  hanahira-claude-ui-backend/
 scripts/
   install-ssh.sh    SSH 接続先へのインストール
   update.sh         1 コマンドでアップデート

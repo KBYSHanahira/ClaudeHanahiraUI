@@ -49,7 +49,7 @@ N+1 queries · a missing or unused index · a cache that never hits or is invali
 ## Working with tools and other skills
 
 - Use a browser tool for a Performance trace or Lighthouse run, and the network panel for waterfall and payload sizes (load `hanahira-claude-ui-browser` before the first browser step).
-- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for queries and indexes, `hanahira-claude-ui-debug-test` for a regression that needs bisecting, `hanahira-claude-ui-frontend` for bundles, hydration and re-renders, `hanahira-claude-ui-design` for layout shift and paint cost, `hanahira-claude-ui-network` when the time is in DNS, a proxy or the route.
+- Pair up when the cause lies in another field: `hanahira-claude-ui-data` for queries and indexes, `hanahira-claude-ui-backend` for a blocked event loop, pools and caching in the service, `hanahira-claude-ui-debug-test` for a regression that needs bisecting, `hanahira-claude-ui-frontend` for bundles, hydration and re-renders, `hanahira-claude-ui-design` for layout shift and paint cost, `hanahira-claude-ui-network` when the time is in DNS, a proxy or the route.
 - Helpers for parallel measurement or profiling follow `references/agents.md` in the core. The before-and-after numbers stay with me.
 
 Measuring and profiling per runtime, benchmarks, flame graphs, leaks: `references/profiling.md`. Web vitals, assets, HTTP caching, queries, pools and load tests: `references/web-and-backend.md`. Open them only when the plain method above has stalled.

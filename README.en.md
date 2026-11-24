@@ -23,7 +23,7 @@
 One plugin, two parts:
 
 - **🖥️ The interface** — a status band above the prompt (context, usage limits, cost, tokens, speed, agents) Always on, nothing to configure.
-- **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Sixteen companions add rules for data, design, frontend, security, debugging, performance, APIs, DevOps, remote machines, networking, Windows, automation, AI, mobile, the browser and remote Claude.
+- **🧠 The skills** — *Hanahira Claude UI mode*, an opt-in way of working: Claude sizes each task, asks only when it must, checks before it claims "done", and answers short without dropping facts. Seventeen companions add rules for data, design, frontend, backend, security, debugging, performance, APIs, DevOps, remote machines, networking, Windows, automation, AI, mobile, the browser and remote Claude.
 
 ## 🚀 Quick start
 
@@ -222,6 +222,7 @@ skills/
   hanahira-claude-ui-remote/   …-network/  …-windows/
   hanahira-claude-ui-automation/  …-ai/  …-mobile/
   hanahira-claude-ui-browser/  …-claude-remote/  …-frontend/
+  hanahira-claude-ui-backend/
 scripts/
   install-ssh.sh    install on an SSH host
   update.sh         one-command update

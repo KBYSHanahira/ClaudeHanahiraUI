@@ -40,7 +40,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up when the task crosses fields: `hanahira-claude-ui-security` for auth, tokens, CORS and secrets, `hanahira-claude-ui-data` for how the payload is stored, `hanahira-claude-ui-debug-test` for an integration that fails and must be reproduced, `hanahira-claude-ui-ai` when the API is a model's, `hanahira-claude-ui-frontend` for the client that calls it, `hanahira-claude-ui-perf` for a slow endpoint.
+- Pair up when the task crosses fields: `hanahira-claude-ui-security` for auth, tokens, CORS and secrets, `hanahira-claude-ui-data` for how the payload is stored, `hanahira-claude-ui-debug-test` for an integration that fails and must be reproduced, `hanahira-claude-ui-backend` for the handler, job or queue behind the endpoint, `hanahira-claude-ui-ai` when the API is a model's, `hanahira-claude-ui-frontend` for the client that calls it, `hanahira-claude-ui-perf` for a slow endpoint.
 - Calling a real third-party endpoint that writes, charges, sends or deletes is an outward step under the core's rule 2; use a sandbox or test mode first.
 - Helpers that read docs or probe endpoints follow `references/agents.md` in the core. The contract stays with me; a call to a real endpoint that writes is never a helper's.
 

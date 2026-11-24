@@ -48,7 +48,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- `hanahira-claude-ui-design` for the look, CSS and accessibility; `hanahira-claude-ui-perf` for bundle size and Web Vitals; `hanahira-claude-ui-api` for the backend contract; `hanahira-claude-ui-browser` to check the change in a real browser, with its console and network; `hanahira-claude-ui-debug-test` for a flaky UI test or a bug with no plain cause; `hanahira-claude-ui-security` for login, sessions and token storage; `hanahira-claude-ui-ai` for a chat or streaming UI over a model.
+- `hanahira-claude-ui-design` for the look, CSS and accessibility; `hanahira-claude-ui-perf` for bundle size and Web Vitals; `hanahira-claude-ui-api` for the backend contract; `hanahira-claude-ui-backend` for the server code behind it; `hanahira-claude-ui-browser` to check the change in a real browser, with its console and network; `hanahira-claude-ui-debug-test` for a flaky UI test or a bug with no plain cause; `hanahira-claude-ui-security` for login, sessions and token storage; `hanahira-claude-ui-ai` for a chat or streaming UI over a model.
 - Helpers follow `references/agents.md` in the core.
 
 Framework traps, meta-framework data loading and hydration fixes: `references/frameworks.md`. Component and end-to-end tests, CI checks, env variables, source maps: `references/testing-and-tooling.md`.

@@ -52,7 +52,7 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 
 ## Working with tools and other skills
 
-- Pair up when part of the job lies in another field: `hanahira-claude-ui-remote` for running on servers, `hanahira-claude-ui-windows` for Task Scheduler and PowerShell, `hanahira-claude-ui-data` for database backups, `hanahira-claude-ui-devops` for jobs scheduled in CI, `hanahira-claude-ui-security` for a credential the job holds (a root-only file or the environment, never the command line or the log), `hanahira-claude-ui-debug-test` for a job that fails only when unattended, `hanahira-claude-ui-claude-remote` for a job that runs `claude -p`.
+- Pair up when part of the job lies in another field: `hanahira-claude-ui-remote` for running on servers, `hanahira-claude-ui-windows` for Task Scheduler and PowerShell, `hanahira-claude-ui-data` for database backups, `hanahira-claude-ui-devops` for jobs scheduled in CI, `hanahira-claude-ui-backend` for jobs run from a queue inside a service, `hanahira-claude-ui-security` for a credential the job holds (a root-only file or the environment, never the command line or the log), `hanahira-claude-ui-debug-test` for a job that fails only when unattended, `hanahira-claude-ui-claude-remote` for a job that runs `claude -p`.
 - A recurring task for Claude itself (a check every morning, a re-run on a timer) is first the session's own scheduling skill (`schedule` or `loop` where the session lists one); a cron job that starts `claude -p` only when it must run on that machine, by `hanahira-claude-ui-claude-remote`.
 - Helpers checking separate jobs or hosts follow `references/agents.md` in the core.
 

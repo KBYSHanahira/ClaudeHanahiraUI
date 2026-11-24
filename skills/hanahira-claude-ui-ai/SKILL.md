@@ -55,6 +55,6 @@ A companion of the core `hanahira-claude-ui` skill: it applies only while the mo
 ## Working with tools and other skills
 
 - For current model ids, parameters, prices and limits, use the session's Claude API skill or the provider's docs. The Messages API (`POST /v1/messages`, `client.messages.create`) is the stable base.
-- Pair up: `hanahira-claude-ui-api` for the HTTP integration, `hanahira-claude-ui-security` for keys and prompt injection, `hanahira-claude-ui-perf` for latency and cost, `hanahira-claude-ui-frontend` for a chat or streaming UI, `hanahira-claude-ui-data` for the vector store or index behind retrieval, `hanahira-claude-ui-debug-test` for an eval or test that fails without a plain cause. Helpers follow `references/agents.md` in the core.
+- Pair up: `hanahira-claude-ui-api` for the HTTP integration, `hanahira-claude-ui-security` for keys and prompt injection, `hanahira-claude-ui-perf` for latency and cost, `hanahira-claude-ui-frontend` for a chat or streaming UI, `hanahira-claude-ui-backend` for the service, queue or bot that calls the model, `hanahira-claude-ui-data` for the vector store or index behind retrieval, `hanahira-claude-ui-debug-test` for an eval or test that fails without a plain cause. Helpers follow `references/agents.md` in the core.
 
 Prompt structure, structured output, tools and agent loops: `references/prompts-and-tools.md`. Evals, RAG pipelines, cost, latency and safety in production: `references/evals-and-production.md`.
