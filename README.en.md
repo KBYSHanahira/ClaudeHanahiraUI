@@ -8,7 +8,7 @@
 [![Language: English](https://img.shields.io/badge/lang-English-9b8cf7?style=for-the-badge)](README.en.md)
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-9b8cf7?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.14.6-34c38f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.14.7-34c38f?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-Version_30-e8825f?style=flat-square)
 ![Interface mod](https://img.shields.io/badge/type-interface_mod-4aa3f0?style=flat-square)
 
@@ -134,7 +134,7 @@ scripts/install-ssh.sh
 Then open a **new session** in Desktop.
 
 - **Skills come from this clone** (named `hanahira-claude-ui-ssh:`), so SSH sessions run the version you are developing. The script switches off the account's synced copy (`hanahira-claude-ui@inline`) on this host only, so every skill is listed once; sessions on your local machine keep the account's copy.
-- **You can tell which copy is in use** — the band shows `V1.14.6` with a yellow `SSH` chip, and the skill's banner reads `V33 · SSH`.
+- **You can tell which copy is in use** — the band shows `V1.14.7` with a yellow `SSH` chip, and the skill's banner reads `V33 · SSH`.
 - **`HANAHIRA_SSH_SKILLS=0 scripts/install-ssh.sh`** goes back to hooks only here, with the skills from your account.
 
 On your local machine none of this is needed; Option 1 works as is.
