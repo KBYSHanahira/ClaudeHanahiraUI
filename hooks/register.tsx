@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Agent, Info, Outcome, Skill, Stats, Tokens, Usage } from '../types'
-import { agentChipParts, agentSpec, agentStats, kindLabel, prettyModel, settledStatus, shellFates, taskNotice, visibleAgents } from './agents'
+import { agentChipParts, agentSpec, agentStats, kindLabel, prettyModel, settledStatus, shellFates, shellSeen, taskNotice, visibleAgents } from './agents'
 import {
   HUE,
   INK,
@@ -28,6 +28,7 @@ import {
   type Since,
   themed,
   tokensPerSec,
+  MOTION,
 } from './chat'
 export { clip }
 import { SEAM, TELEMETRY, branchChipSvg, hudCellParts, hudCellSvg, hudChipSvg, hudContextParts, hudContextSvg, slabSvg, stripeSvg, telemetrySvg } from './hud'
@@ -49,12 +50,13 @@ type UsageCounts = { input_tokens?: number | null; output_tokens?: number | null
  *  figure would otherwise make the running total NaN for the rest of the session. */
 export const addUsage = <T extends Partial<Tokens>>(t: T, u: UsageCounts | null | undefined) => {
   const n = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const base = (t && typeof t === 'object' ? t : {}) as T
   return {
-    ...t,
-    input: n(t.input) + n(u?.input_tokens),
-    output: n(t.output) + n(u?.output_tokens),
-    cacheRead: n(t.cacheRead) + n(u?.cache_read_input_tokens),
-    cacheWrite: n(t.cacheWrite) + n(u?.cache_creation_input_tokens),
+    ...base,
+    input: n(base.input) + n(u?.input_tokens),
+    output: n(base.output) + n(u?.output_tokens),
+    cacheRead: n(base.cacheRead) + n(u?.cache_read_input_tokens),
+    cacheWrite: n(base.cacheWrite) + n(u?.cache_creation_input_tokens),
   }
 }
 const tokens = atom({ plugin: 'hanahira-claude-ui', key: 'tokens' } as const, NO_TOKENS)
@@ -63,7 +65,7 @@ const EMPTY: Stats = { tools: 0, byTool: {}, files: [], last: null }
 const NO_USAGE: Usage = { usd: null, percent: null, tokens: null, window: null, limits: [] }
 
 // `tone`: the tile is a state (`short`, in this colour), read under the value when stacked.
-// `spark`: the state tile's motion (statSvg), drawn in the surface's frame while Claude works.
+// `spark`: the state tile's motion, drawn in the surface's frame while Claude works (not set today).
 type Tile = { key: string; icon: IconName; percent: number | null; big: string; caption: string; sub?: string; short: string; detail?: string; color?: string; calm?: boolean; tone?: string; spark?: { pulse?: boolean; enterFrom?: string }; toggle?: { on: boolean; enter?: number | null; motion?: boolean }; reel?: Since<string> | null; from?: Since<number> | null; name?: string; bars?: HudBar[] }
 // Output speed of the latest main-thread response, and the best seen: the ring fills against it.
 const speed = atom({ plugin: 'hanahira-claude-ui', key: 'speed' } as const, { tps: null as number | null, peak: 0 })
@@ -80,7 +82,16 @@ const PEAK_HOLD_MS = 1000
 const usage = atom({ plugin: 'hanahira-claude-ui', key: 'usage' } as const, NO_USAGE)
 // The weeks counted for one model alone (Fable), which the engine does not hand to a plugin:
 // read from the account's usage answer, and when (`at`, ms; 0 before the first try).
-const scoped = atom({ plugin: 'hanahira-claude-ui', key: 'scoped' } as const, { at: 0, limits: [] as Usage['limits'] })
+// `readAt`: when the list was last read from the account (ms; 0: never, or by an older version).
+const scoped = atom({ plugin: 'hanahira-claude-ui', key: 'scoped' } as const, { at: 0, readAt: 0, limits: [] as Usage['limits'] })
+// A per-model week is shown for this long after it was read; past that, or past its own reset,
+// a failed request leaves no reading rather than an old one drawn as current.
+const SCOPED_STALE_MS = 30 * 60_000
+/** The stored per-model weeks still worth showing at `now`. */
+export const freshScoped = (last: { readAt?: number; limits?: Usage['limits'] } | null | undefined, now: number): Usage['limits'] =>
+  Math.abs(now - (typeof last?.readAt === 'number' ? last.readAt : 0)) >= SCOPED_STALE_MS
+    ? []
+    : (Array.isArray(last?.limits) ? last.limits : []).filter(l => !!l && typeof l.kind === 'string' && !(typeof l.resetsAt === 'string' && Date.parse(l.resetsAt) < now))
 // How often that answer is asked for at most, in ms: once a minute, so the per-model week keeps
 // up with the work; after a refused or failed request, SCOPED_BACKOFF_MS (the engine's own pace
 // for its panel) before the next.
@@ -97,13 +108,27 @@ const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
  * the host sets the header itself, for Anthropic's own host alone. With no subscription login
  * (an API key, a gateway) or a refused request, the last reading stays and nothing is guessed.
  */
+let scopedBusy = false
 const refreshScoped = async ($: EngineInterface) => {
+  // One request at a time: three callers can pass the `at` check before the first write lands.
+  if (scopedBusy) return
+  scopedBusy = true
+  try {
+    await askScoped($)
+  } finally {
+    scopedBusy = false
+  }
+}
+const askScoped = async ($: EngineInterface) => {
   const [now, last] = await Promise.all([$.clock.now(), read($, scoped)])
   // `at` is when the next request may go: SCOPED_MS after a good answer, longer after a bad one.
-  if (now < (last?.at ?? 0)) return
-  const keep = Array.isArray(last?.limits) ? last.limits : []
+  // An `at` further ahead than any wait this code sets means the clock stepped back: ask now.
+  const at = last?.at ?? 0
+  if (now < at && at - now <= SCOPED_BACKOFF_MS) return
+  const keep = freshScoped(last, now)
+  const readAt = typeof last?.readAt === 'number' ? last.readAt : 0
   // Marked as tried first, so a failure waits its turn too instead of asking on every beat.
-  await update($, scoped, () => ({ at: now + SCOPED_BACKOFF_MS, limits: keep }))
+  await update($, scoped, () => ({ at: now + SCOPED_BACKOFF_MS, readAt, limits: keep }))
   try {
     const auth = await $.session.authorize()
     if (auth?.kind !== 'bearer') return
@@ -111,7 +136,7 @@ const refreshScoped = async ($: EngineInterface) => {
     if (!res.ok) return void $.ui.log(`account usage: HTTP ${res.status}`, { to: 'debug' })
     const limits = scopedLimits(res.text)
     // The same reading keeps the stored list, so the band is not redrawn for nothing.
-    await update($, scoped, () => ({ at: now + SCOPED_MS, limits: sameLimits(limits, keep) ? keep : limits }))
+    await update($, scoped, () => ({ at: now + SCOPED_MS, readAt: now, limits: sameLimits(limits, keep) ? keep : limits }))
   } catch (err) {
     $.ui.log(`account usage: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
   }
@@ -119,7 +144,26 @@ const refreshScoped = async ($: EngineInterface) => {
 
 /** Two lists of limits read the same: no redraw is owed. */
 export const sameLimits = (a: Usage['limits'], b: Usage['limits']) =>
-  a.length === b.length && a.every((l, i) => l.kind === b[i]!.kind && l.percentUsed === b[i]!.percentUsed && l.resetsAt === b[i]!.resetsAt)
+  Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((l, i) => l?.kind === b[i]?.kind && l?.percentUsed === b[i]?.percentUsed && l?.resetsAt === b[i]?.resetsAt)
+
+/**
+ * The engine's usage answer as the band keeps it. Any field can be missing (an older engine, a
+ * session not bound yet): a missing figure is null and draws as a dash, never a throw or "NaN".
+ */
+export const toUsage = (f: unknown): Usage => {
+  const u = (f && typeof f === 'object' ? f : {}) as { cost?: { usd?: unknown } | null; context?: { percent?: unknown; tokens?: unknown; window?: unknown } | null; rateLimits?: unknown }
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const rows = Array.isArray(u.rateLimits) ? (u.rateLimits as { kind?: unknown; percentUsed?: unknown; resetsAt?: unknown }[]) : []
+  return {
+    usd: num(u.cost?.usd),
+    percent: num(u.context?.percent),
+    tokens: num(u.context?.tokens),
+    window: num(u.context?.window),
+    limits: rows
+      .filter(l => !!l && typeof l.kind === 'string' && num(l.percentUsed) !== null)
+      .map(l => ({ kind: l.kind as string, percentUsed: l.percentUsed as number, ...(typeof l.resetsAt === 'string' ? { resetsAt: l.resetsAt } : {}) })),
+  }
+}
 
 /**
  * The engine's figures as they stand now, into the band's own: asked for while a turn runs
@@ -130,13 +174,7 @@ export const sameLimits = (a: Usage['limits'], b: Usage['limits']) =>
 const refreshUsage = async ($: EngineInterface) => {
   const fresh = await $.session.usage().catch(() => null)
   if (!fresh) return
-  const next: Usage = {
-    usd: fresh.cost?.usd ?? null,
-    percent: fresh.context.percent ?? null,
-    tokens: fresh.context.tokens ?? null,
-    window: fresh.context.window,
-    limits: fresh.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
-  }
+  const next = toUsage(fresh)
   const old = await read($, usage)
   const same = old && old.usd === next.usd && old.percent === next.percent && old.tokens === next.tokens && old.window === next.window && sameLimits(next.limits, Array.isArray(old.limits) ? old.limits : [])
   if (!same) await update($, usage, () => next)
@@ -147,7 +185,8 @@ const model = atom({ plugin: 'hanahira-claude-ui', key: 'model' } as const, null
 
 const stats = atom({ plugin: 'hanahira-claude-ui', key: 'stats' } as const, EMPTY)
 /** A stored value is whatever an earlier version or a reload left behind: never trust its shape. */
-export const asList = (v: unknown): Agent[] => (Array.isArray(v) ? (v as Agent[]) : [])
+export const asList = (v: unknown): Agent[] =>
+  Array.isArray(v) ? (v as Agent[]).filter(a => !!a && typeof a === 'object' && typeof a.id === 'string') : []
 const agents = atom({ plugin: 'hanahira-claude-ui', key: 'agents' } as const, [] as Agent[])
 
 // Hanahira Claude UI mode, shown after the speed: on while its skills are at work.
@@ -163,20 +202,52 @@ export const asSkill = (v: unknown): Skill => {
 }
 /** Which part of Hanahira Claude UI a skill is ('core', 'design', ...), or null for any other skill. */
 export const hanahiraPart = (name: string): string | null => {
-  const m = /^hanahira-claude-ui(?:-([a-z][a-z-]*))?$/.exec(name.slice(name.lastIndexOf(':') + 1))
-  return m ? (m[1] ?? 'core') : null
+  if (typeof name !== 'string') return null
+  const m = /^hanahira-claude-ui(?:-([a-z][a-z-]*))?$/i.exec(name.slice(name.lastIndexOf(':') + 1))
+  return m ? (m[1]?.toLowerCase() ?? 'core') : null
 }
 // The person's switches, as the core skill reads them: a command, or the request in English or
 // Thai. A question ("is Hanahira Claude UI on?") switches nothing, nor does `เปิด` hide a `ปิด`.
-const SWITCH_ON =
-  /hanahira claude ui\s+(?:v\d+\s+)?(?:on|ultra)\b(?!\s*\?)|\b(?:turn\s+on|use)\s+(?:the\s+)?hanahira claude ui\b|เปิด\s*(?:โหมด\s*)?hanahira claude ui/gi
-const SWITCH_OFF = /hanahira claude ui\s+(?:v\d+\s+)?off\b(?!\s*\?)|\bturn\s+off\s+(?:the\s+)?hanahira claude ui\b|(?<!เ)ปิด\s*(?:โหมด\s*)?hanahira claude ui/gi
+// The name, spaced or hyphenated. After the switch word: not `on-call` or `off-by-one`, and not
+// inside a question (no `?` before the sentence ends). Before `turn on` / `use`: no negation.
+const NAME = 'hanahira[ -]claude[ -]ui'
+// After a switch word: not `on-call` or `off-by-one`.
+const WORD = '(?![\\w-])'
+// ...and not a question about the mode: no `?` before the clause ends ("is it on or off?").
+// A question in a later clause ("on, and can you fix the bug?") is not about the switch.
+const ASKED = '(?![^.!\\n,;:()—-]*\\?)'
+// Before an order (`turn on`, `use`, `turn off`, `disable`): no negation.
+const NOT = "(?<!\\b(?:not|never|\\w+n't|dont|cannot)\\s+(?:\\w+\\s+)?)"
+const NOT_TH = '(?<!อย่า|ไม่ต้อง|ไม่)'
+// Thai, the word after the name ("… ปิด"): the word alone, and no question after it.
+const END_TH = '(?![฀-๿])(?![^.!\\n]*\\?)'
+// `turn on …?` is still a request; `how do I use …?` is a question.
+const SWITCH_ON = new RegExp(
+  [
+    `${NAME}[\\s:]+(?:v\\d+\\s+)?(?:on|ultra)${WORD}${ASKED}`,
+    `${NOT}\\bturn\\s+on\\s+(?:the\\s+)?${NAME}\\b${WORD}`,
+    `${NOT}\\buse\\s+(?:the\\s+)?${NAME}\\b(?!\\s+(?:repo|plugin|skills?|code|band|mod)\\b)${WORD}${ASKED}`,
+    `${NOT_TH}เปิด\\s*(?:โหมด\\s*)?${NAME}`,
+    `${NAME}\\s*(?:v\\d+\\s*)?เปิด${END_TH}`,
+  ].join('|'),
+  'gi',
+)
+const SWITCH_OFF = new RegExp(
+  [
+    `${NAME}[\\s:]+(?:v\\d+\\s+)?off${WORD}${ASKED}`,
+    `${NOT}\\b(?:turn\\s+off|disable|stop\\s+using)\\s+(?:the\\s+)?${NAME}\\b${WORD}`,
+    `(?<!เ)${NOT_TH}ปิด\\s*(?:โหมด\\s*)?${NAME}`,
+    `${NAME}\\s*(?:v\\d+\\s*)?ปิด${END_TH}`,
+    `${NOT_TH}เลิกใช้\\s*${NAME}(?!\\s*(?:ไหม|มั้ย|หรือเปล่า))`,
+  ].join('|'),
+  'gi',
+)
 /**
  * A prompt that is a Hanahira skill's own command (`/hanahira-claude-ui:…`): its part, and on
  * unless its argument is `off`. The engine names the command (`{ name, args }`, newer engines);
  * else the text does, typed (`/name args`) or as the engine wraps it (`<command-name>`).
  */
-export const skillCommand = (text: string, command?: unknown): { part: string; on: boolean } | null => {
+export const skillCommand = (text: string, command?: unknown): { part: string; on: boolean; status?: boolean } | null => {
   const c = command as { name?: unknown; args?: unknown } | null | undefined
   const typed =
     /^\s*\/(\S+)(?:\s+(.*))?$/s.exec(text) ??
@@ -184,7 +255,11 @@ export const skillCommand = (text: string, command?: unknown): { part: string; o
   const name = typeof c?.name === 'string' ? c.name : typed?.[1]
   const args = typeof c?.args === 'string' ? c.args : (typed?.[2] ?? '')
   const part = name ? hanahiraPart(name) : null
-  return part === null ? null : { part, on: !/^off\b/i.test(args.trim()) }
+  if (part === null) return null
+  // `status` asks and switches nothing; `off` (or ปิด) switches off; a bare command is `on`.
+  const a = args.trim().replace(/^["'`]+/, '')
+  if (/^status\b/i.test(a)) return { part, on: true, status: true }
+  return { part, on: !/^(?:off\b|ปิด)/i.test(a) }
 }
 // A transcript row as `$.session.messages()` gives it, as far as the mode needs it.
 type ModeRow = { role: string; text?: string; toolUses?: readonly { tool: string; input: Record<string, unknown> }[]; toolResults?: readonly unknown[] }
@@ -196,13 +271,15 @@ const NOT_TYPED = /<(system-reminder|task-notification|local-command-stdout|loca
  * so the skill loaded to say "off" switches nothing back on. A skill's text, sent as a user
  * message, is the skill speaking, not the person.
  */
-export const modeFrom = (rows: readonly ModeRow[]): Skill => {
-  let mode: Skill = { on: false, loaded: [] }
-  let off = false
+export const modeFrom = (rows: readonly ModeRow[], seed: Skill = { on: false, loaded: [] }, held = false): Skill => {
+  let mode: Skill = seed
+  // `held`: an `off` from before these rows still holds (the switch has left a full window).
+  let off = held
   const load = (part: string) => {
     if (!off) mode = { on: true, loaded: mode.loaded.includes(part) ? mode.loaded : [...mode.loaded, part] }
   }
   for (const r of rows) {
+    if (!r || typeof r !== 'object') continue
     if (r.role !== 'user') {
       for (const u of r.toolUses ?? []) {
         const part = u.tool === 'Skill' && typeof u.input?.skill === 'string' ? hanahiraPart(u.input.skill) : null
@@ -210,9 +287,10 @@ export const modeFrom = (rows: readonly ModeRow[]): Skill => {
       }
       continue
     }
-    const text = (r.text ?? '').replace(NOT_TYPED, ' ')
+    const text = (typeof r.text === 'string' ? r.text : '').replace(NOT_TYPED, ' ')
     if (r.toolResults?.length || !text.trim()) continue
     const cmd = skillCommand(text)
+    if (cmd?.status) continue
     if (!cmd && text.includes('Base directory for this skill:')) continue
     const s = cmd ? (cmd.on ? 'on' : 'off') : modeSwitch(text)
     off = s === 'off'
@@ -224,6 +302,10 @@ export const modeFrom = (rows: readonly ModeRow[]): Skill => {
 }
 /** The last switch in a prompt, or null; code and quoted lines are not the person's switch. */
 export const modeSwitch = (text: string): 'on' | 'off' | null => {
+  // Another command's arguments (`/review Hanahira Claude UI off path`) are not a switch.
+  if (/^\s*\/(?!hanahira)[\w:-]+(?:\s|$)/i.test(text)) return null
+  const wrapped = /<command-name>\/?([^<\s]+)<\/command-name>/.exec(text)
+  if (wrapped && hanahiraPart(wrapped[1]!) === null) return null
   const own = text.replace(/```[\s\S]*?(?:```|$)/g, ' ').replace(/`[^`\n]*`/g, ' ').replace(/^[ \t]*>.*$/gm, ' ')
   const last = (re: RegExp) => Math.max(-1, ...[...own.matchAll(re)].map(m => m.index ?? -1))
   const on = last(SWITCH_ON)
@@ -243,7 +325,8 @@ const efforts = new Map<string, string>()
 // A change plays once, in CSS inside its picture (see MOTION in chat.ts): rings, meters and the
 // speed needle glide (glideHolder). Figures change at once (see `reel` in the band's render).
 // Each holds where it came from while it plays, so a redraw then sends the same picture.
-const glides = glideHolder()
+// Held as long as the mascot's hop plays (twinkleMs), or its last frames are cut.
+const glides = glideHolder(MOTION.glideMs, MOTION.twinkleMs)
 
 const tick = atom({ plugin: 'hanahira-claude-ui', key: 'tick' } as const, 0)
 
@@ -256,7 +339,7 @@ const info = atom({ plugin: 'hanahira-claude-ui', key: 'info' } as const, null)
 const RING = 38
 
 // The px between two cards of the grid, drawn as an empty picture so it is exact (a Box gap is
-// in cells). With each card's own margin (GLASS.margin) the cards sit 8px apart.
+// in cells). With each card's own margin the cards sit 8px apart.
 const GRID_GAP = 4
 const blankArt = (width: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 1" width="${width}" height="1"><rect width="${width}" height="1" fill="none"/></svg>`
 const GAP_ART = blankArt(GRID_GAP)
@@ -428,8 +511,11 @@ export const ringSvg = (percent: number, color: string, size: number, opts: { ic
 export const glyph = (percent: number) =>
   !Number.isFinite(percent) || percent < 12.5 ? '○' : percent < 37.5 ? '◔' : percent < 62.5 ? '◑' : percent < 87.5 ? '◕' : '●'
 
-export const limitLabel = (kind: string) =>
-  kind === 'five_hour' ? '5-hour limit' : kind === 'seven_day' ? '7-day limit' : kind === 'spend_limit' ? 'spend limit' : kind
+export const limitLabel = (kind: string): string => {
+  // A model's own week standing alone (no all-models week beside it) is named, not shown as its key.
+  const m = kind.startsWith('seven_day_') && kind.length > 10 ? kind.slice(10).replace(/_/g, ' ') : null
+  return m ? `7-day ${m} limit` : kind === 'five_hour' ? '5-hour limit' : kind === 'seven_day' ? '7-day limit' : kind === 'spend_limit' ? 'spend limit' : kind
+}
 
 /** What is left of the context window: the tokens when known, else the share. */
 export const contextLeft = (tokens: number | null, window: number | null, percent: number | null) =>
@@ -482,14 +568,16 @@ export const scopedLimits = (body: string): Usage['limits'] => {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
     if (!slug || out.some(l => l.kind === `seven_day_${slug}`)) continue
     // The reset is an ISO time, or seconds since the epoch.
-    const at = typeof row.resets_at === 'number' && Number.isFinite(row.resets_at) ? new Date(row.resets_at * 1000).toISOString() : typeof row.resets_at === 'string' ? row.resets_at : undefined
+    // Seconds or milliseconds since the epoch, or an ISO time; anything else is no reset time.
+    const ms = typeof row.resets_at === 'number' ? (row.resets_at > 1e11 ? row.resets_at : row.resets_at * 1000) : typeof row.resets_at === 'string' ? Date.parse(row.resets_at) : NaN
+    const at = Number.isFinite(ms) && Math.abs(ms) < 8.64e15 ? new Date(ms).toISOString() : undefined
     out.push({ kind: `seven_day_${slug}`, percentUsed: Math.max(0, Math.round(row.percent * 10) / 10), ...(at ? { resetsAt: at } : {}) })
   }
   return out
 }
 
 export const shortLimitLabel = (kind: string) =>
-  kind === 'five_hour' ? '5h limit' : kind === 'seven_day' ? '7d limit' : limitLabel(kind)
+  kind === 'five_hour' ? '5h limit' : kind === 'seven_day' ? '7d limit' : kind.startsWith('seven_day_') && kind.length > 10 ? `7d ${kind.slice(10).replace(/_/g, ' ')}` : limitLabel(kind)
 
 const short = (tool: string) => tool.replace(/^mcp__.*__/, '')
 
@@ -552,15 +640,36 @@ const stopTurnClock = async ($: EngineInterface, ranMs: number | null = null) =>
   ticker = null
   turnBeat = false
   trailing = false
-  const now = await $.clock.now()
-  const ran = ranMs ?? (startedAt > 0 ? now - startedAt : null)
+  // Taken before the first await: a turn that starts while this waits sets its own start, which
+  // must not be read here as this turn's.
+  const began = startedAt
+  const ran = ranMs ?? (began > 0 ? (await $.clock.now()) - began : null)
   if (ran !== null) {
     await update($, seconds, () => Math.round(ran / 1000))
     await update($, runMs, t => (t ?? 0) + ran)
   }
-  startedAt = 0
+  // Cleared after the figures are written (the band reads the stored seconds once it is 0), and
+  // only if it is still this turn's: a turn that began meanwhile keeps its own start.
+  if (startedAt === began) startedAt = 0
   await update($, tick, n => (n ?? 0) + 1)
 }
+
+/**
+ * The band's own bookkeeping, run so that its failure is the band's alone: the engine skips a
+ * hook that throws, and everything that hook still had to count is lost with it (a thinking
+ * piece with no text once cost every figure of the turn that way). Never wrapped around
+ * `next(e)`: an error from the engine or the user's action is theirs and passes through.
+ */
+const quiet = async (f: () => unknown) => {
+  try {
+    await f()
+  } catch {
+    // the band's own; nothing of the user's depends on it
+  }
+}
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+// The two commands the Bash guard refuses, seen without parsing: what stands in when `dangerous` cannot answer.
+const CRUDE_RISK = /\bdown\b[\s\S]*(?:\s-\w*v|--volumes)|\bufw\b[\s\S]*\benable\b/
 
 // The folder and its branch. Read again after every turn: a turn can switch the branch.
 // One of Hanahira Claude UI's skills loaded: the mode is on, and the part is named. At the top
@@ -573,9 +682,14 @@ const loadPart = ($: EngineInterface, part: string) =>
 
 // The mode, read again from the transcript: it outlives a reload, and a skill load whose event
 // another plugin kept from this one.
+// The person's last switch was `off`: it holds until they write again, so a skill loading
+// (to say "off", or later) switches nothing back on.
+let switchedOff = false
 const reconcileMode = async ($: EngineInterface) => {
   const rows = await $.session.messages().catch(() => null)
-  if (Array.isArray(rows)) await update($, skill, () => modeFrom(rows as readonly ModeRow[]))
+  // The engine hands over its newest 4096 rows: once the window is full, the switch may have left
+  // it, so the mode kept so far is where the reading starts.
+  if (Array.isArray(rows)) await update($, skill, v => (rows.length >= 4096 ? modeFrom(rows as readonly ModeRow[], asSkill(v), switchedOff) : modeFrom(rows as readonly ModeRow[])))
 }
 
 const locate = async ($: EngineInterface) => {
@@ -590,8 +704,11 @@ const locate = async ($: EngineInterface) => {
 
 // A card whose agent ended without a turn.complete of its own (stopped from the tasks list,
 // say) would read "running" for good and keep the beat going: the engine's list settles it.
-// How many looks in a row each running agent was missing from the engine's list.
+// When each running agent was first found missing from the engine's list (ms).
 const unlisted = new Map<string, number>()
+// Missing for this long, on a later look, is ended. By time, not by count: two looks a moment
+// apart (the beat's and a turn's end) are one look, and must not end an agent between its turns.
+const UNLISTED_MS = 4000
 
 // The cards kept: every running one, whatever its age, and the latest finished ones up to 12 in
 // all. A plain cap of the last 12 dropped a long agent's card while it still ran, once twelve
@@ -613,10 +730,13 @@ const reconcileAgents = async ($: EngineInterface) => {
     // between two of an agent's turns must not end a card whose agent still works.
     for (const a of list) if (a.status === 'running' && a.kind !== 'shell') {
       if (byId.has(a.id)) unlisted.delete(a.id)
-      else unlisted.set(a.id, (unlisted.get(a.id) ?? 0) + 1)
+      else if (!unlisted.has(a.id)) unlisted.set(a.id, now)
     }
+    // A card no longer running has no entry to keep: a revived agent starts its count afresh.
+    const running = new Set(list.filter(a => a.status === 'running').map(a => a.id))
+    for (const id of [...unlisted.keys()]) if (!running.has(id)) unlisted.delete(id)
     const settled = (s: string | undefined, id: string): Agent['status'] | null =>
-      s === undefined ? ((unlisted.get(id) ?? 0) >= 2 ? 'done' : null) : s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
+      s === undefined ? (unlisted.has(id) && now - unlisted.get(id)! >= UNLISTED_MS ? 'done' : null) : s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' ? 'stopped' : null
     let changed = false
     await update($, agents, l =>
       asList(l).map(a => {
@@ -628,7 +748,7 @@ const reconcileAgents = async ($: EngineInterface) => {
       }),
     )
     // A card settled here leaves like any other: one redraw once its stay is over.
-    if (changed) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+    if (changed) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1).catch(() => undefined))
   }
   await restAgentBeat($)
 }
@@ -644,7 +764,7 @@ const settleCards = async ($: EngineInterface, pick: (a: Agent) => Agent['status
       return status ? { ...a, status, endedAt: now } : a
     }),
   )
-  $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+  $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1).catch(() => undefined))
   await restAgentBeat($)
 }
 
@@ -655,17 +775,33 @@ const settleCards = async ($: EngineInterface, pick: (a: Agent) => Agent['status
 // Linux only (/proc): elsewhere the probe says nothing, and the notification settles the card.
 const SHELL_PROBE =
   '[ -d /proc/self/fd ] || exit 0; ' +
-  'find /proc/[0-9]*/fd -maxdepth 1 -lname "*/$1/tasks/*.output" -printf "H %l\\n" 2>/dev/null | sort -u; ' +
+  'find /proc/[0-9]*/fd -maxdepth 1 \\( -lname "*/$1/tasks/*.output" -o -lname "*/$1/tasks/*.output (deleted)" \\) -printf "H %l\\n" 2>/dev/null | sort -u; ' +
   'for f in "${TMPDIR:-/tmp}"/claude-*/*/"$1"/tasks/*.output; do [ -f "$f" ] || continue; ' +
   'if tail -c 64 "$f" | grep -q "\\[killed\\]"; then echo "K $f"; else echo "F $f"; fi; done; echo OK'
 
+// When each running command's output file was first found missing on the host (ms).
+const shellGone = new Map<string, number>()
+// Cards stopped for that reason alone: a notification arriving later still names how they ended.
+const goneSettled = new Map<string, string>()
 const reconcileShells = async ($: EngineInterface) => {
   if (!asList(await read($, agents)).some(a => a.status === 'running' && a.kind === 'shell')) return
   const sid = await $.session.id()
   const out = await $.process.run(['sh', '-c', SHELL_PROBE, 'sh', sid]).catch(() => null)
   if (!out || out.exitCode !== 0) return
   const fates = shellFates(out.stdout)
-  await settleCards($, a => (a.kind === 'shell' ? (fates.get(a.id) ?? null) : null))
+  // A card the host no longer knows at all (no output file, held or not: the engine restarted,
+  // the temp folder was cleaned) would run for good: named missing on two looks apart, it is stopped.
+  const seen = shellSeen(out.stdout)
+  const now = await $.clock.now()
+  const running = asList(await read($, agents)).filter(a => a.status === 'running' && a.kind === 'shell')
+  for (const id of [...shellGone.keys()]) if (!running.some(a => a.id === id)) shellGone.delete(id)
+  if (seen) for (const a of running) {
+    if (seen.has(a.id)) shellGone.delete(a.id)
+    else if (!shellGone.has(a.id)) shellGone.set(a.id, now)
+  }
+  const gone = (id: string) => seen !== null && shellGone.has(id) && now - shellGone.get(id)! >= UNLISTED_MS
+  for (const a of running) if (!fates.has(a.id) && gone(a.id)) remember(goneSettled, a.id, '1')
+  await settleCards($, a => (a.kind === 'shell' ? (fates.get(a.id) ?? (gone(a.id) ? 'stopped' : null)) : null))
 }
 
 // Nothing running any more: the beat stops. Every path that settles a card ends here, so the
@@ -688,7 +824,7 @@ const agentBeat = ($: EngineInterface) => {
     beats += 1
     if (beats % 5 === 0) void reconcileAgents($).catch(() => undefined)
     if (beats % 5 === 2) void reconcileShells($).catch(() => undefined)
-    if (!turnBeat) void update($, tick, n => (n ?? 0) + 1)
+    if (!turnBeat) void update($, tick, n => (n ?? 0) + 1).catch(() => undefined)
   })
 }
 
@@ -705,42 +841,35 @@ export const register: Register = on => {
   // Characters of streamed text per output token, learned from each finished response, so the
   // live speed reads in tokens; 4 until the first response has been measured.
   let charsPerToken = 4
-  // This prompt switched the mode off: the skill it loads to say so does not switch it back on.
-  let switchedOff = false
   // The live speed's latest reading, waiting for the next beat to be drawn (null: nothing new).
   let pendingSpeed: { tps: number; held: number } | null = null
 
   on('session.start', async ($, e, next) => {
-    await locate($)
-    await reconcileMode($)
+    await quiet(() => locate($))
+    await quiet(() => reconcileMode($))
     // Cards still running from before a reload: the beat that settles them starts again.
-    if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
+    await quiet(async () => {
+      if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
+    })
     // Fresh figures at load, so a change of shape (a new field) shows at once, not next turn.
-    const fresh = await $.session.usage().catch(() => null)
-    if (fresh) {
-      await update($, usage, () => ({
-        usd: fresh.cost?.usd ?? null,
-        percent: fresh.context.percent ?? null,
-        tokens: fresh.context.tokens ?? null,
-        window: fresh.context.window,
-        limits: fresh.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
-      }))
-      if (fresh.rateLimits.some(l => l.kind === 'seven_day')) await refreshScoped($)
-    }
+    await quiet(async () => {
+      const fresh = await $.session.usage().catch(() => null)
+      if (!fresh) return
+      const now = toUsage(fresh)
+      await update($, usage, () => now)
+      if (now.limits.some(l => l.kind === 'seven_day')) await refreshScoped($)
+    })
     return next(e)
   })
 
   // Spend and context fill, as the status line has them.
   on('session.measure', async ($, e, next) => {
-    await update($, usage, () => ({
-      usd: e.cost?.usd ?? null,
-      percent: e.context.percent ?? null,
-      tokens: e.context.tokens ?? null,
-      window: e.context.window,
-      limits: e.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
-    }))
-    // Only an account with a weekly limit has a week counted per model.
-    if (e.rateLimits.some(l => l.kind === 'seven_day')) await refreshScoped($)
+    await quiet(async () => {
+      const now = toUsage(e)
+      await update($, usage, () => now)
+      // Only an account with a weekly limit has a week counted per model.
+      if (now.limits.some(l => l.kind === 'seven_day')) await refreshScoped($)
+    })
     return next(e)
   })
 
@@ -750,36 +879,49 @@ export const register: Register = on => {
   // passes it on past this one, and the engine then prints a skipped-hook line on every load.
 
   on('prompt.submit', async ($, e, next) => {
+    await quiet(async () => {
     // A background task's notification settles its card (an agent's or a command's) and,
     // being nobody's typing, switches nothing.
     const notice = taskNotice(e.text)
     if (notice) {
       const status = settledStatus(notice.status)
       const list = asList(await read($, agents))
-      if (status && list.some(a => a.id === notice.id && a.status === 'running')) {
+      // Still running, or stopped only because the host lost sight of it: the notification is the real ending.
+      const open = (a: Agent) => a.id === notice.id && (a.status === 'running' || goneSettled.has(a.id))
+      if (status && list.some(open)) {
         const now = await $.clock.now()
-        await update($, agents, l => asList(l).map(a => (a.id === notice.id && a.status === 'running' ? { ...a, status, endedAt: now } : a)))
-        $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+        await update($, agents, l => asList(l).map(a => (open(a) ? { ...a, status, endedAt: a.endedAt ?? now } : a)))
+        goneSettled.delete(notice.id)
+        $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1).catch(() => undefined))
         await restAgentBeat($)
       }
     }
     // A prompt the person did not type (isMeta, newer engines) switches nothing.
     const typed = !(e as { isMeta?: true }).isMeta && !notice
     const cmd = typed ? skillCommand(e.text, (e as { command?: unknown }).command) : null
+    // `status` asks and switches nothing: the mode, and an `off` that holds, stay as they were.
+    if (cmd?.status) return
     const s = cmd ? (cmd.on ? 'on' : 'off') : typed ? modeSwitch(e.text) : null
     // Only the person's own prompt sets it: a notification arriving mid-turn must not clear an `off`.
     if (typed) switchedOff = s === 'off'
     if (s === 'off') await update($, skill, () => ({ on: false, loaded: [] }))
     else if (cmd) await loadPart($, cmd.part)
     else if (s === 'on') await update($, skill, v => ({ ...asSkill(v), on: true }))
+    })
     return next(e)
   })
+    // If the hook itself fails or overruns its budget, the action still goes through, once.
+    .catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
-    const part = hanahiraPart(e.skill)
-    if (part !== null && !switchedOff) await loadPart($, part)
+    await quiet(async () => {
+      const part = hanahiraPart(e.skill)
+      if (part !== null && !switchedOff) await loadPart($, part)
+    })
     return next(e)
   })
+    // If the hook itself fails or overruns its budget, the action still goes through, once.
+    .catch(($, e, next) => next(e))
 
   // The main turn starts: the clock and the beat start here, not at prompt.submit, which a
   // turn begun without a typed prompt (a continuation) never raises, and which a prompt typed
@@ -788,13 +930,16 @@ export const register: Register = on => {
     const startedAgent = (e as unknown as { agentId?: string }).agentId
     if (startedAgent !== undefined) {
       // An ended agent sent a message works again under its id: its card runs again.
-      const known = asList(await read($, agents)).find(a => a.id === startedAgent)
-      if (known && known.status !== 'running') {
-        await update($, agents, l => asList(l).map(a => (a.id === startedAgent ? { ...a, status: 'running' as const, endedAt: null } : a)))
-        agentBeat($)
-      }
+      await quiet(async () => {
+        const known = asList(await read($, agents)).find(a => a.id === startedAgent)
+        if (known && known.status !== 'running') {
+          await update($, agents, l => asList(l).map(a => (a.id === startedAgent ? { ...a, status: 'running' as const, endedAt: null } : a)))
+          agentBeat($)
+        }
+      })
       return next(e)
     }
+    await quiet(async () => {
     if (asList(await read($, agents)).some(a => a.status === 'running')) agentBeat($)
     // The last turn's clock was still running on for its agents: it is counted up to now first.
     if (trailing) await stopTurnClock($)
@@ -805,7 +950,7 @@ export const register: Register = on => {
     pendingSpeed = null
     const turnStart = startedAt
     beatSecs = 0
-    turnBeat = true
+    turnBeat = false
     ticker = $.clock.every(BEAT_MS, () => {
       void (async () => {
         // Seconds by the clock, not by counting beats: a timer held back (a window out of
@@ -813,7 +958,7 @@ export const register: Register = on => {
         beatSecs = Math.max(0, Math.floor(((await $.clock.now()) - turnStart) / 1000))
         const sp = pendingSpeed
         pendingSpeed = null
-        if (sp) await update($, speed, s => ({ tps: sp.tps, peak: Math.max(s.peak ?? 0, sp.held) }))
+        if (sp) await update($, speed, s => ({ tps: sp.tps, peak: Math.max(s?.peak ?? 0, sp.held) }))
         await update($, tick, n => (n ?? 0) + 1)
         // The limits, context and spend, re-read as the turn goes: not on every beat.
         const now = await $.clock.now()
@@ -821,17 +966,21 @@ export const register: Register = on => {
           usageAt = now
           await refreshUsage($).catch(() => {})
         }
-      })()
+      })().catch(() => undefined)
     })
-    await update($, stats, () => EMPTY)
-    await update($, outcome, () => null)
+    // Only once the beat exists: with none, the agents' own beat must keep redrawing.
+    turnBeat = true
+    })
+    await quiet(() => update($, stats, () => EMPTY))
+    await quiet(() => update($, outcome, () => null))
     return next(e)
   })
 
   // A subagent starts: one record, kept while it runs and a while after.
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
-    if (e.workflow || e.isTeammate || !('agentId' in r) || !r.agentId) return r
+    await quiet(async () => {
+    if (!r || typeof r !== 'object' || e.workflow || e.isTeammate || !('agentId' in r) || !r.agentId) return
     const agentId = r.agentId
     const now = await $.clock.now()
     const a: Agent = {
@@ -852,15 +1001,26 @@ export const register: Register = on => {
     }
     await update($, agents, list => keepCards([...asList(list).filter(x => x.id !== agentId), a]))
     agentBeat($)
+    })
     return r
   })
+    // If the hook itself fails or overruns its budget, the action still goes through, once.
+    .catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Bash' }, ($, e, next) => {
-    if (dangerous(e.command)) {
-      return { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }
+    let risky: boolean
+    try {
+      risky = typeof e.command === 'string' && dangerous(e.command)
+    } catch {
+      // The reader itself failed: a crude look still refuses the two commands it guards, so a
+      // command built to break the reader does not pass because of it.
+      risky = CRUDE_RISK.test(String(e.command ?? ''))
     }
+    if (risky) return { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }
     return next(e)
   })
+    // A guard that overran its budget must not pass what it guards: the crude look decides.
+    .catch(($, e, next) => (next.called || !CRUDE_RISK.test(String(e.command ?? '')) ? next(e) : { deny: `${$.plugin.name}: blocked (compose down -v / firewall enable)` }))
 
   // Every tool call: stats, and an agent's start and end. One unmatched hook only.
   on('tool.call', async ($, e, next) => {
@@ -871,40 +1031,41 @@ export const register: Register = on => {
 
     // Work done inside a subagent counts on its card; asking for one remembers the effort.
     const agentId = (e as unknown as { agentId?: string }).agentId
-    if (agentId) {
-      await update($, agents, list => asList(list).map(a => (a.id === agentId ? { ...a, tools: a.tools + 1 } : a)))
-    }
-    if (name === 'Agent' || name === 'Task') {
-      const effort = (e as unknown as { effort?: string }).effort
-      if (effort) remember(efforts, e.tool_use_id, effort)
-    }
-
-    const args = e as unknown as { file_path?: string; command?: string; pattern?: string }
-    const target = args.file_path ? base(args.file_path) : (args.command ?? args.pattern ?? '')
-    const isWrite = name === 'Edit' || name === 'Write' || name === 'NotebookEdit'
-    await update($, stats, s => ({
-      tools: s.tools + 1,
-      byTool: { ...s.byTool, [name]: (s.byTool[name] ?? 0) + 1 },
-      files:
-        isWrite && args.file_path && !s.files.includes(args.file_path)
-          ? [...s.files, args.file_path]
-          : s.files,
-      last: target ? `${name} ${clip(target.replace(/\s+/g, ' '), 38)}` : name,
-    }))
-    const t0 = await $.clock.now()
+    await quiet(async () => {
+      if (agentId) {
+        await update($, agents, list => asList(list).map(a => (a.id === agentId ? { ...a, tools: (Number.isFinite(a.tools) ? a.tools : 0) + 1 } : a)))
+      }
+      if (name === 'Agent' || name === 'Task') {
+        const effort = (e as unknown as { effort?: string }).effort
+        if (effort) remember(efforts, e.tool_use_id, effort)
+      }
+      // Any tool passes here, an MCP one included: its `command` may be a list, its `pattern` an object.
+      const args = e as unknown as { file_path?: unknown; command?: unknown; pattern?: unknown }
+      const filePath = str(args.file_path)
+      const target = filePath ? base(filePath) : str(args.command) || str(args.pattern)
+      const isWrite = name === 'Edit' || name === 'Write' || name === 'NotebookEdit'
+      await update($, stats, s => ({
+        tools: s.tools + 1,
+        byTool: { ...s.byTool, [name]: (s.byTool[name] ?? 0) + 1 },
+        files: isWrite && filePath && !s.files.includes(filePath) ? [...s.files, filePath] : s.files,
+        last: target ? `${name} ${clip(target.replace(/\s+/g, ' '), 38)}` : name,
+      }))
+    })
+    const t0 = await $.clock.now().catch(() => 0)
     const result = await next(e)
-    const t1 = await $.clock.now()
+    const t1 = await $.clock.now().catch(() => t0)
+    await quiet(async () => {
 
     // A command sent to the background (by Claude, or with Ctrl+B): a card of its own, kind
     // `shell`, kept until its notification arrives. The main loop's only.
     if (name === 'Bash' && !agentId) {
-      const out = (result as { result?: unknown }).result as { backgroundTaskId?: string } | undefined
+      const out = (result as { result?: unknown } | null)?.result as { backgroundTaskId?: string } | undefined
       const input = e as unknown as { description?: string; command?: string }
       if (out?.backgroundTaskId) {
         const id = out.backgroundTaskId
         const rec: Agent = {
           id,
-          name: input.description || clip((input.command ?? 'command').replace(/\s+/g, ' '), 40),
+          name: str(input.description) || clip((str(input.command) || 'command').replace(/\s+/g, ' '), 40),
           type: 'shell',
           kind: 'shell',
           model: '',
@@ -926,7 +1087,7 @@ export const register: Register = on => {
 
     // A task stopped by hand sends no notification: its card settles here.
     if (name === 'TaskStop' && !agentId) {
-      const out = (result as { result?: unknown }).result as { task_id?: string } | undefined
+      const out = (result as { result?: unknown } | null)?.result as { task_id?: string } | undefined
       const input = e as unknown as { task_id?: string; shell_id?: string }
       const id = out?.task_id ?? input.task_id ?? input.shell_id
       if (id) await settleCards($, a => (a.id === id ? 'stopped' : null))
@@ -936,7 +1097,7 @@ export const register: Register = on => {
     // is caught here), and, for a foreground agent, that it is already done.
     if ((name === 'Agent' || name === 'Task') && !agentId) {
       const input = e as unknown as { description?: string; subagent_type?: string; model?: string; effort?: string }
-      const out = (result as { result?: unknown }).result as
+      const out = (result as { result?: unknown } | null)?.result as
         | { agentId?: string; status?: string; resolvedModel?: string; totalToolUseCount?: number }
         | undefined
       if (out?.agentId) {
@@ -964,16 +1125,19 @@ export const register: Register = on => {
           return keepCards([...rest, rec])
         })
         if (!finished) agentBeat($)
-        if (finished) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+        if (finished) $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1).catch(() => undefined))
       }
     }
+    })
     return result
   })
+    // If the hook itself fails or overruns its budget, the action still goes through, once.
+    .catch(($, e, next) => next(e))
 
   // Every model response, the moment it lands: its tokens, and the spend and context as
   // the status line has them. (turn.complete used to add the turn's tokens at the very end.)
   on('turn.step', async function* ($, e, next) {
-    const t0 = await $.clock.now()
+    const t0 = await $.clock.now().catch(() => 0)
     const aid0 = (e as unknown as { agentId?: string }).agentId
     // The main thread's speed moves with the stream, like a speedometer: every piece is counted
     // as it passes and the gauge is redrawn a few times a second. Writes are not awaited, so
@@ -981,11 +1145,16 @@ export const register: Register = on => {
     const stream = next(e)
     const samples: Array<[number, number]> = []
     let chars = 0
+    // A piece that came without its text (thinking a model keeps to itself): its tokens are
+    // counted, its characters are not, so this response says nothing about characters per token.
+    let blind = false
     let drawnAt = 0
     // A stream that stalls sends no pieces, so nothing above would redraw: the figure would hold
     // its last reading. While it is quiet, the same reading is taken on a beat, and falls as the
     // window empties, to 0 once a whole window has passed with nothing.
-    const stall = aid0
+    let stall: { cancel: () => void } | null = null
+    try {
+      stall = aid0
       ? null
       : $.clock.every(LIVE_SPEED_MS * 2, () => {
           const at = performance.now()
@@ -995,12 +1164,16 @@ export const register: Register = on => {
           drawnAt = at
           pendingSpeed = { tps, held: 0 }
         })
+    } catch {
+      // no stall beat: the gauge holds its last reading through a stalled stream
+    }
     try {
       for await (const c of stream) {
         yield c
         if (aid0) continue
         const n = streamChars(c)
         if (n === null) continue
+        if (c.kind === 'thinking' && typeof (c as { text?: unknown }).text !== 'string') blind = true
         chars += n
         const at = performance.now()
         samples.push([at, chars])
@@ -1020,30 +1193,32 @@ export const register: Register = on => {
       stall?.cancel()
     }
     const r = await stream.result
-    const u = r.usage
-    if (!aid0 && u && u.output_tokens >= 50 && chars > 0) {
+    // The response's end, read before any of the band's own writes: their time is not the model's.
+    const t1 = await $.clock.now().catch(() => 0)
+    const took = t0 > 0 && t1 > 0 ? t1 - t0 : null
+    const u = r?.usage
+    if (!aid0 && !blind && u && u.output_tokens >= 50 && chars > 0) {
       charsPerToken = Math.max(1.5, Math.min(6, charsPerToken * 0.6 + (chars / u.output_tokens) * 0.4))
     }
     // What this request really used: the effort the engine sent, the model the API reported.
     const sent = (e as unknown as { effort?: string | number }).effort
     const effort = typeof sent === 'number' ? `budget ${fmtTokens(sent)}` : sent
     const aid = (e as unknown as { agentId?: string }).agentId
-    if (u) {
-      await update($, tokens, t => addUsage(t, u))
-    }
+    // Each figure on its own: one write that fails takes no other figure with it.
+    if (u) await quiet(() => update($, tokens, t => addUsage(t, u)))
     // Speed of the main thread only: subagents run beside it and would blur the figure.
-    const tps = !aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
-    if (!aid && u?.model) await update($, model, () => u.model)
+    const tps = !aid && u && took !== null ? tokensPerSec(u.output_tokens, took) : null
+    if (!aid && typeof u?.model === 'string') await quiet(() => update($, model, () => u.model))
     // The response's own average settles the needle once it ends; a live reading still waiting
     // for the beat is older than it, so it is dropped.
     if (tps !== null) {
       pendingSpeed = null
-      await update($, speed, s => ({ tps, peak: Math.max(s.peak ?? 0, tps) }))
+      await quiet(() => update($, speed, s => ({ tps, peak: Math.max(s?.peak ?? 0, tps) })))
     }
     // A subagent's own speed: its latest response's output over the time that response took.
-    const agentTps = aid && u ? tokensPerSec(u.output_tokens, (await $.clock.now()) - t0) : null
-    if (aid) {
-      await update($, agents, list =>
+    const agentTps = aid && u && took !== null ? tokensPerSec(u.output_tokens, took) : null
+    if (aid) await quiet(() =>
+      update($, agents, list =>
         asList(list).map(a =>
           a.id !== aid
             ? a
@@ -1056,18 +1231,12 @@ export const register: Register = on => {
                 tps: agentTps ?? a.tps ?? null,
               },
         ),
-      )
-    }
-    const now = await $.session.usage().catch(() => null)
-    if (now) {
-      await update($, usage, () => ({
-        usd: now.cost?.usd ?? null,
-        percent: now.context.percent ?? null,
-        tokens: now.context.tokens ?? null,
-        window: now.context.window,
-        limits: now.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
-      }))
-    }
+      ),
+    )
+    await quiet(async () => {
+      const now = await $.session.usage().catch(() => null)
+      if (now) await update($, usage, () => toUsage(now))
+    })
     return r
   })
 
@@ -1075,6 +1244,7 @@ export const register: Register = on => {
     // A subagent's turn closes its own card; only the main turn closes the clock.
     const agentId = (e as unknown as { agentId?: string }).agentId
     if (agentId) {
+      await quiet(async () => {
       const now = await $.clock.now()
       const reason = (e as unknown as { reason: string }).reason
       await update($, agents, list =>
@@ -1084,32 +1254,37 @@ export const register: Register = on => {
             : a,
         ),
       )
-      $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1))
+      $.clock.after(THEME.keepFinishedMs + 300, () => void update($, tick, n => (n ?? 0) + 1).catch(() => undefined))
       await restAgentBeat($)
+      })
       return next(e)
     }
     const reason = (e as unknown as { reason?: string }).reason
-    await update($, outcome, () => (reason === 'error' || reason === 'refusal' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done'))
+    await quiet(() => update($, outcome, () => (reason === 'error' || reason === 'refusal' ? 'error' : e.isAborted || reason === 'aborted' ? 'stopped' : 'done')))
     // An agent or background command the turn started still works: the clock runs on until the
     // last one settles (restAgentBeat), so the time it takes is counted. Otherwise it stops here,
     // at the turn's length as the engine reports it.
-    if (asList(await read($, agents)).some(a => a.status === 'running')) {
+    // The clock first, and on its own: whatever else fails below, the turn's beat does not run on.
+    const stillRunning = await read($, agents).then(l => asList(l).some(a => a.status === 'running'), () => false)
+    if (stillRunning) {
       trailing = true
-      agentBeat($)
+      await quiet(() => agentBeat($))
     } else {
-      await stopTurnClock($, Number.isFinite(e.durationMs) && e.durationMs >= 0 ? e.durationMs : null)
+      await quiet(() => stopTurnClock($, Number.isFinite(e.durationMs) && e.durationMs >= 0 ? e.durationMs : null))
     }
-    await locate($).catch(() => undefined)
-    await reconcileAgents($)
-    await reconcileMode($)
-    await update($, tick, n => (n ?? 0) + 1)
+    await quiet(() => locate($))
+    await quiet(() => reconcileAgents($))
+    await quiet(() => reconcileMode($))
+    await quiet(() => update($, tick, n => (n ?? 0) + 1))
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-
-    const [stNow, secs, where, useNow, tk, run, , nowMs, roster, spNow, mdl, skNow, endedAs, scNow] = await Promise.all([
+    // A stored value of the wrong shape (an older version's, a reload's) must cost one figure, not
+    // the band: whatever still throws below is logged and the site is left as the engine draws it.
+    try {
+    const [stRaw, secs, where, useRaw, tkRaw, run, , nowMs, roster, spRaw, mdl, skNow, endedRaw, scNow] = await Promise.all([
       read($, stats),
       read($, seconds),
       read($, info),
@@ -1136,16 +1311,22 @@ export const register: Register = on => {
     // wakes still plays, once, from its moment (`glides`).
     const from = (_key: string, _v: number | null): Since<number> | null => null
 
-    const st = stNow
+    const obj = <T,>(v: T | null | undefined): Partial<T> => (v && typeof v === 'object' ? v : {})
+    const fin = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+    const st = { ...EMPTY, ...obj(stRaw) }
+    const useNow: Usage = { ...NO_USAGE, ...obj(useRaw) }
+    const tk = obj(tkRaw)
+    const endedAs = endedRaw === 'done' || endedRaw === 'error' || endedRaw === 'stopped' ? endedRaw : null
+    const ownLimits = (Array.isArray(useNow.limits) ? useNow.limits : []).filter(l => !!l && typeof l.kind === 'string')
     const use = {
       ...useNow,
       // The engine's limits, then the account's per-model weeks it does not carry.
       limits: [
-        ...(Array.isArray(useNow.limits) ? useNow.limits : []),
-        ...(Array.isArray(scNow?.limits) ? scNow.limits : []).filter(m => weeklyModel(m.kind) && !(Array.isArray(useNow.limits) ? useNow.limits : []).some(l => l.kind === m.kind)),
+        ...ownLimits,
+        ...freshScoped(scNow, nowMs).filter(m => weeklyModel(m.kind) && !ownLimits.some(l => l.kind === m.kind)),
       ].map(l => ({ ...l, shown: l.percentUsed })),
     }
-    const sp = spNow
+    const sp = { tps: fin(obj(spRaw).tps), peak: fin(obj(spRaw).peak) ?? 0 }
     const sk = asSkill(skNow)
     // The looping pictures (status dot, loading bar, working chip) are drawn in the surface's
     // sandboxed frame while Claude works, where a loop keeps running: as a plain image a loop
@@ -1157,13 +1338,13 @@ export const register: Register = on => {
     // Time spent running: the finished turns, and the running one as it goes.
     const runShown = (run ?? 0) + liveMs
     const shownSecs = live ? beatSecs : secs
-    const shownTools = st.tools
+    const shownTools = fin(st.tools) ?? 0
     const elapsedArt =
       shownSecs === null ? null : tickerSvg(fmtElapsed(shownSecs), { from: reel('elapsed', fmtElapsed(shownSecs)), minText: '59m 59s' })
     const { Box, Text } = $.ui.resolve(e)
 
     // Long names are cut, so a deep folder or branch never squeezes the bar out of the row.
-    const title = clip(base(where?.name || '') || THEME.fallbackTitle, 32)
+    const title = clip(base(typeof where?.name === 'string' ? where.name : '') || THEME.fallbackTitle, 32)
     const branch = where?.branch ? clip(where.branch, 28) : null
     const titleArt = slabSvg(title)
 
@@ -1205,6 +1386,7 @@ export const register: Register = on => {
       idle: { color: INK.label, label: 'idle' },
     }
     const status: Status = e.props.isWorking ? 'working' : (endedAs ?? 'idle')
+    const statusWord = status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1)
     const statusW = Math.max(...Object.values(STATUS).map(o => hudChipSvg({ ...o, motion: false }).natural))
     // The bar rests green unless the turn went wrong.
     const barRest = status === 'done' ? THEME.done : INK.track
@@ -1213,10 +1395,10 @@ export const register: Register = on => {
     const timeW = hudChipSvg({ color: INK.label, label: '', icon: 'clock', pad: 6, value: '59m 59s' }).natural
     const chips = [
       ...(shownSecs !== null
-        ? [{ key: 'time', alt: fmtElapsed(shownSecs), art: hudChipSvg({ color: INK.label, label: '', icon: 'clock', pad: 6, value: fmtElapsed(shownSecs), reel: reel('elapsed', fmtElapsed(shownSecs)), minWidth: timeW }) }]
+        ? [{ key: 'time', alt: `elapsed ${fmtElapsed(shownSecs)}`, art: hudChipSvg({ color: INK.label, label: '', icon: 'clock', pad: 6, value: fmtElapsed(shownSecs), reel: reel('elapsed', fmtElapsed(shownSecs)), minWidth: timeW }) }]
         : []),
-      { key: 'status', alt: status === 'done' ? 'Success' : status[0]!.toUpperCase() + status.slice(1), art: hudChipSvg({ ...STATUS[status], minWidth: statusW }) },
-      { key: 'tools', alt: `${shownTools} tool calls`, art: hudChipSvg({
+      { key: 'status', alt: statusWord, art: hudChipSvg({ ...STATUS[status], minWidth: statusW }) },
+      { key: 'tools', alt: `${shownTools} tool ${shownTools === 1 ? 'call' : 'calls'}`, art: hudChipSvg({
         color: INK.label,
         label: toolWord,
         value: String(shownTools),
@@ -1289,7 +1471,7 @@ export const register: Register = on => {
         ],
         icon: (l.kind === 'five_hour' ? 'hourglass' : l.kind === 'seven_day' ? 'calendar' : 'gauge') as IconName,
         percent: l.percentUsed,
-        big: `${Math.round(l.shown)}%`,
+        big: fin(l.shown) === null ? '—' : `${Math.round(l.shown)}%`,
         reel: reel(`limit-${l.kind}`, `${Math.round(l.shown)}%`),
         from: from(`limit-${l.kind}`, l.percentUsed),
         caption: `of ${limitLabel(l.kind)}`,
@@ -1382,18 +1564,30 @@ export const register: Register = on => {
       ]
     }
     // Each cell's faint number: its place on the grid, gauges first.
+    // One draw per (width, mode, height) in a redraw: the layout measures every cell under each
+    // layout it tries, then its height, then draws it, and each of those built the whole picture.
+    const once = (f: Cell['draw']): Cell['draw'] => {
+      const made = new Map<string, ReturnType<Cell['draw']>>()
+      return (width, mode, height) => {
+        const k = `${width}|${mode}|${height}`
+        let v = made.get(k)
+        if (!v) made.set(k, (v = f(width, mode, height)))
+        return v
+      }
+    }
     const order = [...tiles.filter(t => t.key !== 'context').map(t => `tile-${t.key}`), ...cards.map(c => `card-${c.label}`)]
     const index = (key: string) => order.indexOf(key) + 1
     const gaugeCells: Cell[] = tiles.filter(t => t.key !== 'context').map(t => ({
       key: `tile-${t.key}`,
-      alt: `${t.big} ${t.caption}`,
+      // Everything the cell shows, once: the figure, what is left, the reset, each model's own meter.
+      alt: [`${t.big} ${t.caption}`, t.short, t.detail, ...(t.bars ?? []).filter(b => b.label && b.label !== 'all').map(b => `${b.label} ${fin(b.percent) === null ? '—' : `${Math.round(b.percent!)}%`}`)].filter(Boolean).join(', '),
       value: t.big,
       label: [t.short, t.detail].filter(Boolean).join(' · '),
       bareLabel: t.short,
       live: t.spark !== undefined || t.toggle?.motion === true,
       // A HUD cell (hudCellSvg): its name on the slab, the figure, its meters, and under them
       // what is left and the detail on one dim line, which `bare` leaves out.
-      draw: (width, mode = 'line', height) => hudCellSvg(...cellArgs(t, width, mode, height)),
+      draw: once((width, mode = 'line', height) => hudCellSvg(...cellArgs(t, width, mode, height))),
       parts: (width, mode = 'line', height, indexEnd) => { const [name, big, o] = cellArgs(t, width, mode, height); return hudCellParts(name, big, { ...o, indexEnd }) },
     }))
     const figureCells: Cell[] = cards.map(c => {
@@ -1406,7 +1600,7 @@ export const register: Register = on => {
         label,
         bareLabel: label,
         // A figure has no meter: a short accent rule under it instead.
-        draw: (width, _mode, height) => hudCellSvg(label, c.value, figureOpts(width, height)),
+        draw: once((width, _mode, height) => hudCellSvg(label, c.value, figureOpts(width, height))),
         parts: (width, _mode, height, indexEnd) => hudCellParts(label, c.value, { ...figureOpts(width, height), indexEnd }),
       }
     })
@@ -1441,14 +1635,19 @@ export const register: Register = on => {
     ]
     const chunk = (row: Cell[], k: number) =>
       Array.from({ length: Math.ceil(row.length / k) }, (_, i) => row.slice(i * k, i * k + k))
+    const measured = new Map<string, { lines: Cell[][]; colW: number[] }>()
     const widthsFor = (k: number, mode: Mode) => {
+      const had = measured.get(`${k}:${mode}`)
+      if (had) return had
       const lines = [...chunk(gaugeCells, k), ...chunk(figureCells, k)]
-      return {
+      const got = {
         lines,
         colW: Array.from({ length: k }, (_, j) =>
           Math.max(0, ...lines.map(l => l[j]?.draw(undefined, mode).natural ?? 0)),
         ),
       }
+      measured.set(`${k}:${mode}`, got)
+      return got
     }
     const lineW = (ws: number[]) => ws.reduce((a, b) => a + b, 0) + cellGapPx * Math.max(0, ws.length - 1)
     // The layout is chosen from what the cells need now. The widest a column has been only pads
@@ -1488,7 +1687,7 @@ export const register: Register = on => {
       if (!Svg) return []
       type Piece = { svg: string; width: number }
       const pic = (k: string, of: (r: { left: Piece; fill: Piece; right: Piece; even: Piece | null }) => Piece | null) => (
-        <Svg key={k} source={of(art as never)!.svg} alt={alt} width={of(art as never)!.width} height={art.height} {...props} />
+        <Svg key={k} source={of(art as never)!.svg} alt={k === key ? alt : 'gap'} width={of(art as never)!.width} height={art.height} {...props} />
       )
       return [
         pic(key, r => r.left),
@@ -1520,7 +1719,7 @@ export const register: Register = on => {
     const motionLeft = glides.left(nowMs)
     if (motionLeft > 0 && nowMs + motionLeft > restDue) {
       restDue = nowMs + motionLeft
-      $.clock.after(motionLeft + 20, () => void update($, tick, n => (n ?? 0) + 1))
+      $.clock.after(motionLeft + 20, () => void update($, tick, n => (n ?? 0) + 1).catch(() => undefined))
     }
 
     return (
@@ -1576,7 +1775,7 @@ export const register: Register = on => {
                 <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
                   <Svg
                     source={themed(stripeSvg(THEME.barPx, THEME.barHeight, THEME.bar, { live: e.props.isWorking, rest: barRest, padBottom: THEME.barGap, motion: true }))}
-                    alt={e.props.isWorking ? 'Working' : 'Idle'}
+                    alt={statusWord}
                     width={THEME.barPx}
                     height={THEME.barHeight + THEME.barGap}
                     {...loop}
@@ -1592,7 +1791,7 @@ export const register: Register = on => {
                 {iconEl({ Text, Svg }, 'clock', '#aaa49b', 14, '⏱')}
                 {Svg ? (
                   // Each second rolls in on the beat, like the band's figures.
-                  <Svg source={themed(elapsedArt!.svg)} alt={fmtElapsed(shownSecs)} width={elapsedArt!.width} height={elapsedArt!.height} />
+                  <Svg source={themed(elapsedArt!.svg)} alt={`elapsed ${fmtElapsed(shownSecs)}`} width={elapsedArt!.width} height={elapsedArt!.height} />
                 ) : (
                   <Text dimColor>{fmtElapsed(shownSecs)}</Text>
                 )}
@@ -1612,7 +1811,7 @@ export const register: Register = on => {
                   : { text: 'idle', fg: INK.label, bg: INK.line, minWidth: pillSvg('working', PILL.busy.fg, PILL.busy.bg, 24, true).width },
               )}
               {Svg ? (
-                <Svg source={themed(countArt.svg)} alt={`${shownTools} tool calls`} width={countArt.width} height={countArt.height} />
+                <Svg source={themed(countArt.svg)} alt={`${shownTools} tool ${shownTools === 1 ? 'call' : 'calls'}`} width={countArt.width} height={countArt.height} />
               ) : (
                 <Text dimColor>{`⚡ ${shownTools} ${shownTools === 1 ? 'tool' : 'tools'}`}</Text>
               )}
@@ -1629,7 +1828,7 @@ export const register: Register = on => {
             <Box width={0} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
               <Svg
                 source={themed(stripeSvg(THEME.barPx, THEME.barHeight, THEME.bar, { live: e.props.isWorking, rest: barRest, padBottom: THEME.barGap, motion: true }))}
-                alt={e.props.isWorking ? 'Working' : 'Idle'}
+                alt={statusWord}
                 width={THEME.barPx}
                 height={THEME.barHeight + THEME.barGap}
                 {...loop}
@@ -1640,7 +1839,7 @@ export const register: Register = on => {
         {THEME.compact ? (
           Svg ? (
             <Box flexDirection="row" flexWrap="nowrap">
-              {stretch('context', ctxArt, `${useNow.percent === null ? '—' : `${Math.round(useNow.percent)}%`} context`)}
+              {stretch('context', ctxArt, [`${fin(useNow.percent) === null ? '—' : `${Math.round(useNow.percent!)}%`} context`, ctxOpts.left, ctxOpts.window].filter(Boolean).join(', '))}
             </Box>
           ) : (
             <Text>
@@ -1750,6 +1949,10 @@ export const register: Register = on => {
       </Box>
       </Box>
     )
+    } catch (err) {
+      $.ui.log(`band: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
+      return next(e)
+    }
   })
 
   // A `Client` that failed on a surface says why in the log; the engine draws the site again.

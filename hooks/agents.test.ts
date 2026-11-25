@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Agent } from '../types'
-import { fmtClock, HUE, INK, LIGHT, MOTION } from './chat'
-import { AGENT_CHIP, BAR_ROOM, agentSpec, CARD_CUT, CARD_H, CARD_W, SHELL_COLOR, accentFor, agentCardParts, agentChipParts, kindLabel, settledStatus, shellFates, taskNotice, agentCardSvg, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
+import { fmtClock, HUE, INK, LIGHT } from './chat'
+import { AGENT_CHIP, agentSpec, SHELL_COLOR, accentFor, agentChipParts, kindLabel, settledStatus, shellFates, taskNotice, agentStats, agentUsd, prettyModel, spriteInner, totalTokens, usd, visibleAgents } from './agents'
 
 /** Rounded to cents: the engine's test kit has no toBeCloseTo. */
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100)
@@ -130,51 +130,6 @@ describe('visibleAgents', () => {
 })
 
 describe('agent card', () => {
-  test('is deterministic and the size it says', () => {
-    const a = agentCardSvg(mk())
-    expect(a.svg).toBe(agentCardSvg(mk()).svg)
-    expect(a.svg).toContain(`width="${CARD_W}" height="${CARD_H}"`)
-    expect(a.width).toBe(CARD_W)
-  })
-
-  test('says only what is known: no effort means no effort word, and no model means so', () => {
-    const noEffort = agentCardSvg(mk({ effort: null })).svg
-    for (const word of ['low', 'medium', 'high', 'xhigh', 'max', 'light', 'careful', 'heavy']) {
-      expect(noEffort).not.toContain(`>${word}</text>`)
-    }
-    const noModel = agentCardSvg(mk({ model: '' })).svg
-    expect(noModel).toContain('model pending')
-    expect(noModel).toContain('· — ·') // and no borrowed price: the cost is a dash
-  })
-
-  test('never prints a weight word of its own', () => {
-    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max', null]) {
-      const svg = agentCardSvg(mk({ effort })).svg
-      for (const word of ['>light<', '>careful<', '>heavy<']) expect(svg).not.toContain(word)
-    }
-  })
-
-  test('padBottom adds transparent room under the card and leaves the card alone', () => {
-    const padded = agentCardSvg(mk(), { padBottom: 8 })
-    expect(padded.height).toBe(CARD_H + 8)
-    expect(padded.svg).toContain(`viewBox="0 0 ${CARD_W} ${CARD_H + 8}"`)
-    expect(padded.svg).toContain(`V${CARD_H - 0.75}H0.75z`)
-  })
-
-  test('shows the name, the tag, the model and the figures', () => {
-    const svg = agentCardSvg(mk({ effort: 'xhigh', tools: 3, input: 20000, output: 1000, startedAt: 0, endedAt: 44000, status: 'done' })).svg
-    expect(svg).toContain('Build the landing page')
-    expect(svg).toContain('>Opus 5.5</text>')
-    expect(svg).toContain('>xhigh</text>')
-    expect(svg).toContain('3 tools')
-    expect(svg).toContain('0:44')
-  })
-
-  test('a long name is pinned short of the status mark', () => {
-    const svg = agentCardSvg(mk({ name: 'Research competitor launches and write it all up' })).svg
-    expect(svg).toMatch(/textLength="156"/)
-    expect(agentCardSvg(mk({ name: 'Short' })).svg).not.toContain('textLength')
-  })
 
   test('a running card carries no ticking clock, so its stats line holds still between events', () => {
     expect(agentStats(mk({ startedAt: 0 }))).toBe(agentStats(mk({ startedAt: 0 })))
@@ -196,81 +151,8 @@ describe('agent card', () => {
     const line = agentStats(mk({ status: 'done', startedAt: NaN, endedAt: 5000 }))
     expect(line.endsWith(' · —')).toBe(true)
     expect(line).not.toContain('NaN')
-    expect(agentCardSvg(mk({ status: 'done', startedAt: 0, endedAt: NaN })).svg).not.toContain('NaN')
     expect(usd(NaN)).toBe('—')
     expect(usd(Infinity)).toBe('—')
-  })
-
-  test('a barless card leaves the bar out', () => {
-    const svg = agentCardSvg(mk({ startedAt: 0 }), { barless: true })
-    expect(svg.height).toBe(CARD_H - BAR_ROOM)
-    expect(svg.svg).not.toContain('fill="#2e2a26"')
-  })
-
-  test('escapes a name that would break the markup', () => {
-    expect(agentCardSvg(mk({ name: 'a<b>&c' })).svg).toContain('a&lt;b&gt;&amp;c')
-  })
-
-  test('in four pieces, the card is the same drawing, each piece a window of it', () => {
-    for (const a of [mk(), mk({ status: 'done', endedAt: 4000 })]) {
-      const { head, mark, body, strip } = agentCardParts(a, { padBottom: 8 })
-      const whole = agentCardSvg(a, { padBottom: 8 })
-      expect(head.width + mark.width).toBe(whole.width)
-      expect(body.width).toBe(whole.width)
-      expect(head.height + body.height + strip.height).toBe(whole.height)
-      expect(mark.height).toBe(head.height)
-      expect(head.svg).toContain(`viewBox="0 0 ${CARD_CUT.mark} ${CARD_CUT.head}"`)
-      expect(mark.svg).toContain(`viewBox="${CARD_CUT.mark} 0 ${CARD_W - CARD_CUT.mark} ${CARD_CUT.head}"`)
-      expect(body.svg).toContain(`viewBox="0 ${CARD_CUT.head} ${CARD_W} ${body.height}"`)
-      expect(strip.svg).toContain(`viewBox="0 ${CARD_CUT.bar} ${CARD_W} ${strip.height}"`)
-      expect(head.svg).toContain('Build the landing page')
-      expect(body.svg).toContain(' tools · ')
-      for (const other of [mark.svg, strip.svg]) expect(other).not.toContain('Build the landing page')
-    }
-  })
-
-  test('the ring and the bar keep one picture while the agent runs, whatever its figures do', () => {
-    const at = (tools: number, input: number) => agentCardParts(mk({ tools, input }), { motion: true })
-    const [a, b] = [at(1, 100), at(9, 90000)]
-    expect(a.mark.svg).toBe(b.mark.svg)
-    expect(a.strip.svg).toBe(b.strip.svg)
-    expect(a.head.svg).toBe(b.head.svg)
-    expect(a.body.svg).not.toBe(b.body.svg)
-  })
-
-  test('with motion, a running ring turns and its bar slides on; a finished one draws its check and fills once', () => {
-    const running = agentCardParts(mk(), { motion: true })
-    expect(running.mark.svg).toContain(`animation:spin ${MOTION.spinMs}ms linear infinite`)
-    expect(running.strip.svg).toContain(`animation:run ${MOTION.agentBarMs * 2}ms`)
-    for (const piece of [running.mark.svg, running.strip.svg]) expect(piece).toContain('prefers-reduced-motion: reduce')
-    const done = agentCardParts(mk({ status: 'done', endedAt: 4000 }), { motion: true })
-    expect(done.mark.svg).toContain(`animation:tick ${MOTION.checkMs}ms`)
-    expect(done.strip.svg).toContain(`animation:fill ${MOTION.agentFillMs}ms`)
-    for (const piece of [done.mark.svg, done.strip.svg]) expect(piece).not.toContain('infinite')
-    // The head and the body never move; without motion nothing does.
-    for (const piece of [running.head.svg, running.body.svg]) expect(piece).not.toContain('@keyframes')
-    const still = agentCardParts(mk())
-    for (const piece of [still.head, still.mark, still.body, still.strip]) expect(piece.svg).not.toContain('@keyframes')
-    // Still, each piece is its plain picture: the motion only takes its class, wrapper and style away.
-    const plain = (svg: string) =>
-      svg.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<g class="tick">([\s\S]*)<\/g><\/svg>/, '$1</svg>').replace(/ class="[^"]*"/g, '')
-    expect(plain(running.mark.svg)).toBe(still.mark.svg)
-    expect(plain(running.strip.svg)).toBe(still.strip.svg)
-    const doneStill = agentCardParts(mk({ status: 'done', endedAt: 4000 }))
-    expect(plain(done.mark.svg)).toBe(doneStill.mark.svg)
-    expect(plain(done.strip.svg)).toBe(doneStill.strip.svg)
-  })
-
-  test('every card is a still picture, running or finished', () => {
-    for (const a of [mk(), mk({ status: 'done', endedAt: 4000 }), mk({ status: 'error', endedAt: 4000 })]) {
-      expect(agentCardSvg(a).svg).not.toContain('@keyframes')
-    }
-  })
-
-  test('the status mark is drawn: a check, a cross, a ban', () => {
-    for (const status of ['done', 'error', 'stopped'] as const) {
-      expect(agentCardSvg(mk({ status, endedAt: 1 })).svg).toContain('stroke-linecap="round"')
-    }
   })
 
   test('the sprite is the same for the same agent and differs between agents', () => {
@@ -285,7 +167,6 @@ describe('small agent card', () => {
     expect(p.body.width + p.mark.width).toBe(AGENT_CHIP.W)
     expect(p.body.height).toBe(AGENT_CHIP.H + 4)
     expect(p.mark.height).toBe(AGENT_CHIP.H + 4)
-    expect(AGENT_CHIP.H).toBeLessThan(CARD_H / 2)
   })
 
   test('the same agent draws the same card', () => {

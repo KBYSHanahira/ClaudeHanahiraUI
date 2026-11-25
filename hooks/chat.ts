@@ -20,7 +20,6 @@ export const clip = (s: string, n: number) => {
 /** The last part of a path, for POSIX and Windows paths alike (C:\\work\\app → app). */
 export const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 export type PillIcon = 'check' | 'cross' | 'ban'
-export type Pill = { text: string; fg: string; bg: string; color?: string; running?: boolean; icon?: PillIcon }
 
 // `fg` and `bg` paint a capsule; `color` is the state's own colour, for its tile and word in a
 // row (the way a row's kind shows its tile and verb).
@@ -172,37 +171,9 @@ export const themeStyle = (body?: string) => {
 export const themed = (svg: string) => svg.replace(/<\/svg>$/, `${themeStyle(svg)}</svg>`)
 
 /**
- * The glass cards: `pad` inside the card round what it holds, `margin` outside it for the light
- * theme's shadow, `rx` its corners. Dark, a card is white at 6% with a hairline; light, white
- * with a soft shadow (themeStyle). A card adds `GLASS.extra` to what it holds, each way.
- */
-export const GLASS = { pad: 5, margin: 2, rx: 9, extra: 2 * (5 + 2) }
-
-/** `art` on a glass card: the same picture, nested, with the card behind it. */
-export const inCard = <A extends { svg: string; width: number; height: number; natural?: number }>(art: A) => {
-  const { pad, margin: m, rx } = GLASS
-  const W = art.width + 2 * pad
-  const H = art.height + 2 * pad
-  const width = W + 2 * m
-  const height = H + 2 * m
-  const inner = art.svg.replace(/^<svg /, `<svg x="${m + pad}" y="${m + pad}" `)
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<defs><filter id="glass-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.10"/></filter></defs>` +
-    `<rect class="glass" x="${m + 0.5}" y="${m + 0.5}" width="${W - 1}" height="${H - 1}" rx="${rx}" fill="#000000" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.07"/>` +
-    // A faint sheen along the top edge, so the near-black card still reads as raised.
-    `<path class="glass-hi" d="M${m + rx} ${m + 1}H${m + W - rx}" stroke="#ffffff" stroke-opacity="0.05"/>` +
-    inner +
-    themeStyle(inner + 'class="glass"') +
-    `</svg>`
-  return { ...art, svg, width, height, ...(art.natural !== undefined ? { natural: art.natural + GLASS.extra } : {}) }
-}
-
-/**
  * The band's motion, on two rules so a redraw never blinks or starts a motion over (the reason
  * v1.8.0 took motion out):
- * - Motion inside a picture (the bar's lights, the working dots, the status dot's halo, the
- *   working chip coming in, the Hanahira sparkle, an agent card's ring and bar) is CSS
+ * - Motion inside a picture (the bar's lights, the working dots, an agent chip's ring) is CSS
  *   in the picture's own `<style>` (`motionStyle`), with no time in it: while the state holds,
  *   every redraw draws the same picture and the surface keeps the one it has, so a loop runs on
  *   and a one-shot plays once. The still look (the elements' own attributes) is where every
@@ -210,9 +181,8 @@ export const inCard = <A extends { svg: string; width: number; height: number; n
  *   the right picture. It runs only in the surface's frame (`isInteractive`), drawn while
  *   Claude works.
  * - A figure that changes plays its change once, in CSS inside its picture too: a written
- *   figure rolls like a slot reel (`reelText`), a ring or meter glides to its new value, the
- *   speedometer's needle swings. The picture holds where the change came from (`reelHolder`,
- *   `glideHolder`) for as long as it plays, so a redraw then sends the same picture; after
+ *   figure rolls like a slot reel (`reelText`), a ring or meter glides to its new value. The
+ *   picture holds where the change came from (`glideHolder`) for as long as it plays, so a redraw then sends the same picture; after
  *   that the plain picture, which looks the same as where the motion rests. The surface runs
  *   it at its own frame rate, with no redraw while it moves.
  */
@@ -277,33 +247,6 @@ export type Since<T> = { from: T; age: number }
 /** A motion's start as a builder takes it: a `Since`, or a bare value for a motion just begun. */
 export const since = <T>(f: Since<T> | T | null | undefined): Since<T> | null =>
   f === null || f === undefined ? null : typeof f === 'object' ? (f as Since<T>) : { from: f as T, age: 0 }
-
-/**
- * Figures whose roll is drawn by the picture itself (`reelText`): `value(key, text, now)` gives
- * the value it rolls from and how long ago the roll began, for as long as it plays
- * (MOTION.rollMs); then null, and the plain figure, which looks as the roll ends.
- */
-export const reelHolder = (holdMs = MOTION.rollMs) => {
-  const reels = new Map<string, { from: string | null; to: string; at: number }>()
-  return {
-    value(key: string, text: string, now: number): Since<string> | null {
-      const r = reels.get(key)
-      if (!r) {
-        reels.set(key, { from: null, to: text, at: now - holdMs })
-        return null
-      }
-      if (r.to !== text) reels.set(key, { from: r.to, to: text, at: now })
-      const g = reels.get(key)!
-      return g.from !== null && now - g.at < holdMs ? { from: g.from, age: Math.max(0, now - g.at) } : null
-    },
-    /** Ms until the last roll under way ends (0 with none): when the plain figures are due. */
-    left(now: number): number {
-      let ms = 0
-      for (const r of reels.values()) if (r.from !== null) ms = Math.max(ms, r.at + holdMs - now)
-      return ms
-    },
-  }
-}
 
 /**
  * Rings, meters and needles that glide to a new value by themselves, in CSS: `from(key,
@@ -431,7 +374,7 @@ export const fmtCost = (usd: number) => (Number.isFinite(usd) ? `$${usd.toFixed(
 
 /** 0:18, 12:05, 1:02:03 (hours only when needed). */
 export const fmtClock = (ms: number) => {
-  if (Number.isNaN(ms) || ms === Infinity) return '—'
+  if (typeof ms !== 'number' || Number.isNaN(ms) || ms === Infinity) return '—'
   const s = Math.max(0, Math.round(ms / 1000))
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -441,7 +384,7 @@ export const fmtClock = (ms: number) => {
 
 /** Token counts with k / M / B / T: 950, 1.5k, 196k, 1.25M, 3.4B. */
 export const fmtTokens = (n: number) => {
-  if (Number.isNaN(n) || n === Infinity) return '—'
+  if (typeof n !== 'number' || Number.isNaN(n) || n === Infinity) return '—'
   const units = ['', 'k', 'M', 'B', 'T']
   const shape = (v: number) => {
     const s = v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : v.toFixed(0)
@@ -489,40 +432,6 @@ export const liveSpeed = (samples: ReadonlyArray<readonly [number, number]>, now
 /** The speedometer's full scale: the first round step clear of the best speed seen. */
 export const speedScale = (peak: number) =>
   [50, 100, 150, 200, 300, 400, 600, 800, 1000, 1500, 2000].find(s => s >= peak * 1.1) ?? Math.ceil((peak * 1.1) / 1000) * 1000
-
-/**
- * A speedometer as SVG: a 270° track open at the bottom, an arc filled to `fraction`, and a
- * needle. With `from`, the arc and needle swing there from that fraction (`glideHolder`).
- */
-export const speedoSvg = (fraction: number, color: string, size: number, from?: Since<number> | number | null) => {
-  const clamp = (v: number) => (Number.isNaN(v) ? 0 : Math.max(0, Math.min(1, v)))
-  const f = clamp(fraction)
-  const start = since(from)
-  const was = start === null ? null : { from: clamp(start.from), age: start.age }
-  const r = 17
-  const c = 2 * Math.PI * r
-  const sweep = 0.75 * c
-  const dash = (v: number) => `${(v * sweep).toFixed(2)} ${c.toFixed(2)}`
-  const arc =
-    f > 0
-      ? `<circle cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(f)}" transform="rotate(135 22 22)" class="spd-arc"/>` +
-        glideStyle('spd-arc', 'stroke-dasharray', dash, was, f)
-      : ''
-  // The needle turns about the hub: drawn from the origin of a group set on the hub.
-  const turn = (v: number) => `rotate(${(-135 + v * 270).toFixed(1)}deg)`
-  const needle =
-    `<g transform="translate(22 22)"><g transform="rotate(${(-135 + f * 270).toFixed(1)})" class="spd-needle">` +
-    `<path d="M0 0 L0 -13" stroke="#f2eee8" stroke-width="2.6" stroke-linecap="round"/></g></g>` +
-    glideStyle('spd-needle', 'transform', turn, was, f)
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="${size}" height="${size}">` +
-    `<circle cx="22" cy="22" r="${r}" fill="none" stroke="#2e2a26" stroke-width="4" stroke-linecap="round" stroke-dasharray="${dash(1)}" transform="rotate(135 22 22)"/>` +
-    arc +
-    needle +
-    `<circle cx="22" cy="22" r="3.2" fill="${color}"/>` +
-    `</svg>`
-  )
-}
 
 /** Speed for a tile: 42, 8.5 (one decimal under 10). */
 export const fmtSpeed = (tps: number) => (!Number.isFinite(tps) ? '—' : tps < 10 ? String(Math.round(tps * 10) / 10) : String(Math.round(tps)))
@@ -583,231 +492,10 @@ export const pillSvg = (
 }
 
 /**
- * A loading bar with no number behind it, in the context meter's look: a row of crisp blocks
- * (METER's size and gap, the bar's `height` tall), the track's colour while idle and all lit
- * in `color` while `live`. `padBottom` adds transparent room under the bar, in px.
- *
- * Drawn wider than its slot, it keeps its height and is cut at the right (`slice`): with the
- * default `meet`, a surface that narrows the box shrinks the whole bar to a hairline.
- *
- * With `motion` (and `live`), soft lights glide left to right over the blocks, one every
- * MOTION.barPeriod px, so a slot of any width shows one. A loop (see MOTION): its rest is the
- * still picture, and nothing in it depends on time, so a redraw sends the same picture.
- */
-export const loadingSvg = (
-  width: number,
-  height: number,
-  color: string,
-  opts: { live?: boolean; padBottom?: number; motion?: boolean; rest?: string } = {},
-) => {
-  const w = Math.max(120, Math.round(width))
-  const h = height
-  const pad = Math.max(0, Math.round(opts.padBottom ?? 0))
-  const pitch = BEAD.w + BEAD.gap
-  // Rounded beads, not square blocks: each end a half ellipse as tall as the bar and at most half
-  // a bead wide, so a tall bar keeps its beads' width and gaps.
-  const r = Math.min(h / 2, BEAD.w / 2)
-  const run = BEAD.w - 2 * r
-  const blocks = Array.from({ length: Math.ceil(w / pitch) }, (_, k) => `M${k * pitch + r} 0${run > 0 ? `h${run}` : ''}a${r} ${h / 2} 0 0 1 0 ${h}${run > 0 ? `h-${run}` : ''}a${r} ${h / 2} 0 0 1 0 -${h}z`).join('')
-
-  // The lights: a row of glows moved one period on per loop, cut to the blocks alone.
-  const P = MOTION.barPeriod
-  const glows: string[] = []
-  for (let gx = -P; gx < w; gx += P) glows.push(`<rect x="${gx}" width="${MOTION.barGlow}" height="${h}" fill="url(#bar-glow)"/>`)
-  const glide =
-    opts.live && opts.motion
-      ? `<defs><linearGradient id="bar-glow" x1="0" x2="1">` +
-        `<stop offset="0" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
-        `<stop offset="0.5" stop-color="${MOTION.glowInk}" stop-opacity="0.9"/>` +
-        `<stop offset="1" stop-color="${MOTION.glowInk}" stop-opacity="0"/>` +
-        `</linearGradient><clipPath id="bar-cut"><path d="${blocks}"/></clipPath></defs>` +
-        `<g clip-path="url(#bar-cut)"><g class="lights">${glows.join('')}</g></g>` +
-        motionStyle(`@keyframes lights{to{transform:translateX(${P}px)}}.lights{animation:lights ${MOTION.barMs}ms linear infinite}`)
-      : ''
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + pad}" width="${w}" height="${h + pad}" preserveAspectRatio="xMinYMid slice">` +
-    `<path d="${blocks}" fill="${opts.live ? color : (opts.rest ?? INK.track)}"/>` +
-    glide +
-    `</svg>`
-  )
-}
-
-/** The loading bar's beads: each one's width and the gap between them (its height is the bar's). */
-export const BEAD = { w: 10, gap: 3 }
-
-/** The context meter's blocks: how many across, each one's size, and the gap between them. */
-export const METER = { segs: 30, w: 6, h: 12, gap: 2 }
-
-/**
- * A segmented meter as SVG: METER.segs blocks across, the first `percent` of them lit in
- * `color`, the rest the track. Drawn crisp, no anti-aliasing: the same language as the agent
- * sprites. Any use at all lights the first block, so a session that has begun never reads as empty.
- */
-export const meterSvg = (percent: number | null, color: string, from?: number | null) => {
-  const M = METER
-  const pitch = M.w + M.gap
-  const width = M.segs * pitch - M.gap
-  const height = M.h
-  const lit = (p: number | null) => {
-    const share = p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100
-    return share > 0 ? Math.max(1, Math.round(share * M.segs)) : 0
-  }
-  const litN = lit(percent)
-  // With `from`, the blocks between the two readings light (or go out) one by one, on
-  // MOTION.glideMs and EASE.out, each at its own delay: crisp blocks, never half of one.
-  const fromN = from === null || from === undefined ? litN : lit(from)
-  const lo = Math.min(litN, fromN)
-  const hi = Math.max(litN, fromN)
-  const block = (k: number) => `M${k * pitch} 0h${M.w}v${M.h}h-${M.w}z`
-  const blocks = (a: number, b: number) => Array.from({ length: Math.max(0, b - a) }, (_, k) => block(a + k)).join('')
-  const step = Array.from({ length: hi - lo }, (_, i) => {
-    const k = litN > fromN ? fromN + i : fromN - 1 - i
-    const delay = Math.round(MOTION.glideMs * easeIn((i + 1) / (hi - lo)))
-    return `<path d="${block(k)}" fill="${k < litN ? color : INK.track}" class="m" style="animation-delay:${delay}ms"/>`
-  }).join('')
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" shape-rendering="crispEdges">` +
-    (hi < M.segs ? `<path d="${blocks(hi, M.segs)}" fill="${INK.track}"/>` : '') +
-    (lo > 0 ? `<path d="${blocks(0, lo)}" fill="${color}"/>` : '') +
-    step +
-    (step ? motionStyle(`@keyframes m{from{fill:${litN > fromN ? INK.track : color}}}.m{animation:m 1ms linear both}`) : '') +
-    `</svg>`
-  return { svg, width, height }
-}
-
-/** When EASE.out reaches `y` (0 to 1): the time a glide passes a point on its way. */
-const easeIn = (y: number) => {
-  let lo = 0
-  let hi = 1
-  for (let i = 0; i < 32; i++) {
-    const mid = (lo + hi) / 2
-    if (easeOut(mid) < y) lo = mid
-    else hi = mid
-  }
-  return (lo + hi) / 2
-}
-
-/** The context slider: as wide as the old meter, a rounded track, a gradient fill, a knob. */
-export const SLIDER = { width: METER.segs * (METER.w + METER.gap) - METER.gap, track: 10, knob: 7, heat: [HUE.fur, HUE.petal] }
-
-/**
- * The context slider as SVG: a track, filled from the left to `percent` with a fur-to-petal
- * gradient that spans the whole track (so a fuller slider shows more of it), and a white knob at
- * the end. With `from`, the fill and the knob glide there from that reading (`glideHolder`).
- * `width` draws a longer track (never a shorter one), for a hero line stretched to its row.
- */
-export const sliderSvg = (percent: number | null, from?: Since<number> | number | null, width: number = SLIDER.width) => {
-  const S = { ...SLIDER, width: Math.max(SLIDER.width, Math.round(width)) }
-  const height = 2 * S.knob + 2
-  const share = (p: number | null) => (p === null || !Number.isFinite(p) ? 0 : Math.max(0, Math.min(100, p)) / 100)
-  const r = S.knob
-  // The knob's centre runs from its own radius in to the far end less it, so it never hangs out.
-  const at = (p: number | null) => +(r + share(p) * (S.width - 2 * r)).toFixed(1)
-  const y = (height - S.track) / 2
-  const was = since(from)
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S.width} ${height}" width="${S.width}" height="${height}">` +
-    `<defs><linearGradient id="heat" gradientUnits="userSpaceOnUse" x1="0" x2="${S.width}" y1="0" y2="0">` +
-    S.heat.map((c, i) => `<stop offset="${(i / (S.heat.length - 1)).toFixed(2)}" stop-color="${c}"/>`).join('') +
-    `</linearGradient></defs>` +
-    `<rect x="0" y="${y}" width="${S.width}" height="${S.track}" rx="${S.track / 2}" fill="#2e2a26"/>` +
-    `<rect x="0" y="${y}" width="${at(percent)}" height="${S.track}" rx="${S.track / 2}" fill="url(#heat)" class="sl-fill"/>` +
-    `<g transform="translate(${at(percent)} 0)" class="sl-knob">` +
-    `<circle cx="0" cy="${height / 2}" r="${r - 1}" fill="#ffffff" stroke="${HUE.petal}" stroke-width="2"/></g>` +
-    (was === null ? '' : glideStyle('sl-fill', 'width', p => `${at(p)}px`, was, percent ?? 0) + glideStyle('sl-knob', 'transform', p => `translateX(${at(p)}px)`, was, percent ?? 0)) +
-    `</svg>`
-  return { svg, width: S.width, height }
-}
-
-/**
  * The face the band's figures are set in. Tabular digits are all one width, so a figure that
  * changes (a clock every second, a count) keeps its width and nothing after it moves.
  */
 export const FIGURE_FONT = 'font-family="Anthropic Sans,ui-sans-serif,system-ui,sans-serif" style="font-variant-numeric:tabular-nums"'
-/**
- * The face for the figures and names the eye reads first (values, the context figure, a chip's
- * count, an agent's name): Claude's own serif where the picture can reach it, else the nearest
- * serif every system ships (Georgia on Windows and macOS). Labels and details stay sans.
- */
-export const DISPLAY_FAMILY = 'Anthropic Serif,Iowan Old Style,Charter,Georgia,Cambria,serif'
-export const DISPLAY_FONT = `font-family="${DISPLAY_FAMILY}" style="font-variant-numeric:tabular-nums lining-nums"`
-
-/** The hero line's measures: its height, the figure's size, the words' size, the icon, the gaps. */
-export const CONTEXT = { height: 24, fs: 15, labelFs: 11, icon: 15, gap: 10, afterValue: 12, baseline: 17.3, meterGap: 4 }
-
-/**
- * The band's hero line, as one picture: the context figure at CONTEXT.fs, the meter beside it,
- * then its name and what is left (the window's size as detail). With `stack`, the meter goes
- * on a line of its own under the figure, for a band too narrow for one line. The figure turns
- * the meter's colour when `warn` (near the limit); otherwise it is ink and the meter alone
- * carries the colour. `width` makes the picture that wide, and the meter takes the room: the
- * line then ends where its row ends, with no empty stretch after the words.
- */
-export const contextSvg = (
-  percent: number | null,
-  color: string,
-  opts: {
-    left?: string | null
-    window?: string | null
-    stack?: boolean
-    width?: number
-    warn?: boolean
-    /** The figure rolls in from this one (`reelText`); the meter glides from `fromPercent`. */
-    from?: Since<string> | string | null
-    fromPercent?: Since<number> | number | null
-  } = {},
-) => {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const C = CONTEXT
-  const value = percent === null || !Number.isFinite(percent) ? '—' : `${Math.round(percent)}%`
-  const font = FIGURE_FONT
-  const valueX = C.icon + 8
-  const valueW = labelWidth(value, C.fs)
-  const wordsPad = 12
-  const words =
-    `<tspan fill="${INK.label}">context</tspan>` +
-    (opts.left ? `<tspan fill="${INK.detail}"> · ${esc(opts.left)}</tspan>` : '') +
-    (opts.window ? `<tspan fill="${INK.detail}"> · ${esc(opts.window)}</tspan>` : '')
-  const wordsW = labelWidth(['context', opts.left, opts.window].filter(Boolean).join(' · '), C.labelFs)
-  // What the line needs with the meter at its own length; any width past that goes to the meter.
-  const lineNatural = valueX + valueW + C.afterValue + SLIDER.width + C.gap + wordsW + wordsPad
-  const spare = Math.max(0, (opts.width ?? 0) - Math.ceil(opts.stack ? valueX + SLIDER.width : lineNatural))
-  const meter = sliderSvg(percent, opts.fromPercent, SLIDER.width + spare)
-  const y = C.baseline
-  const meterY = opts.stack ? C.height + C.meterGap : (C.height - meter.height) / 2
-  // The bold figure runs wider than the estimate: more room after it than between the rest.
-  const meterX = opts.stack ? valueX : valueX + valueW + C.afterValue
-  const wordsX = opts.stack ? valueX + valueW + C.afterValue : meterX + meter.width + C.gap
-  const height = opts.stack ? C.height + C.meterGap + meter.height + 4 : C.height
-  const natural = Math.ceil(opts.stack ? Math.max(wordsX + wordsW + wordsPad, valueX + SLIDER.width) : lineNatural)
-  const width = Math.max(natural, opts.width ?? 0)
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    iconGroup('brain', INK.detail, 0, (C.height - C.icon) / 2, C.icon, 2) +
-    reelText(valueX, y, C.fs, `${DISPLAY_FONT} font-size="${C.fs}" font-weight="700" fill="${opts.warn ? color : INK.value}"`, value, opts.from) +
-    `<text x="${wordsX}" y="${y}" ${font} font-size="${C.labelFs}">${words}</text>` +
-    `<g transform="translate(${meterX} ${meterY})">${meter.svg}</g>` +
-    `</svg>`
-  return { svg, width, height, natural }
-}
-
-/** The little status dot of the band: a halo round it while Claude works. */
-export const dotSvg = (color: string, live: boolean, size = 14, motion = false) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" width="${size}" height="${size}">` +
-  (live
-    ? `<circle cx="7" cy="7" r="5.8" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.4"` +
-      // With `motion` the halo breathes out and fades, and comes back (a loop: see MOTION).
-      (motion
-        ? ` class="halo"/>` +
-          motionStyle(
-            `@keyframes halo{50%{stroke-opacity:.1;transform:scale(1.08)}}` +
-              `.halo{transform-origin:7px 7px;animation:halo ${MOTION.haloMs}ms ${EASE.inOut} infinite}`,
-          )
-        : '/>')
-    : '') +
-  `<circle cx="7" cy="7" r="4" fill="${color}"/>` +
-  `</svg>`
 
 /** Card geometry: the icon tile on the left, label over value beside it. */
 export const CARD = { height: 52, tile: 36, icon: 22, textX: 54, pad: 16 }
@@ -912,237 +600,8 @@ export const mascotSvg = (on: boolean, x: number, y: number, width: number, opts
   )
 }
 
-/** The on/off slot of a stat (the Hanahira mode), where the mascot sits: its width and height. */
-export const TOGGLE = { w: 30, h: 18 }
-
-
-/** A stat on the compact band: one line at a text row's height, glyph then value then label. */
-export const STAT = { height: 28, glyph: 24, icon: 15, plainIcon: 15, gap: 7, fs: 13, labelFs: 11, lineH: 16, baseline: 18.5, stackTop: 13.5, subFs: 10.5, subLine: 12.5 }
-
-/**
- * One stat of the compact band as SVG: a STAT.glyph-px glyph (a ring passed in as `ring`, else a tinted
- * tile holding `icon`), the value in bold, then its label and an optional detail, dimmer still.
- * Every stat shares the glyph slot, size and baseline, so a row of them reads as one line, and
- * `width` pads each to its column, so two rows line up. The label follows the value as the
- * renderer sets it (an invisible copy of the value holds its place), never a guessed width.
- */
-export const statSvg = (
-  value: string,
-  label: string,
-  opts: {
-    detail?: string
-    ring?: string
-    icon?: IconName
-    color?: string
-    width?: number
-    /**
-     * Stacked: the value and label on the first line and these lines, smaller, under it
-     * (in place of `detail` after the label), so a cell is narrower and keeps every detail.
-     */
-    stack?: string[]
-    /** The icon alone, no tile, centred in the glyph slot: the quiet look of a figure. */
-    plain?: boolean
-    /** The value rolls in from this one (`reelHolder`, `reelText`); the label is at its new place. */
-    reel?: Since<string> | string | null
-    /**
-     * A state to read at a glance (a mode on or off): the label in this colour, or, stacked,
-     * the first line under the value.
-     */
-    tone?: string
-    /**
-     * Motion for a state tile (the Hanahira mode): `pulse`, the glyph breathes (a loop);
-     * `enterFrom`, the state just arrived from this colour: the tile turns from it, the glyph
-     * turns in on a spring and the state line rises into place (once). See MOTION.
-     */
-    spark?: { pulse?: boolean; enterFrom?: string }
-    /**
-     * The mascot in the glyph's place, awake (on) or asleep (off): a state that is on or off (the
-     * Hanahira mode). `enter`: how long ago it woke, in ms, so its hop goes on from there (or null);
-     * `motion`: ears and eye move (a loop, drawn in the surface's frame).
-     */
-    toggle?: { on: boolean; enter?: number | null; motion?: boolean }
-  } = {},
-) => {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const S = STAT
-  const color = opts.color ?? '#8c867d'
-  const spark = opts.icon && !opts.plain && !opts.ring && (opts.spark?.pulse || opts.spark?.enterFrom) ? opts.spark : undefined
-  const under = opts.stack ?? []
-  const stacked = opts.stack !== undefined
-  // A stacked cell grows a line (STAT.subLine) for each line under the value.
-  const height = stacked ? Math.max(S.height, Math.ceil(S.stackTop + 4 + S.subLine * under.length)) : S.height
-  const g0 = (height - S.glyph) / 2
-  const T = TOGGLE
-  const x = (opts.toggle ? T.w : S.glyph) + S.gap
-  const y = stacked ? S.stackTop : S.baseline
-  const io = g0 + (S.glyph - S.icon) / 2
-  // The on/off state (the Hanahira mode) is the mascot, awake or asleep, in the switch's slot.
-  const glyph = opts.toggle
-    ? mascotSvg(opts.toggle.on, 0, g0 + (S.glyph - (T.w * MASCOT.h) / MASCOT.w) / 2, T.w, { enter: opts.toggle.enter ?? null, motion: opts.toggle.motion === true })
-    : opts.ring
-    ? `<g transform="translate(0 ${g0})">${opts.ring}</g>`
-    : opts.icon && opts.plain
-      ? iconGroup(opts.icon, color, (S.glyph - S.plainIcon) / 2, g0 + (S.glyph - S.plainIcon) / 2, S.plainIcon, 2)
-    : opts.icon
-      ? `<rect x="0.5" y="${g0 + 0.5}" width="${S.glyph - 1}" height="${S.glyph - 1}" rx="6" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-opacity="0.32"${spark?.enterFrom ? ' class="tile"' : ''}/>` +
-        // Across, the icon centres in the tile alone; down, past the row's top margin too.
-        (spark ? '<g class="spark">' : '') +
-        iconGroup(opts.icon, color, (S.glyph - S.icon) / 2, io, S.icon, 2) +
-        (spark ? '</g>' : '')
-      : ''
-  const font = FIGURE_FONT
-  const valueFont = `${DISPLAY_FONT} font-size="${S.fs}" font-weight="700" fill="#f2eee8"`
-  // An invisible copy of the value, in its own face, holds its place, so the label follows it as the renderer sets it.
-  const holder = `<tspan font-family="${DISPLAY_FAMILY}" font-size="${S.fs}" font-weight="700" fill-opacity="0">${esc(value)}</tspan>`
-  const tail =
-    `<text x="${x}" y="${y}" ${font} font-size="${S.labelFs}" fill="#aaa49b">${holder}` +
-    (label ? `<tspan dx="5"${opts.tone ? ` fill="${opts.tone}" font-weight="600"` : ''}>${esc(label)}</tspan>` : '') +
-    (opts.detail && !stacked ? `<tspan fill="#8c867d"> · ${esc(opts.detail)}</tspan>` : '') +
-    `</text>` +
-    under
-      .map((line, i) => {
-        const ink = i === 0 && opts.tone ? `fill="${opts.tone}" font-weight="600"${spark?.enterFrom ? ' class="rise"' : ''}` : 'fill="#8c867d"'
-        return `<text x="${x}" y="${(y + S.subLine * (i + 1)).toFixed(1)}" ${font} font-size="${S.subFs}" ${ink}>${esc(line)}</text>`
-      })
-      .join('')
-  const valueLine = reelText(x, y, S.fs, valueFont, value, opts.reel)
-  // Sized generously, so the label always fits; `width` only ever widens it to the column.
-  // The last 12px are for a face wider than the estimate (bold values run wide), which would
-  // otherwise clip the label.
-  const valueW = labelWidth(value, S.fs)
-  const natural = Math.ceil(
-    x +
-      (stacked
-        ? Math.max(valueW + (label ? 5 + labelWidth(label, S.labelFs) : 0), ...under.map(l => labelWidth(l, S.subFs)))
-        : valueW + 5 + labelWidth(label + (opts.detail ? ` · ${opts.detail}` : ''), S.labelFs)) +
-      12,
-  )
-  const width = Math.max(natural, opts.width ?? 0)
-  // The tile's centre, where the glyph turns and breathes.
-  const mid = `${S.glyph / 2}px ${g0 + S.glyph / 2}px`
-  const motion = spark
-    ? motionStyle(
-        (spark.enterFrom
-          ? `@keyframes tile{from{fill:${spark.enterFrom};stroke:${spark.enterFrom}}}` +
-            `@keyframes twinkle{from{opacity:0;transform:rotate(-120deg) scale(.3)}}` +
-            `@keyframes rise{from{opacity:0;transform:translateY(5px)}}` +
-            `.tile{animation:tile ${MOTION.twinkleMs}ms ${EASE.out} both}` +
-            `.rise{animation:rise ${Math.round(MOTION.twinkleMs * 0.6)}ms ${EASE.out} ${Math.round(MOTION.twinkleMs * 0.25)}ms both}`
-          : '') +
-          (spark.pulse ? `@keyframes spark{50%{transform:scale(1.14) rotate(12deg);opacity:.72}}` : '') +
-          `.spark{transform-origin:${mid};animation:` +
-          [
-            spark.enterFrom ? `twinkle ${MOTION.twinkleMs}ms ${EASE.spring} both` : '',
-            spark.pulse ? `spark ${MOTION.sparkMs}ms ${EASE.inOut} ${spark.enterFrom ? MOTION.twinkleMs : 0}ms infinite` : '',
-          ]
-            .filter(Boolean)
-            .join(',') +
-          `}`,
-      )
-    : ''
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    glyph +
-    tail +
-    valueLine +
-    motion +
-    `</svg>`
-  return { svg, width, height, natural }
-}
-
 /** A chip on the compact band's top line: the stats' tile look at a smaller size. */
 export const CHIP_LINE = { height: 22, fs: 12, labelFs: 11, icon: 13, lead: 7, baseline: 15.3 }
-
-/**
- * A chip for the compact band's top line (status, tool count, version), drawn in the same
- * language as the stats beneath it: a tile tinted `color` with a thin edge of it, a glyph (an
- * icon, or with `dots` three dots, dim to bright), a bold `value` and a dim `label`.
- * With `strong`, a chip without a value shows its label bold in `color` (the status word).
- * The label follows the value as the renderer sets it (an invisible copy holds its place).
- * `minWidth` holds the chip as wide as another state's, so what follows it never shifts.
- */
-export const chipSvg = (opts: {
-  color: string
-  label: string
-  value?: string
-  icon?: IconName
-  dots?: boolean
-  strong?: boolean
-  minWidth?: number
-  /** Outlined in the band's line colour, no tint, muted glyph and words: a chip that is not state. */
-  quiet?: boolean
-  /**
-   * The chip comes in (a quick scale and fade, once) and its dots light in a wave, left to
-   * right, from their still look (a loop: see MOTION).
-   */
-  motion?: boolean
-  /** The value rolls in from this one by itself, in CSS (`reelHolder`, `reelText`). */
-  reel?: Since<string> | string | null
-}) => {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const C = CHIP_LINE
-  const quiet = opts.quiet === true
-  const glyphColor = quiet ? INK.detail : opts.color
-  const restOpacity = quiet ? 0 : 0.14
-  const h = C.height
-  const glyphW = opts.dots ? 16 : opts.icon ? C.icon : 0
-  const x = C.lead + glyphW + (glyphW ? 6 : 0)
-  const y = C.baseline
-  const font = FIGURE_FONT
-  const valueFont = `${DISPLAY_FONT} font-size="${C.fs}" font-weight="700" fill="#f2eee8"`
-  // Still, the dots brighten left to right; moving, that brightness steps one dot on each third.
-  const levels = [0, 1, 2].map(i => (0.3 + i * 0.35).toFixed(2))
-  const glyph = opts.dots
-    ? [0, 1, 2]
-        .map(
-          i =>
-            `<circle cx="${C.lead + 2.5 + i * 5.5}" cy="${h / 2}" r="2.1" fill="${glyphColor}" opacity="${levels[i]}"` +
-            (opts.motion ? ` class="d${i}"/>` : '/>'),
-        )
-        .join('')
-    : opts.icon
-      ? iconGroup(opts.icon, glyphColor, C.lead, (h - C.icon) / 2, C.icon, 2.2)
-      : ''
-  const holder = opts.value ? `<tspan font-family="${DISPLAY_FAMILY}" font-size="${C.fs}" font-weight="700" fill-opacity="0">${esc(opts.value)}</tspan>` : ''
-  const labelStyle = opts.strong && !opts.value ? `font-weight="700" fill="${quiet ? INK.label : opts.color}"` : `fill="${INK.label}"`
-  const tail =
-    `<text x="${x}" y="${y}" ${font} font-size="${opts.strong && !opts.value ? C.fs : C.labelFs}">${holder}` +
-    `<tspan ${labelStyle}${opts.value ? ' dx="5"' : ''}>${esc(opts.label)}</tspan></text>`
-  const value = opts.value
-    ? reelText(x, y, C.fs, valueFont, opts.value, opts.reel)
-    : ''
-  // Sized generously (bold values run wide), so the label always fits.
-  const natural = Math.ceil(
-    x +
-      (opts.value ? labelWidth(opts.value, C.fs) + 5 : 0) +
-      labelWidth(opts.label, opts.strong && !opts.value ? C.fs : C.labelFs) +
-      // A bold status word runs wider than the estimate: more room at the end for it.
-      (opts.strong && !opts.value ? 16 : 10),
-  )
-  const width = Math.max(natural, opts.minWidth ?? 0)
-  // Each dot steps through the three brightnesses, so the brightest one moves left to right.
-  const wave = (i: number) =>
-    `@keyframes d${i}{0%,100%{opacity:${levels[i]}}33.3%{opacity:${levels[(i + 2) % 3]}}66.7%{opacity:${levels[(i + 1) % 3]}}}` +
-    `.d${i}{animation:d${i} ${MOTION.dotsMs}ms ${EASE.inOut} infinite}`
-  const motion = opts.motion
-    ? motionStyle(
-        `@keyframes chip-in{from{opacity:0;transform:scale(.88)}}` +
-          `.chip{transform-origin:${width / 2}px ${h / 2}px;animation:chip-in ${MOTION.chipInMs}ms ${EASE.out} both}` +
-          (opts.dots ? [0, 1, 2].map(wave).join('') : ''),
-      )
-    : ''
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}">` +
-    (opts.motion ? '<g class="chip">' : '') +
-    `<rect x="0.5" y="0.5" width="${width - 1}" height="${h - 1}" rx="${(h - 1) / 2}" fill="${opts.color}" fill-opacity="${restOpacity}" stroke="${quiet ? INK.line : opts.color}" stroke-opacity="${quiet ? 1 : 0.32}"/>` +
-    glyph +
-    tail +
-    value +
-    (opts.motion ? '</g>' : '') +
-    motion +
-    `</svg>`
-  return { svg, width, height: h, natural }
-}
 
 /**
  * A dim line of text that rolls to each new value like the band's figures (`reelText`): the

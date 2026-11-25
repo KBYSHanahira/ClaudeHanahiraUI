@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { HUE, INK } from './chat'
-import { CELL, SERIES, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, chargeLevel, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg, telemetrySvg, TELEMETRY } from './hud'
+import { CELL, SERIES, CHARGE_COLOR, branchChipSvg, CHARGE_CUT, FILL, SEAM, hudCellParts, hudContextParts, HUD_CHIP, HUD_CONTEXT, blocksSvg, capWidth, cellHeight, hudCellSvg, hudChipSvg, hudContextSvg, slabSvg, stripeSvg, telemetrySvg, TELEMETRY } from './hud'
 
 describe('hudCellSvg', () => {
   test('heads the cell `NN / NAME` and sets the figure in capitals', () => {
@@ -236,8 +236,7 @@ describe('telemetrySvg', () => {
 })
 
 describe('charge', () => {
-  test('signal from the first token a second, amber from 100, ember from 200', () => {
-    expect([null, NaN, 0, 1, 49, 50, 99, 100, 199, 200, 2000].map(chargeLevel)).toEqual([0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3])
+  test('the charge colours climb: signal, amber, ember', () => {
     expect(CHARGE_COLOR.slice(1)).toEqual([HUE.signal, HUE.amber, HUE.ember])
   })
   test('each level adds to the one under it, in its own colour', () => {

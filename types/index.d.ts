@@ -49,7 +49,7 @@ declare module 'claude-code' {
       stats: Stats
       usage: Usage
       // `at`: when the account may next be asked (ms), `limits`: its per-model weeks.
-      scoped: { at: number; limits: Usage['limits'] }
+      scoped: { at: number; readAt?: number; limits: Usage['limits'] }
       tokens: Tokens
       model: string | null
       runMs: number

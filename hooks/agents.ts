@@ -14,15 +14,15 @@ const EFFORT_COLOR: Record<string, string> = {
   xhigh: HUE.ember,
   max: HUE.ember,
 }
-const FAMILY_COLOR: Record<string, string> = { haiku: HUE.steel, sonnet: HUE.amber, opus: HUE.signal, fable: HUE.ember }
+const FAMILY_COLOR: Record<string, string> = { haiku: HUE.steel, sonnet: HUE.amber, opus: HUE.signal, fable: HUE.ember, mythos: HUE.ember }
 
 /**
  * The card's accent colour: by the effort when it is known, else by model family, else grey.
  * Colour only: the words on the card are always the real model and the real effort.
  */
 export const accentFor = (effort: string | null, model: string) => {
-  if (effort && EFFORT_COLOR[effort]) return EFFORT_COLOR[effort]
-  const family = /(haiku|sonnet|opus|fable)/i.exec(model)?.[1]?.toLowerCase()
+  if (effort && Object.hasOwn(EFFORT_COLOR, effort)) return EFFORT_COLOR[effort]!
+  const family = /(haiku|sonnet|opus|fable|mythos)/i.exec(typeof model === 'string' ? model : '')?.[1]?.toLowerCase()
   return (family && FAMILY_COLOR[family]) || INK.label
 }
 
@@ -35,11 +35,14 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
  * Anything it cannot read with confidence is shown exactly as given, never guessed at.
  */
 export const prettyModel = (id: string) => {
+  // A card whose model is not known yet has none: no name, no price, and no throw.
+  if (typeof id !== 'string') return ''
   let m = new RegExp(`claude-${FAMILY}-(\\d{1,2})(?:-(\\d{1,2}))?(?!\\d)`, 'i').exec(id)
   if (m) return `${cap(m[1]!)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
   m = new RegExp(`claude-(\\d{1,2})(?:-(\\d{1,2}))?-${FAMILY}`, 'i').exec(id)
   if (m) return `${cap(m[3]!)} ${m[1]}${m[2] ? `.${m[2]}` : ''}`
-  m = new RegExp(`^${FAMILY}$`, 'i').exec(id.trim())
+  // A bare alias, with or without a context suffix (`opus[1m]`).
+  m = new RegExp(`^${FAMILY}$`, 'i').exec(id.trim().replace(/\[[^\]]*\]$/, ''))
   if (m) return cap(m[1]!)
   return id
 }
@@ -146,11 +149,6 @@ export const spriteInner = (seed: string, color: string) => {
   )
 }
 
-export const CARD_W = 248
-export const CARD_H = 72
-/** The height the bar takes at a card's foot: what a barless card leaves out. */
-export const BAR_ROOM = 10
-
 /** The terminal's microtext face. */
 const MONO = "ui-monospace,'JetBrains Mono','SF Mono',Consolas,monospace"
 
@@ -165,86 +163,7 @@ export const agentStats = (a: Agent) => {
   const tokens = countsKnown(a) ? fmtTokens(totalTokens(a)) : '—'
   // The clip takes from the figures, never the time: a cut `10:00:00` would read as ten minutes.
   const tail = ` · ${when}`
-  return `${clip(`${a.tools} tools · ${tokens} · ${costText}`, 40 - tail.length)}${tail}`
-}
-
-/** The drawing of one card, in pieces: its frame, what it says, and its bar. */
-const cardPieces = (a: Agent, opts: { padBottom?: number; barless?: boolean }) => {
-  const W = CARD_W
-  const H = opts.barless ? CARD_H - BAR_ROOM : CARD_H
-  const pad = Math.max(0, Math.round(opts.padBottom ?? 0)) // transparent room under the card, in px
-  const accent = accentFor(a.effort, a.model)
-  const running = a.status === 'running'
-  const nameFull = clip(a.name, 24)
-  const name = esc(nameFull)
-  // The name must stop short of the status mark: pin it to the room it has.
-  const nameMax = W - 58 - 34
-  const nameWant = Math.round(nameFull.length * 7.3)
-  const nameFit = nameWant > nameMax ? ` textLength="${nameMax}" lengthAdjust="spacingAndGlyphs"` : ''
-  const modelText = a.model ? prettyModel(a.model) : 'model pending'
-  const model = esc(modelText)
-  const effort = a.effort ? esc(String(a.effort)) : ''
-  const modelW = Math.round(modelText.length * 6.3)
-  const statsText = agentStats(a)
-  const stats = esc(statsText)
-  const font = `font-family="${HUD_FAMILY}" style="font-stretch:condensed"`
-
-  // A running card's border holds its accent: with the ring and the bar, it says "busy".
-  const edge = running ? accent : INK.line
-  const edgeOpacity = running ? 0.55 : 1
-
-  const sr = 6
-  const sc = 2 * Math.PI * sr
-  const mark = running
-    ? `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-opacity="0.22" stroke-width="2.2"/>` +
-      `<circle cx="${W - 21}" cy="17" r="${sr}" fill="none" stroke="${accent}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(sc * 0.3).toFixed(2)} ${sc.toFixed(2)}"/>`
-    : a.status === 'done'
-      ? iconGroup('check', HUE.bone, W - 29, 9, 16, 3)
-      : a.status === 'error'
-        ? iconGroup('cross', HUE.ember, W - 29, 9, 16, 3)
-        : iconGroup('ban', HUE.amber, W - 29, 9, 16, 2.6)
-
-  const barX = 10
-  const barW = W - 20
-  const barY = H - 12
-  const litW = running ? Math.round(barW * 0.3) : barW
-  const track = `<rect x="${barX}" y="${barY}" width="${barW}" height="3" fill="${INK.track}"/>`
-  const lit = (cls = '') => `<rect x="${barX}" y="${barY}" width="${litW}" height="3" fill="${accent}"${cls ? ` class="${cls}"` : ''}/>`
-
-  // Sharp, its top-right corner cut, as every panel of the terminal.
-  const frame = `<path d="M0.75 0.75H${W - 10.75}L${W - 0.75} 10.75V${H - 0.75}H0.75z" fill="${HUE.card}" stroke="${edge}" stroke-opacity="${edgeOpacity}" stroke-width="1.5"/>`
-  const sprite = `<svg x="10" y="9" width="38" height="38" viewBox="-1 -1 9 9" shape-rendering="crispEdges">${spriteInner(a.id, accent)}</svg>`
-  const nameLine = `<text x="58" y="23" ${font} font-size="13" font-weight="700" fill="${INK.value}"${nameFit}>${name}</text>`
-  const figures =
-    `<text x="58" y="38" ${font} font-size="11" fill="${INK.label}">${model}</text>` +
-    (effort ? `<text x="${58 + modelW + 7}" y="38" ${font} font-size="11" font-weight="700" fill="${accent}">${effort}</text>` : '') +
-    `<text x="58" y="53" ${font} font-size="10.5" fill="${INK.detail}">${stats}</text>`
-  const body = sprite + nameLine + figures + mark
-  return { W, H, pad, running, accent, frame, sprite, nameLine, figures, mark, body, track, lit, barX, barY, barW, litW }
-}
-
-const svgBox = (W: number, y: number, h: number, inner: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${y} ${W} ${h}" width="${W}" height="${h}">${inner}</svg>`
-
-/**
- * One agent as a card, all in one SVG. A running card wears its accent on the border, a
- * part-drawn ring where the check will go, and a lit stretch on its bar; a finished one, its
- * mark and a full bar.
- */
-export const agentCardSvg = (
-  a: Agent,
-  opts: {
-    padBottom?: number
-    /** The bar is left out, the card a little shorter for it. */
-    barless?: boolean
-  } = {},
-) => {
-  const p = cardPieces(a, opts)
-  return {
-    svg: svgBox(p.W, 0, p.H + p.pad, p.frame + p.body + (opts.barless ? '' : p.track + p.lit())),
-    width: p.W,
-    height: p.H + p.pad,
-  }
+  return `${clip(`${Number.isFinite(a.tools) ? a.tools : 0} tools · ${tokens} · ${costText}`, 40 - tail.length)}${tail}`
 }
 
 /** The small card the strip draws: one line, about the height of the band's chips. */
@@ -283,6 +202,17 @@ export const taskNotice = (text: string): { id: string; status: string } | null 
 export const settledStatus = (s: string): Agent['status'] | null =>
   s === 'completed' ? 'done' : s === 'failed' ? 'error' : s === 'killed' || s === 'stopped' ? 'stopped' : null
 
+// A file's id in a probe line; a held file that was unlinked reads `… .output (deleted)` in /proc.
+const shellId = (l: string) => /([^/]+)\.output(?: \(deleted\))?$/.exec(l)?.[1]
+
+/** The ids the probe named at all (held, finished or killed), or null when it did not answer `OK`. */
+export const shellSeen = (out: string): Set<string> | null => {
+  if (typeof out !== 'string') return null
+  const lines = out.split('\n').map(l => l.trim())
+  if (!lines.includes('OK')) return null
+  return new Set(lines.map(l => (/^[HFK] /.test(l) ? shellId(l) : undefined)).filter((id): id is string => !!id))
+}
+
 /**
  * The host's word on background commands (register's SHELL_PROBE), read into how each ended:
  * `H <file>` a command still holds its output file, `F <file>` the file is there, `K <file>` it
@@ -291,9 +221,10 @@ export const settledStatus = (s: string): Agent['status'] | null =>
  */
 export const shellFates = (out: string): Map<string, Agent['status']> => {
   const fates = new Map<string, Agent['status']>()
+  if (typeof out !== 'string') return fates
   const lines = out.split('\n').map(l => l.trim())
   if (!lines.includes('OK')) return fates
-  const idOf = (l: string) => /([^/]+)\.output$/.exec(l)?.[1]
+  const idOf = shellId
   const held = new Set(lines.filter(l => l.startsWith('H ')).map(idOf))
   for (const l of lines) {
     const id = idOf(l)
@@ -436,50 +367,3 @@ export const agentChipParts = (a: Agent, opts: { padBottom?: number; motion?: bo
 /** A window of the card's one drawing, `w` by `h` from (`x`, `y`): pieces laid edge to edge make the card. */
 const svgWindow = (x: number, y: number, w: number, h: number, inner: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}">${inner}</svg>`
-
-/** Where the card is cut into its pieces (agentCardParts): under the name, left of the mark, above the bar. */
-export const CARD_CUT = { head: 27, mark: CARD_W - 30, bar: CARD_H - 15 }
-
-/**
- * The same card as four pictures laid edge to edge, so what moves never blinks. A surface swaps
- * a picture whose source changed, which blinks a frame and starts its motion over; so what moves
- * gets a piece of its own whose picture holds for as long as the agent runs:
- * - `head`, the name and the sprite's top: still.
- * - `mark`, the corner with the ring: the ring turns while the agent runs (`motion`), and a
- *   finished one draws its check in once.
- * - `body`, the model and the figures, which change as the agent works: a plain image, swapped
- *   cleanly.
- * - `strip`, the bar: its lit stretch slides along it and back while the agent runs, and a
- *   finished one fills to the end once, then rests.
- * Each draws only what shows in its window, so a piece's source changes only with what it shows.
- */
-export const agentCardParts = (a: Agent, opts: { padBottom?: number; motion?: boolean } = {}) => {
-  const p = cardPieces(a, opts)
-  const C = CARD_CUT
-  const motion = opts.motion === true
-  const markW = p.W - C.mark
-  const mark = motion
-    ? p.running
-      ? p.mark.replace(/(<circle [^>]*stroke-dasharray="[^"]*")\/>/, '$1 class="spin"/>') +
-        motionStyle(`@keyframes spin{to{transform:rotate(360deg)}}.spin{transform-box:fill-box;transform-origin:center;animation:spin ${MOTION.spinMs}ms linear infinite}`)
-      : a.status === 'done'
-        ? `<g class="tick">${p.mark}</g>` +
-          motionStyle(`@keyframes tick{from{stroke-dashoffset:24}}.tick path{stroke-dasharray:24;animation:tick ${MOTION.checkMs}ms ${EASE.out} both}`)
-        : p.mark
-    : p.mark
-  const strip = !motion
-    ? p.lit()
-    : p.running
-      ? p.lit('run') +
-        motionStyle(`@keyframes run{50%{transform:translateX(${p.barW - p.litW}px)}}.run{animation:run ${MOTION.agentBarMs * 2}ms ${EASE.inOut} infinite}`)
-      : p.lit('fill') +
-        motionStyle(`@keyframes fill{from{transform:scaleX(.3)}}.fill{transform-box:fill-box;transform-origin:left;animation:fill ${MOTION.agentFillMs}ms ${EASE.out} both}`)
-  const bodyH = C.bar - C.head
-  const stripH = p.H + p.pad - C.bar
-  return {
-    head: { svg: svgWindow(0, 0, C.mark, C.head, p.frame + p.sprite + p.nameLine), width: C.mark, height: C.head },
-    mark: { svg: svgWindow(C.mark, 0, markW, C.head, p.frame + mark), width: markW, height: C.head },
-    body: { svg: svgWindow(0, C.head, p.W, bodyH, p.frame + p.sprite + p.figures), width: p.W, height: bodyH },
-    strip: { svg: svgWindow(0, C.bar, p.W, stripH, p.frame + p.track + strip), width: p.W, height: stripH },
-  }
-}

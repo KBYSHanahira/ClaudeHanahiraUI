@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { keepCards, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, streamChars, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
+import { keepCards, addUsage, dangerous, asList, asSkill, hanahiraPart, modeFrom, modeSwitch, skillCommand, clip, glyph, limitLabel, shortLimitLabel, sameLimits, scopedLimits, streamChars, toUsage, weeklyModel, contextLeft, limitLeft, meter, ringSvg, tone, top } from './register'
 
 
 describe('guard pattern', () => {
@@ -160,7 +160,9 @@ describe('ring', () => {
 describe('asList', () => {
   test('passes a real list through', () => {
     const a = [{ id: 'x' }]
-    expect(asList(a)).toBe(a as never)
+    expect(asList(a)).toEqual(a as never)
+    // An element that is no card (null, no id) is dropped, so no reader of the list can throw on it.
+    expect(asList([null, { id: 'x' }, { name: 'n' }, 3])).toEqual([{ id: 'x' }] as never)
   })
 
   test('turns anything else a stored value might be into an empty list', () => {
@@ -352,5 +354,66 @@ describe('streamChars', () => {
   })
   test('other pieces are not counted', () => {
     expect(streamChars({ kind: 'tool-done' })).toBeNull()
+  })
+})
+
+describe('switches the reviewers found wrong', () => {
+  test('a question, a negation, a hyphenated word or another command switches nothing', () => {
+    for (const s of ['why is hanahira claude ui off today?', 'is Hanahira Claude UI on or off?', 'Hanahira Claude UI off-by-one bug', 'Hanahira Claude UI on-call', 'do not use Hanahira Claude UI', 'never turn on hanahira claude ui', 'how do I use Hanahira Claude UI?', 'use the Hanahira Claude UI repo to fix a bug', '/review Hanahira Claude UI off path']) {
+      expect(modeSwitch(s), s).toBe(null)
+    }
+  })
+  test('hyphenated, colon, Thai and "disable" forms switch', () => {
+    for (const s of ['hanahira-claude-ui off', 'Hanahira Claude UI: off', 'Hanahira Claude UI ปิด', 'disable Hanahira Claude UI', 'stop using Hanahira Claude UI', 'เลิกใช้ Hanahira Claude UI']) expect(modeSwitch(s), s).toBe('off')
+    for (const s of ['Hanahira-Claude-UI on', 'Hanahira Claude UI V33 on', 'Hanahira Claude UI on. Is it working?']) expect(modeSwitch(s), s).toBe('on')
+  })
+  test('the command: bare is on, status switches nothing, any case', () => {
+    expect(skillCommand('/hanahira-claude-ui')).toEqual({ part: 'core', on: true })
+    expect(skillCommand('/HANAHIRA-CLAUDE-UI off')).toEqual({ part: 'core', on: false })
+    expect(skillCommand('/hanahira-claude-ui ปิด')?.on).toBe(false)
+    expect(modeFrom([{ role: 'user', text: '/hanahira-claude-ui off' }, { role: 'user', text: '/hanahira-claude-ui status' }]).on).toBe(false)
+    expect(modeFrom([{ role: 'user', text: '/hanahira-claude-ui on' }, { role: 'user', text: '/hanahira-claude-ui status' }]).on).toBe(true)
+  })
+  test('a full transcript window starts from the mode kept so far; a broken row is skipped', () => {
+    expect(modeFrom([{ role: 'user', text: 'hello' }], { on: true, loaded: ['core'] })).toEqual({ on: true, loaded: ['core'] })
+    expect(modeFrom([null as never, { role: 'user', text: 5 as never }])).toEqual({ on: false, loaded: [] })
+  })
+})
+
+describe('toUsage', () => {
+  test('a missing field is null, never a throw or NaN', () => {
+    expect(toUsage(null)).toEqual({ usd: null, percent: null, tokens: null, window: null, limits: [] })
+    expect(toUsage({ context: { percent: 40, tokens: 80_000 }, rateLimits: [null, { kind: 'five_hour', percentUsed: 12 }, { percentUsed: 3 }] })).toEqual({
+      usd: null, percent: 40, tokens: 80_000, window: null, limits: [{ kind: 'five_hour', percentUsed: 12 }],
+    })
+  })
+  test('scopedLimits takes a reset in seconds, milliseconds or ISO, and drops one it cannot read', () => {
+    const row = (resets_at: unknown) => JSON.stringify({ limits: [{ kind: 'weekly_scoped', percent: 5, resets_at, scope: { model: { display_name: 'Mythos' } } }] })
+    expect(scopedLimits(row(1_800_000_000))[0]?.resetsAt).toBe('2027-01-15T08:00:00.000Z')
+    expect(scopedLimits(row(1_800_000_000_000))[0]?.resetsAt).toBe('2027-01-15T08:00:00.000Z')
+    expect(scopedLimits(row(1.8e19))[0]).toEqual({ kind: 'seven_day_mythos', percentUsed: 5 })
+  })
+})
+
+describe('switches: requests against questions', () => {
+  const on = (s: string) => expect(modeSwitch(s), s).toBe('on')
+  const off = (s: string) => expect(modeSwitch(s), s).toBe('off')
+  const none = (s: string) => expect(modeSwitch(s), s).toBe(null)
+  test('a question in a later clause, or a polite request, still switches', () => {
+    for (const s of ['Hanahira Claude UI on, and can you also fix the bug?', 'Hanahira Claude UI on - what changed?', 'Hanahira Claude UI on; why was it off?', 'Hanahira Claude UI on (is that ok?)', 'turn on Hanahira Claude UI, ok?', 'please turn on Hanahira Claude UI?', 'ช่วยเปิด Hanahira Claude UI หน่อย', 'เปิด Hanahira Claude UI ได้ไหม?', 'Hanahira Claude UI เปิด']) on(s)
+    for (const s of ['Hanahira Claude UI off, why is the build red?', 'can you turn off Hanahira Claude UI?', 'turn off Hanahira Claude UI and tell me why tests fail?', 'ปิด Hanahira Claude UI ได้ไหม?', 'Hanahira Claude UI v33 ปิด']) off(s)
+  })
+  test('a question about the mode, or a negated order, switches nothing', () => {
+    for (const s of ['Hanahira Claude UI ปิดอยู่หรือเปล่า', 'Hanahira Claude UI ปิดไหม?', 'Hanahira Claude UI ปิดเทอม', 'เลิกใช้ Hanahira Claude UI ไหม?', "don't turn off Hanahira Claude UI", 'do not disable Hanahira Claude UI', 'never stop using Hanahira Claude UI', "doesn't use Hanahira Claude UI", "can't use Hanahira Claude UI", 'อย่าเปิด Hanahira Claude UI', 'ไม่ต้องปิด Hanahira Claude UI']) none(s)
+  })
+  test("another command's arguments switch nothing, typed or wrapped; a path is no command", () => {
+    none('<command-name>/review</command-name>\n<command-args>Hanahira Claude UI off path</command-args>')
+    expect(modeFrom([{ role: 'user', text: '/hanahira-claude-ui on' }, { role: 'user', text: '<command-name>/review</command-name><command-args>Hanahira Claude UI off</command-args>' }]).on).toBe(true)
+    on('/home/me/app.ts is broken. Hanahira Claude UI on')
+  })
+  test('an off that left a full window still holds against a skill loading', () => {
+    const load = [{ role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'hanahira-claude-ui-design' } }] }]
+    expect(modeFrom(load, { on: false, loaded: [] }, true)).toEqual({ on: false, loaded: [] })
+    expect(modeFrom(load, { on: false, loaded: [] })).toEqual({ on: true, loaded: ['design'] })
   })
 })

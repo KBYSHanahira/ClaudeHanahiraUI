@@ -179,11 +179,10 @@ export const blocksSvg = (
   )
 }
 
-/** The speed at which each charge level starts, in tokens a second: signal from the first token, then amber, then ember. */
-export const CHARGE_AT = [0, 100, 200]
-/** A speed's charge level, 0 (none: no reading, or no speed) to 3: one more for each of CHARGE_AT it has reached. */
-export const chargeLevel = (tps: number | null) => (tps === null || !Number.isFinite(tps) || tps <= 0 ? 0 : CHARGE_AT.filter(at => tps >= at).length)
-/** Each level's colour, hotter as it climbs: signal up to 100 tok/s, amber up to 200, ember from 200. */
+/**
+ * Each level's colour, hotter as it climbs. The charge look (a conduit over a cell, by level) is
+ * kept but not used by the band: nothing passes `charge` today, so a cell's level is always 0.
+ */
 export const CHARGE_COLOR = ['', HUE.signal, HUE.amber, HUE.ember]
 
 // A cheap deterministic hash in [0, 1): the same arc draws the same every time, so a redraw
@@ -344,7 +343,7 @@ export type CellOpts = {
   toggle?: { on: boolean; enter?: number | null; motion?: boolean }
   /** With `toggle`: a small line of capitals under the name, over `sub` (the mascot's series). */
   series?: { text: string; color: string }
-  /** A power conduit over the cell, by level 1 to 3 (`chargeLevel`); `motion` sets it running (loops). */
+  /** A power conduit over the cell, by level 1 to 3 (`charge`, 0 for none); `motion` sets it running (loops). */
   charge?: { level: number; motion?: boolean }
 }
 
